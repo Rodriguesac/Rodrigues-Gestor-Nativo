@@ -1,0 +1,16 @@
+RODRIGUES GESTOR NATIVO v1.1 — ATIVAR FUNÇÕES E GERAR APK
+
+REPOSITÓRIO: Rodriguesac/Rodrigues-Gestor-Nativo
+
+1) Substitua o conteúdo do repositório pelo conteúdo da pasta Rodrigues-Gestor-Nativo deste ZIP.
+2) Faça commit/push na branch main.
+3) No GitHub: Actions > Gerar APK Rodrigues Gestor > Run workflow.
+4) Quando ficar verde: abra a execução > Artifacts > Rodrigues-Gestor-APK.
+5) Baixe e instale Rodrigues-Gestor-v1.1-debug.apk no aparelho da loja.
+6) Permita notificações quando o Android solicitar.
+
+CLIENTES ONLINE:
+Para o contador mostrar pessoas reais navegando, publique também o ZIP CLIENTE-V22.1-PRESENCA-ONLINE-Netlify.zip no projeto atual do Cliente no Netlify. Ele mantém a V22 e adiciona presence-v22.js.
+
+CANCELAMENTO: motivo + confirmação simples. Sem PIN.
+SEM histórico de ações de funcionários.

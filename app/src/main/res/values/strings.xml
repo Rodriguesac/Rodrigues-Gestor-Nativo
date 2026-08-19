@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">Rodrigues Gestor</string>
+    <string name="notification_channel_orders">Pedidos urgentes</string>
+    <string name="notification_channel_service">Gestor ativo</string>
+</resources>
