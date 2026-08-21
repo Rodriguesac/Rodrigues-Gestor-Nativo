@@ -277,12 +277,8 @@ class OrdersRepository(
             onError(IllegalArgumentException("Informe o valor do repasse ao entregador."))
             return
         }
-        if (driver.canReceiveComplement && driver.openRouteId.isNotBlank()) {
-            offerComplementToOpenRoute(order, driver, repasse, offerSeconds, onDone, onError)
-            return
-        }
         if (!driver.available) {
-            onError(IllegalStateException("Este entregador não está livre e não possui rota aberta para complemento."))
+            onError(IllegalStateException("Este entregador não está disponível."))
             return
         }
         loadStoreData { store ->
@@ -317,11 +313,7 @@ class OrdersRepository(
                 val deliveryCode = existingOrRandomCode(liveOrderRaw, "codigoEntrega", "codigoCurto")
                 val pickupCode = existingOrRandomCode(liveOrderRaw, "codigoRetirada", "codigoLiberacao", "codigoParaRetirada")
                 val common = hashMapOf<String, Any?>(
-                    "schema" to "UP_PROTOCOL_V3",
-                    "upProtocolVersion" to 3,
-                    "upState" to "OFFER_PENDING",
-                    "upRouteOpen" to true,
-                    "pickupConfirmed" to false,
+                    "schema" to "UP_V12_1_SEM_BLAZE",
                     "lojaId" to firstString(liveOrderRaw, "lojaId", default = "principal"),
                     "lojaNome" to firstString(liveOrderRaw, "lojaNome").ifBlank { store.name },
                     "pedidoId" to order.id,
@@ -406,10 +398,6 @@ class OrdersRepository(
                     put("quantidadePedidos", 1)
                     put("pedidoIds", listOf(order.id))
                     put("pedidosIds", listOf(order.id))
-                    put("sourceRideId", rideId)
-                    put("rotaAberta", true)
-                    put("bloqueadaParaNovosPedidos", false)
-                    put("paradas", listOf(routeStop(liveOrder, deliveryCode, 1)))
                 }, com.google.firebase.firestore.SetOptions.merge())
                 tx.set(legacyRef, HashMap<String, Any?>(common).apply { put("sourceRideId", rideId) }, com.google.firebase.firestore.SetOptions.merge())
                 tx.update(orderRef, mapOf(
@@ -417,10 +405,6 @@ class OrdersRepository(
                     "statusPedido" to "BUSCANDO_ENTREGADOR",
                     "statusEntrega" to "AGUARDANDO_ENTREGADOR",
                     "entrega.status" to "AGUARDANDO_ENTREGADOR",
-                    "upProtocolVersion" to 3,
-                    "upState" to "OFFER_PENDING",
-                    "upRouteOpen" to true,
-                    "pickupConfirmed" to false,
                     "entregaModo" to "UP",
                     "tipoEntregaOperacional" to "UP",
                     "corridaAtualId" to rideId,
@@ -464,11 +448,6 @@ class OrdersRepository(
                 ))
                 tx.update(driverRef, mapOf(
                     "statusOperacional" to "OFERTA_ENVIADA",
-                    "upProtocolVersion" to 3,
-                    "upMissionState" to "OFFER_PENDING",
-                    "upRouteOpen" to true,
-                    "canReceiveRouteComplement" to false,
-                    "upOpenRouteId" to routeId,
                     "ofertaAtualId" to rideId,
                     "aceitaNovasOfertas" to false,
                     "ultimaOfertaEm" to FieldValue.serverTimestamp(),
@@ -521,201 +500,6 @@ class OrdersRepository(
             }.addOnFailureListener(onError)
         }
     }
-
-
-    private fun offerComplementToOpenRoute(
-        order: Order,
-        driver: Driver,
-        repasse: Double,
-        offerSeconds: Int,
-        onDone: (String) -> Unit,
-        onError: (Throwable) -> Unit,
-    ) {
-        val routeId = driver.openRouteId
-        if (routeId.isBlank()) {
-            onError(IllegalStateException("A rota aberta do entregador não foi identificada."))
-            return
-        }
-        val now = System.currentTimeMillis()
-        val expirySeconds = offerSeconds.coerceIn(30, 120)
-        val expires = Timestamp(Date(now + expirySeconds * 1000L))
-        val orderRef = db.collection("pedidos").document(order.id)
-        val driverRef = db.collection("entregadores").document(driver.id)
-        val routeRef = db.collection("rotas_entrega").document(routeId)
-        val configRef = db.collection("up_config").document("master")
-
-        db.runTransaction { tx ->
-            val orderSnap = tx.get(orderRef)
-            val driverSnap = tx.get(driverRef)
-            val routeSnap = tx.get(routeRef)
-            val configSnap = tx.get(configRef)
-            if (!orderSnap.exists()) error("Pedido não encontrado.")
-            if (!driverSnap.exists()) error("Entregador não encontrado.")
-            if (!routeSnap.exists()) error("A rota aberta do entregador não existe mais.")
-
-            @Suppress("UNCHECKED_CAST")
-            val orderRaw = orderSnap.data as? Map<String, Any?> ?: emptyMap()
-            @Suppress("UNCHECKED_CAST")
-            val driverRaw = driverSnap.data as? Map<String, Any?> ?: emptyMap()
-            @Suppress("UNCHECKED_CAST")
-            val routeRaw = routeSnap.data as? Map<String, Any?> ?: emptyMap()
-            val liveOrder = normalizeOrder(order.id, orderRaw)
-            val liveDriver = normalizeDriver(driver.id, driverRaw)
-
-            if (liveOrder.status in StatusGroups.DONE || liveOrder.status in StatusGroups.CANCELED) error("Pedido já encerrado.")
-            if (liveOrder.status !in (StatusGroups.READY + StatusGroups.WAITING_DRIVER)) error("O pedido precisa estar pronto para entrar na rota.")
-            if (!liveDriver.canReceiveComplement) error("A rota do entregador já não aceita complemento.")
-            val assigned = firstString(routeRaw, "entregadorId", "driverId", "entregadorUid")
-            if (assigned.isNotBlank() && assigned != driver.id) error("Esta rota pertence a outro entregador.")
-            if (routeRaw["upRouteOpen"] == false || routeRaw["rotaAberta"] == false || routeRaw["pickupConfirmed"] == true || routeRaw["retiradaConfirmada"] == true) {
-                error("A retirada já foi confirmada. A rota está fechada para novos pedidos.")
-            }
-            if (routeRaw["complementoOfertaAtiva"] == true) error("Já existe um complemento aguardando resposta deste entregador.")
-
-            val currentIds = ((routeRaw["pedidoIds"] ?: routeRaw["pedidosIds"]) as? List<*>)
-                ?.mapNotNull { it?.toString()?.takeIf(String::isNotBlank) }?.distinct()?.toMutableList() ?: mutableListOf()
-            if (order.id in currentIds) error("Este pedido já faz parte da rota.")
-            val configuredMax = (configSnap.get("routeMaxStops") as? Number)?.toInt()?.coerceIn(1, 12) ?: 4
-            if (currentIds.size >= configuredMax) error("A rota já atingiu o limite de $configuredMax entregas.")
-
-            val currentOrderSnaps = currentIds.map { existingId -> tx.get(db.collection("pedidos").document(existingId)) }
-            val deliveryCode = existingOrRandomCode(orderRaw, "codigoEntrega", "codigoCurto")
-            val proposedIds = (currentIds + order.id).distinct()
-            @Suppress("UNCHECKED_CAST")
-            val currentStops = ((routeRaw["paradas"] ?: routeRaw["stops"]) as? List<*>)
-                ?.mapNotNull { (it as? Map<String, Any?>)?.toMutableMap() }?.toMutableList() ?: mutableListOf()
-            currentOrderSnaps.forEach { snap ->
-                if (!snap.exists() || currentStops.any { firstString(it, "pedidoId", "orderId") == snap.id }) return@forEach
-                @Suppress("UNCHECKED_CAST")
-                val rawExisting = snap.data as? Map<String, Any?> ?: return@forEach
-                val normalized = normalizeOrder(snap.id, rawExisting)
-                currentStops += routeStop(normalized, existingOrRandomCode(rawExisting, "codigoEntrega", "codigoCurto"), currentStops.size + 1).toMutableMap()
-            }
-            if (currentStops.none { firstString(it, "pedidoId", "orderId") == order.id }) {
-                currentStops += routeStop(liveOrder, deliveryCode, currentStops.size + 1).toMutableMap()
-            }
-            currentStops.sortBy { proposedIds.indexOf(firstString(it, "pedidoId", "orderId")).let { idx -> if (idx < 0) Int.MAX_VALUE else idx } }
-            currentStops.forEachIndexed { index, stop -> stop["ordem"] = index + 1 }
-
-            val linkedRideId = firstString(routeRaw, "sourceRideId", "rideId", "corridaAtualId")
-            val linkedRideRef = linkedRideId.takeIf { it.isNotBlank() }?.let { db.collection("rides").document(it) }
-            if (linkedRideRef != null) tx.get(linkedRideRef) // leitura antes de qualquer escrita
-
-            val currentRepasse = asDouble(firstValue(routeRaw, "valorRepasseEntregador", "repasseTotal", "valorCorrida"))
-            val comp = hashMapOf<String, Any?>(
-                "pedidoId" to order.id,
-                "numeroPedido" to liveOrder.number,
-                "clienteNome" to liveOrder.clientName,
-                "endereco" to liveOrder.address,
-                "bairro" to liveOrder.neighborhood,
-                "formaPagamento" to liveOrder.payment.form,
-                "precisaTroco" to liveOrder.payment.needsChange,
-                "trocoPara" to liveOrder.payment.changeFor,
-                "precisaMaquininha" to liveOrder.payment.needsMachine,
-                "valorReceberCliente" to liveOrder.payment.amountToCollect,
-                "valorPedido" to liveOrder.total,
-                "repasseAdicional" to repasse,
-                "novoRepasse" to currentRepasse + repasse,
-                "codigoEntrega" to deliveryCode,
-                "pedidoIdsPropostos" to proposedIds,
-                "paradasPropostas" to currentStops,
-                "offerExpiresAt" to expires,
-                "criadoEmMs" to now,
-            )
-
-            tx.update(routeRef, mapOf(
-                "schema" to "UP_PROTOCOL_V3",
-                "upProtocolVersion" to 3,
-                "upState" to "TO_STORE",
-                "upRouteOpen" to true,
-                "rotaAberta" to true,
-                "pickupConfirmed" to false,
-                "complementoOfertaAtiva" to true,
-                "complementoOferta" to comp,
-                "complementoLinkedRideId" to linkedRideId,
-                "updatedAt" to FieldValue.serverTimestamp(),
-            ))
-            if (linkedRideRef != null) {
-                tx.update(linkedRideRef, mapOf(
-                    "complementoOfertaAtiva" to true,
-                    "complementoOferta" to comp,
-                    "complementoRouteId" to routeId,
-                    "upProtocolVersion" to 3,
-                    "updatedAt" to FieldValue.serverTimestamp(),
-                ))
-            }
-            tx.update(orderRef, mapOf(
-                "status" to "OFERTA_COMPLEMENTO_ROTA",
-                "statusPedido" to "OFERTA_COMPLEMENTO_ROTA",
-                "statusEntrega" to "AGUARDANDO_ENTREGADOR",
-                "upProtocolVersion" to 3,
-                "upState" to "OFFER_PENDING",
-                "upRouteOpen" to true,
-                "rotaAtualId" to routeId,
-                "rotaId" to routeId,
-                "entregadorId" to driver.id,
-                "entregadorUid" to driver.id,
-                "driverId" to driver.id,
-                "entregadorNome" to liveDriver.name,
-                "codigoEntrega" to deliveryCode,
-                "valorRepasseEntregador" to repasse,
-                "ofertaAtiva" to true,
-                "ofertaAceita" to false,
-                "tipoOfertaUP" to "COMPLEMENTO_ROTA",
-                "updatedAt" to FieldValue.serverTimestamp(),
-            ))
-            tx.update(driverRef, mapOf(
-                "upProtocolVersion" to 3,
-                "upMissionState" to "TO_STORE",
-                "upRouteOpen" to true,
-                "canReceiveRouteComplement" to true,
-                "upOpenRouteId" to routeId,
-                "complementoOfertaAtiva" to true,
-                "updatedAt" to FieldValue.serverTimestamp(),
-            ))
-            routeId
-        }.addOnSuccessListener { activeRouteId ->
-            db.collection("app_notifications").add(mapOf(
-                "actionTarget" to activeRouteId,
-                "actionType" to "route_complement",
-                "active" to true,
-                "categoria" to "Corrida",
-                "category" to "Entrega",
-                "createdAt" to FieldValue.serverTimestamp(),
-                "origem" to "RODRIGUES_GESTOR_ANDROID_NATIVE",
-                "pedidoId" to order.id,
-                "routeId" to activeRouteId,
-                "priority" to "ALTA",
-                "targetDriverId" to driver.id,
-                "targetDriverIds" to listOf(driver.id),
-                "targetGroup" to "entregadores",
-                "title" to "+1 entrega para sua rota",
-                "titulo" to "+1 entrega para sua rota",
-                "message" to "Pedido #${order.number} pode ser adicionado antes da retirada.",
-                "mensagem" to "Pedido #${order.number} pode ser adicionado antes da retirada.",
-            ))
-            onDone(activeRouteId)
-        }.addOnFailureListener(onError)
-    }
-
-    private fun routeStop(order: Order, deliveryCode: String, position: Int): Map<String, Any?> = mapOf(
-        "ordem" to position,
-        "pedidoId" to order.id,
-        "orderId" to order.id,
-        "numeroPedido" to order.number,
-        "clienteNome" to order.clientName,
-        "clienteTelefone" to order.phone,
-        "endereco" to order.address,
-        "bairro" to order.neighborhood,
-        "formaPagamento" to order.payment.form,
-        "precisaTroco" to order.payment.needsChange,
-        "trocoPara" to order.payment.changeFor,
-        "precisaMaquininha" to order.payment.needsMachine,
-        "valorReceberCliente" to order.payment.amountToCollect,
-        "valorPedido" to order.total,
-        "codigoEntrega" to deliveryCode,
-        "status" to "PENDENTE",
-    )
 
 
 

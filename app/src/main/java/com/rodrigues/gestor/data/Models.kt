@@ -52,13 +52,9 @@ data class Driver(
     val busy: Boolean,
     val acceptsOffers: Boolean,
     val status: String,
-    val canReceiveComplement: Boolean = false,
-    val openRouteId: String = "",
-    val batteryLevel: Int? = null,
     val raw: Map<String, Any?>,
 ) {
     val available: Boolean get() = online && approved && !busy && acceptsOffers
-    val dispatchable: Boolean get() = available || (online && approved && canReceiveComplement && openRouteId.isNotBlank())
 }
 
 data class ChatMessage(
@@ -78,12 +74,11 @@ object StatusGroups {
     val NEW = setOf("RECEBIDO", "PENDENTE", "NOVO", "NOVO_PEDIDO")
     val PREPARING = setOf("CONFIRMADO", "FILA", "EM_PREPARO", "PREPARANDO", "ACEITO")
     val READY = setOf("PRONTO")
-    val WAITING_DRIVER = setOf("BUSCANDO_ENTREGADOR", "AGUARDANDO_ENTREGADOR", "AGUARDANDO_DECISAO_GESTOR", "OFERTA_COMPLEMENTO_ROTA")
-    val TO_STORE = setOf("A_CAMINHO_LOJA", "ENTREGADOR_A_CAMINHO_LOJA", "ACEITA", "PICKUP")
-    val AT_STORE = setOf("COLETANDO", "ENTREGADOR_CHEGOU_LOJA")
-    val TO_CUSTOMER = setOf("SAIU_ENTREGA", "SAIU_PARA_ENTREGA", "A_CAMINHO_CLIENTE", "EM_ENTREGA")
-    val AT_CUSTOMER = setOf("ENTREGADOR_NO_LOCAL", "ENTREGADOR_CHEGOU_CLIENTE", "NO_CLIENTE")
-    val DELIVERY = WAITING_DRIVER + TO_STORE + AT_STORE + TO_CUSTOMER + AT_CUSTOMER
+    val DELIVERY = setOf(
+        "BUSCANDO_ENTREGADOR", "AGUARDANDO_ENTREGADOR", "AGUARDANDO_DECISAO_GESTOR",
+        "A_CAMINHO_LOJA", "ENTREGADOR_A_CAMINHO_LOJA", "COLETANDO", "ENTREGADOR_CHEGOU_LOJA",
+        "SAIU_ENTREGA", "SAIU_PARA_ENTREGA", "A_CAMINHO_CLIENTE", "EM_ENTREGA", "ENTREGADOR_NO_LOCAL"
+    )
     val DONE = setOf("ENTREGUE", "CONCLUIDO", "CONCLUÍDO", "FINALIZADO", "RETIRADO")
     val CANCELED = setOf("CANCELADO", "CANCELADA")
 
@@ -93,11 +88,7 @@ object StatusGroups {
             s in NEW -> "Novo"
             s in PREPARING -> "Em preparo"
             s in READY -> "Pronto"
-            s in WAITING_DRIVER -> "Aguardando entregador"
-            s in TO_STORE -> "A caminho da loja"
-            s in AT_STORE -> "Na loja / retirada"
-            s in TO_CUSTOMER -> "Em rota ao cliente"
-            s in AT_CUSTOMER -> "No cliente"
+            s in DELIVERY -> "Em entrega"
             s in DONE -> "Finalizado"
             s in CANCELED -> "Cancelado"
             else -> s.replace('_', ' ').ifBlank { "—" }
@@ -236,14 +227,8 @@ fun normalizeDriver(id: String, raw: Map<String, Any?>): Driver {
         .filter { it.isNotBlank() }
     val approved = raw["ativo"] != false && raw["aprovado"] != false &&
         approvalStatuses.none { it in setOf("PENDENTE", "REPROVADO", "BLOQUEADO", "AGUARDANDO APROVAÇÃO", "AGUARDANDO APROVACAO") }
-    val operational = firstString(raw, "statusOperacional").uppercase(Locale.ROOT)
-    val busy = raw["emCorrida"] == true || operational in
-        setOf("EM_CORRIDA", "OCUPADO", "OFERTA_ACEITA", "PICKUP", "COLETANDO", "DELIVERY", "NO_CLIENTE", "EM_ENTREGA")
-    val upRouteOpen = raw["upRouteOpen"] == true || raw["canReceiveRouteComplement"] == true
-    val missionState = firstString(raw, "upMissionState", "upState").uppercase(Locale.ROOT)
-    val beforePickup = missionState in setOf("TO_STORE", "AT_STORE") || operational in setOf("PICKUP", "COLETANDO")
-    val canComplement = raw["online"] == true && approved && busy && upRouteOpen && beforePickup
-    val battery = asDouble(firstValue(raw, "batteryLevel", "bateria", "bateriaPercentual")).toInt().takeIf { it in 0..100 }
+    val busy = raw["emCorrida"] == true || firstString(raw, "statusOperacional").uppercase(Locale.ROOT) in
+        setOf("EM_CORRIDA", "OCUPADO", "OFERTA_ACEITA", "EM_ENTREGA")
     return Driver(
         id = id,
         name = firstString(raw, "nome", "nomeCompleto", default = "Entregador"),
@@ -253,9 +238,6 @@ fun normalizeDriver(id: String, raw: Map<String, Any?>): Driver {
         busy = busy,
         acceptsOffers = raw["aceitaNovasOfertas"] != false,
         status = firstString(raw, "statusOperacional", "status", default = if (raw["online"] == true) "Disponível" else "Offline"),
-        canReceiveComplement = canComplement,
-        openRouteId = firstString(raw, "upOpenRouteId", "rotaAtualId", "rotaId"),
-        batteryLevel = battery,
         raw = raw,
     )
 }

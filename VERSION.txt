@@ -1,2 +1,2 @@
-Rodrigues Gestor Nativo v1.2.0-sincronia-up
-UP Protocol V3
+Rodrigues Gestor Nativo v1.2.0
+Central de Pedidos Mobile • tema escuro • FCM preservado

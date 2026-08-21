@@ -1,6 +1,6 @@
 # Rodrigues Gestor — Android nativo
 
-Primeira base nativa do Gestor/Montador da Rodrigues Açaí e Cia.
+Aplicativo Android nativo do Gestor/Montador da Rodrigues Açaí e Cia, focado em operação rápida no celular.
 
 ## Firebase já encaixado
 
@@ -10,7 +10,8 @@ O arquivo `google-services.json` recebido foi colocado em `app/google-services.j
 
 - Pedidos em tempo real pela coleção `pedidos` do Firestore.
 - Compatibilidade com os campos usados pelo Gestor Mobile V2.7.
-- Filtros: Novos, Em preparo, Prontos, Entrega e Histórico.
+- Central mobile com Novos, Em preparo, Prontos, Entrega, Atrasados e vendas do dia.
+- Navegação principal: Pedidos, Histórico, Produtos, Loja e Mais.
 - Busca por pedido, cliente, telefone e item.
 - Tela de pedido com fonte grande e sem a antiga conferência de itens.
 - Aceitar pedido.
@@ -53,6 +54,21 @@ O app já recebe FCM. A pasta `backend-netlify` contém a função que envia `NE
 - Firebase BoM: 34.17.0
 - Compose BoM: 2026.06.01 (Compose 1.11.4 — compatível com compileSdk 36 / AGP 8.13.2)
 
+
+## v1.2.0 — Central de Pedidos Mobile
+
+- Tema escuro operacional no estilo aprovado para uso no celular.
+- Tela urgente dentro do app quando entra um novo pedido.
+- Aceite rápido, visualização do pedido e opção de silenciar o toque sem cancelar.
+- Home com métricas grandes: Novos, Preparando, Prontos, Entrega, Atrasados e Hoje.
+- Histórico separado com busca e filtros Hoje / 7 dias / Todos.
+- Produtos separado para pausa/reativação rápida.
+- Loja separado para abrir, fechar, pausar temporariamente, definir preparo e mensagens.
+- Mais concentra UP Entregas, Mensagens, alterações e configurações.
+- Itens do pedido aparecem de forma limpa, sem repetir detalhes de cobertura/acompanhamentos embaixo do nome final.
+- FCM, toque/vibração, impressão, chat, alterações, pagamentos e despacho manual preservados.
+- Cancelamento, chat e seleção de entregador usam telas próprias para celular.
+
 ## v1.1.0 — Operação completa do Gestor
 
 - Tema claro Rodrigues (roxo + verde), cards menores e textos sem colunas estreitas.
@@ -73,6 +89,3 @@ O app já recebe FCM. A pasta `backend-netlify` contém a função que envia `NE
 - Contador de clientes no site via coleção `presenca_site` (requer Cliente V22.1 com `presence-v22.js`).
 - Sem histórico de ações de funcionários.
 - Sem PIN para cancelamento.
-
-## V1.2 — Sincronia UP
-Usa o Protocolo UP V3. Entregador em rota aberta antes da retirada continua elegível para receber +1 pedido; após retirada, a rota fecha.

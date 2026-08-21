@@ -1,16 +1,14 @@
-RODRIGUES GESTOR NATIVO v1.1 — ATIVAR FUNÇÕES E GERAR APK
+RODRIGUES GESTOR v1.2 — PASSO ÚNICO
 
-REPOSITÓRIO: Rodriguesac/Rodrigues-Gestor-Nativo
+1) Extraia este ZIP.
+2) Envie TODO o conteúdo da pasta Rodrigues-Gestor-Nativo para o repositório do Rodrigues Gestor no GitHub, substituindo os arquivos antigos.
+3) Abra Actions > "Gerar APK Rodrigues Gestor".
+4) Execute o workflow.
+5) Baixe o artefato "Rodrigues-Gestor-APK".
 
-1) Substitua o conteúdo do repositório pelo conteúdo da pasta Rodrigues-Gestor-Nativo deste ZIP.
-2) Faça commit/push na branch main.
-3) No GitHub: Actions > Gerar APK Rodrigues Gestor > Run workflow.
-4) Quando ficar verde: abra a execução > Artifacts > Rodrigues-Gestor-APK.
-5) Baixe e instale Rodrigues-Gestor-v1.1-debug.apk no aparelho da loja.
-6) Permita notificações quando o Android solicitar.
+O APK gerado pelo workflow terá o nome Rodrigues-Gestor-v1.2-debug.apk.
 
-CLIENTES ONLINE:
-Para o contador mostrar pessoas reais navegando, publique também o ZIP CLIENTE-V22.1-PRESENCA-ONLINE-Netlify.zip no projeto atual do Cliente no Netlify. Ele mantém a V22 e adiciona presence-v22.js.
-
-CANCELAMENTO: motivo + confirmação simples. Sem PIN.
-SEM histórico de ações de funcionários.
+IMPORTANTE
+- Não altere app/google-services.json se o projeto Firebase continuar rodrigues-d6566.
+- O FCM permanece preparado para o tópico gestor-pedidos.
+- O backend Netlify de notify-gestor continua incluído e não exige Blaze do Firebase; ele usa Firebase Admin no Netlify.

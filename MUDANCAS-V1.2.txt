@@ -1,0 +1,61 @@
+RODRIGUES GESTOR NATIVO v1.2.0 — CENTRAL DE PEDIDOS MOBILE
+
+BASE
+- Construído sobre Rodrigues-Gestor-Nativo v1.1.0-FUNCOES-ATIVADAS.
+- Mantém Firestore, FCM, toque/vibração, impressão, chat e UP Entregas existentes.
+
+NOVA HOME / CENTRAL
+- Tema escuro operacional, pensado para celular no balcão.
+- Painel com NOVOS, PREPARANDO, PRONTOS, ENTREGA, ATRASADOS e vendas de HOJE.
+- Pedidos continuam atualizando em tempo real pelo Firestore.
+- Filtros rápidos por etapa, atraso, entrega, retirada e pagamento.
+
+NOVO PEDIDO
+- Quando o Gestor está aberto e chega pedido novo, abre tela de alerta em destaque.
+- Mostra número, cliente, modalidade, valor e quantidade de itens.
+- Botão ACEITAR PEDIDO.
+- Botão VER DETALHES.
+- Botão SILENCIAR TOQUE sem cancelar o pedido.
+- Cancelamento agora usa tela própria no app com seleção de motivo.
+- Escolha de entregador agora usa tela própria no app.
+- Chat com cliente agora usa tela inteira, com respostas rápidas e campo de mensagem.
+- FCM e serviço de toque continuam funcionando para segundo plano/tela apagada.
+
+NAVEGAÇÃO INFERIOR
+1. Pedidos
+2. Histórico
+3. Produtos
+4. Loja
+5. Mais
+
+HISTÓRICO
+- Finalizados e cancelados.
+- Busca por número ou cliente.
+- Filtros Hoje / 7 dias / Todos.
+
+PRODUTOS
+- Busca por nome ou categoria.
+- Filtros Todos / Ativos / Pausados.
+- Pausar e reativar rapidamente sem entrar no GADM.
+- Cadastro completo continua sendo responsabilidade do GADM.
+
+LOJA
+- Abrir e fechar loja.
+- Pausa temporária de 15, 30, 45 ou 60 minutos.
+- Retomar pedidos.
+- Ajustar tempo de preparo.
+- Mensagem quando aberta e mensagem quando fechada.
+
+MAIS
+- Central operacional com acesso a UP Entregas e Mensagens.
+- Mostra entregas em andamento, mensagens não lidas, alterações aguardando decisão e entregadores disponíveis.
+- Mantém configurações de alertas, vibração, tempos, impressão, atrasos e saúde do aparelho.
+
+VISUAL
+- Material 3 em tema escuro.
+- Alto contraste e cartões maiores.
+- Verde para pronto/ativo, vermelho para urgente, laranja para preparo e azul para entrega.
+
+VERSÃO
+versionCode: 3
+versionName: 1.2.0-central-mobile
