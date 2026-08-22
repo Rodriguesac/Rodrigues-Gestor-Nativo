@@ -1,6 +1,8 @@
 package com.rodrigues.gestor.notifications
 
 import android.content.Context
+import android.media.RingtoneManager
+import android.net.Uri
 
 object AlertPreferences {
     private const val PREFS = "rodrigues_gestor_alerts"
@@ -14,6 +16,26 @@ object AlertPreferences {
 
     fun vibration(context: Context): Boolean = prefs(context).getBoolean("vibration", true)
     fun setVibration(context: Context, value: Boolean) = prefs(context).edit().putBoolean("vibration", value).apply()
+
+    fun orderSoundUri(context: Context): Uri = prefs(context).getString("order_sound_uri", null)
+        ?.takeIf { it.isNotBlank() }
+        ?.let(Uri::parse)
+        ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+
+    fun setOrderSoundUri(context: Context, uri: Uri) = prefs(context).edit()
+        .putString("order_sound_uri", uri.toString())
+        .apply()
+
+    fun orderSoundTitle(context: Context): String = try {
+        RingtoneManager.getRingtone(context, orderSoundUri(context))?.getTitle(context)
+            ?.takeIf { it.isNotBlank() }
+            ?: "Som padrão de notificação"
+    } catch (_: Throwable) {
+        "Som padrão de notificação"
+    }
+
+    fun cancellationAlerts(context: Context): Boolean = prefs(context).getBoolean("cancellation_alerts", true)
+    fun setCancellationAlerts(context: Context, value: Boolean) = prefs(context).edit().putBoolean("cancellation_alerts", value).apply()
 
     fun repeatSeconds(context: Context): Int = prefs(context).getInt("repeat_seconds", 15).coerceIn(5, 60)
     fun setRepeatSeconds(context: Context, value: Int) = prefs(context).edit().putInt("repeat_seconds", value.coerceIn(5, 60)).apply()

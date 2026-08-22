@@ -51,14 +51,6 @@ class OrderRingService : Service() {
     override fun onCreate() {
         super.onCreate()
         NotificationHelper.createChannels(this)
-        ringtone = RingtoneManager.getRingtone(this, RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE))?.apply {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                audioAttributes = AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE)
-                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                    .build()
-            }
-        }
         vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             getSystemService(VibratorManager::class.java).defaultVibrator
         } else {
@@ -98,6 +90,7 @@ class OrderRingService : Service() {
         repeatMs = AlertPreferences.repeatSeconds(this).toLong() * 1000L
         maxRunMs = AlertPreferences.maxRingMinutes(this).toLong() * 60_000L
         startedAt = System.currentTimeMillis()
+        loadSelectedSound()
 
         wakeLock?.let { if (it.isHeld) it.release() }
         val power = getSystemService(POWER_SERVICE) as PowerManager
@@ -109,6 +102,19 @@ class OrderRingService : Service() {
         handler.removeCallbacksAndMessages(null)
         handler.post(ringBurst)
         return START_NOT_STICKY
+    }
+
+    private fun loadSelectedSound() {
+        try { ringtone?.stop() } catch (_: Throwable) { }
+        val selected = AlertPreferences.orderSoundUri(this)
+        ringtone = RingtoneManager.getRingtone(this, selected)
+            ?: RingtoneManager.getRingtone(this, RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION))
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            ringtone?.audioAttributes = AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_NOTIFICATION)
+                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                .build()
+        }
     }
 
     private fun vibrateBurst() {

@@ -13,8 +13,8 @@ android {
         applicationId = "com.rodrigues.gestor"
         minSdk = 23
         targetSdk = 36
-        versionCode = 7
-        versionName = "1.3.3-gestor-sempre-conectado"
+        versionCode = 8
+        versionName = "1.3.4-sons-e-cancelamento"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true

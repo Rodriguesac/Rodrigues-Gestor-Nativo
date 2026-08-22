@@ -38,6 +38,9 @@ class GestorMessagingService : FirebaseMessagingService() {
             "PAYMENT", "PAGAMENTO", "PAGAMENTO_APROVADO", "PAGAMENTO_RECUSADO" -> {
                 if (AlertPreferences.paymentAlerts(this)) NotificationHelper.showMessage(this, "Pagamento", body, orderId)
             }
+            "ORDER_CANCELLED", "ORDER_CANCELED", "PEDIDO_CANCELADO", "CANCELAMENTO_PEDIDO" -> {
+                NotificationHelper.showCancellation(this, orderId, number, client, body)
+            }
             else -> {
                 val title = message.notification?.title ?: data["title"] ?: "Rodrigues Gestor"
                 NotificationHelper.showMessage(this, title, body, orderId)

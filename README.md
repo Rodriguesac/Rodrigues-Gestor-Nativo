@@ -24,7 +24,8 @@ O arquivo `google-services.json` recebido foi colocado em `app/google-services.j
 - Lista de entregadores da coleção `entregadores`.
 - Despacho manual para UP Entregas, criando `rides`, `rotas_entrega`, `corridas`, `alertas_operacionais` e `app_notifications` no formato já usado pelo Gestor web.
 - Status e dados de Pagamento visíveis no pedido.
-- Alerta nativo com toque e vibração.
+- Alerta nativo com toque selecionável e vibração.
+- Aviso curto com som e vibração quando um pedido é cancelado, inclusive fora da tela.
 - Ação **ACEITAR** diretamente na notificação.
 - Firebase Cloud Messaging preparado e inscrição automática no tópico `gestor-pedidos`.
 - Registro do token do aparelho em `gestor_dispositivos`.

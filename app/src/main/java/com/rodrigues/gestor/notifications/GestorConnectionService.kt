@@ -18,6 +18,8 @@ class GestorConnectionService : Service() {
     private var orderListener: ListenerRegistration? = null
     private var firstSnapshot = true
     private val knownPending = mutableSetOf<String>()
+    private val knownStatuses = mutableMapOf<String, String>()
+    private var activeRingOrderId = ""
 
     override fun onCreate() {
         super.onCreate()
@@ -44,12 +46,33 @@ class GestorConnectionService : Service() {
                     return@addSnapshotListener
                 }
 
-                val pending = snapshot?.documents.orEmpty().mapNotNull { doc ->
-                    val status = sequenceOf("status", "statusPedido", "statusLoja")
-                        .mapNotNull { doc.getString(it) }
-                        .firstOrNull { it.isNotBlank() }
-                        ?.uppercase(Locale.ROOT)
-                        .orEmpty()
+                val documents = snapshot?.documents.orEmpty()
+                val currentStatuses = documents.associate { doc -> doc.id to statusOf(doc.data.orEmpty()) }
+
+                if (!firstSnapshot) {
+                    documents.forEach { doc ->
+                        val status = currentStatuses[doc.id].orEmpty()
+                        val previous = knownStatuses[doc.id]
+                        if (previous != null && previous !in CANCELED_STATUSES && status in CANCELED_STATUSES) {
+                            val number = sequenceOf("numeroPedido", "codigoPedido", "numero")
+                                .mapNotNull { doc.getString(it) }
+                                .firstOrNull { it.isNotBlank() }
+                                ?: doc.id.takeLast(6).uppercase(Locale.ROOT)
+                            val client = doc.getString("clienteNome")
+                                ?: doc.getString("nomeCliente")
+                                ?: (doc.get("cliente") as? Map<*, *>)?.get("nome")?.toString()
+                                ?: "Cliente"
+                            val reason = sequenceOf("motivoCancelamento", "detalheCancelamento")
+                                .mapNotNull { doc.getString(it) }
+                                .firstOrNull { it.isNotBlank() }
+                                ?: "Cancelado pelo cliente"
+                            NotificationHelper.showCancellation(this, doc.id, number, client, reason)
+                        }
+                    }
+                }
+
+                val pending = documents.mapNotNull { doc ->
+                    val status = currentStatuses[doc.id].orEmpty()
                     if (status !in NEW_STATUSES) return@mapNotNull null
                     PendingOrder(
                         id = doc.id,
@@ -74,16 +97,27 @@ class GestorConnectionService : Service() {
                 firstSnapshot = false
                 knownPending.clear()
                 knownPending.addAll(pendingIds)
+                knownStatuses.clear()
+                knownStatuses.putAll(currentStatuses)
 
                 updateConnectionNotification(
                     "Última atualização às ${SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())}",
                     pending.size
                 )
 
-                target?.let {
+                val nextRing = when {
+                    target != null -> target
+                    activeRingOrderId.isNotBlank() && activeRingOrderId !in pendingIds -> pending.firstOrNull()
+                    else -> null
+                }
+                nextRing?.let {
+                    activeRingOrderId = it.id
                     OrderRingService.start(this, it.id, it.number, it.client)
                 }
-                if (pending.isEmpty()) OrderRingService.stop(this)
+                if (pending.isEmpty()) {
+                    activeRingOrderId = ""
+                    OrderRingService.stop(this)
+                }
             }
     }
 
@@ -103,6 +137,12 @@ class GestorConnectionService : Service() {
         is Number -> value.toLong()
         else -> 0L
     }
+
+    private fun statusOf(data: Map<String, Any>): String = sequenceOf("status", "statusPedido", "statusLoja", "statusAtual")
+        .mapNotNull { data[it]?.toString() }
+        .firstOrNull { it.isNotBlank() }
+        ?.uppercase(Locale.ROOT)
+        .orEmpty()
 
     override fun onDestroy() {
         orderListener?.remove()
@@ -124,6 +164,7 @@ class GestorConnectionService : Service() {
         private val NEW_STATUSES = setOf(
             "AGUARDANDO_CONFIRMACAO", "RECEBIDO", "PENDENTE", "NOVO", "NOVO_PEDIDO"
         )
+        private val CANCELED_STATUSES = setOf("CANCELADO", "CANCELADA", "CANCELED", "CANCELLED")
 
         fun start(context: Context) {
             try {

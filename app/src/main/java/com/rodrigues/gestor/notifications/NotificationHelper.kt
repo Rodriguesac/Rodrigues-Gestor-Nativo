@@ -9,23 +9,27 @@ import android.content.Intent
 import android.media.AudioAttributes
 import android.media.RingtoneManager
 import android.os.Build
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.os.VibratorManager
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import com.rodrigues.gestor.MainActivity
 import com.rodrigues.gestor.R
 
 object NotificationHelper {
-    const val CHANNEL_ORDERS = "pedidos_urgentes_v2"
+    const val CHANNEL_ORDERS = "pedidos_urgentes_v3"
     const val CHANNEL_SERVICE = "gestor_servico_v1"
     const val CHANNEL_CONNECTION = "gestor_conectado_v1"
     const val CHANNEL_MESSAGES = "mensagens_cliente_v1"
+    const val CHANNEL_CANCELLATIONS = "pedidos_cancelados_v1"
 
     fun createChannels(context: Context) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val manager = context.getSystemService(NotificationManager::class.java)
-        val ringtoneUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
+        val ringtoneUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
         val attrs = AudioAttributes.Builder()
-            .setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE)
+            .setUsage(AudioAttributes.USAGE_NOTIFICATION)
             .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
             .build()
 
@@ -51,7 +55,14 @@ object NotificationHelper {
             description = "Novas mensagens e solicitações dos clientes"
             enableVibration(true)
         }
-        manager.createNotificationChannels(listOf(orders, service, connection, messages))
+        val cancellations = NotificationChannel(CHANNEL_CANCELLATIONS, "Pedidos cancelados", NotificationManager.IMPORTANCE_HIGH).apply {
+            description = "Aviso curto quando um pedido é cancelado"
+            enableVibration(true)
+            vibrationPattern = longArrayOf(0, 240, 120, 420)
+            setSound(ringtoneUri, attrs)
+            lockscreenVisibility = Notification.VISIBILITY_PUBLIC
+        }
+        manager.createNotificationChannels(listOf(orders, service, connection, messages, cancellations))
     }
 
     fun connectionNotification(
@@ -176,6 +187,81 @@ object NotificationHelper {
         try {
             NotificationManagerCompat.from(context).notify(("message:$orderId:$title").hashCode(), n)
         } catch (_: SecurityException) {
+        }
+    }
+
+    fun showCancellation(
+        context: Context,
+        orderId: String,
+        number: String,
+        clientName: String,
+        reason: String = "",
+    ) {
+        if (!AlertPreferences.cancellationAlerts(context) || isCancellationDuplicate(context, orderId)) return
+        createChannels(context)
+        val openIntent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+            if (orderId.isNotBlank()) putExtra(MainActivity.EXTRA_ORDER_ID, orderId)
+        }
+        val pending = PendingIntent.getActivity(
+            context,
+            ("cancel:$orderId").hashCode(),
+            openIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val detail = reason.ifBlank { clientName.ifBlank { "Abra o Gestor para conferir." } }
+        val notification = NotificationCompat.Builder(context, CHANNEL_CANCELLATIONS)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setContentTitle("PEDIDO CANCELADO #${number.ifBlank { orderId.takeLast(6).uppercase() }}")
+            .setContentText(detail)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(detail))
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setCategory(NotificationCompat.CATEGORY_STATUS)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setAutoCancel(true)
+            .setContentIntent(pending)
+            .addAction(0, "VER PEDIDO", pending)
+            .build()
+        try {
+            NotificationManagerCompat.from(context).notify(("cancel:$orderId").hashCode(), notification)
+        } catch (_: SecurityException) {
+        }
+        if (AlertPreferences.vibration(context) && Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+            vibrateCancellation(context)
+        }
+    }
+
+    fun markCancellationHandled(context: Context, orderId: String) {
+        if (orderId.isBlank()) return
+        context.getSharedPreferences("cancel_alert_dedup", Context.MODE_PRIVATE)
+            .edit()
+            .putLong(orderId, System.currentTimeMillis())
+            .apply()
+    }
+
+    private fun isCancellationDuplicate(context: Context, orderId: String): Boolean {
+        if (orderId.isBlank()) return false
+        val prefs = context.getSharedPreferences("cancel_alert_dedup", Context.MODE_PRIVATE)
+        val now = System.currentTimeMillis()
+        val last = prefs.getLong(orderId, 0L)
+        if (last > 0L && now - last < 60_000L) return true
+        prefs.edit().putLong(orderId, now).apply()
+        return false
+    }
+
+    private fun vibrateCancellation(context: Context) {
+        val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            context.getSystemService(VibratorManager::class.java).defaultVibrator
+        } else {
+            @Suppress("DEPRECATION")
+            context.getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
+        }
+        val pattern = longArrayOf(0, 240, 120, 420)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            vibrator.vibrate(VibrationEffect.createWaveform(pattern, -1))
+        } else {
+            @Suppress("DEPRECATION")
+            vibrator.vibrate(pattern, -1)
         }
     }
 }

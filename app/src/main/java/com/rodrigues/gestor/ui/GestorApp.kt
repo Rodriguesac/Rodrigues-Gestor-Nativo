@@ -1,11 +1,15 @@
 package com.rodrigues.gestor.ui
 
+import android.app.Activity
 import android.content.Context
 import android.content.Intent
+import android.media.RingtoneManager
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.net.Uri
 import android.os.BatteryManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -186,6 +190,13 @@ fun GestorApp(
                         val previousStatus = knownStatuses[current.id]
                         if (previousStatus != null && previousStatus != current.status && AlertPreferences.driverAlerts(context) && current.status in StatusGroups.DELIVERY) {
                             NotificationHelper.showMessage(context, "Entrega atualizada", "Pedido #${current.number} • ${StatusGroups.label(current.status)}", current.id)
+                        }
+                        if (previousStatus != null && previousStatus !in StatusGroups.CANCELED && current.status in StatusGroups.CANCELED) {
+                            val reason = sequenceOf("motivoCancelamento", "detalheCancelamento")
+                                .mapNotNull { current.raw[it]?.toString() }
+                                .firstOrNull { it.isNotBlank() }
+                                ?: "Cancelado pelo cliente"
+                            NotificationHelper.showCancellation(context, current.id, current.number, current.clientName, reason)
                         }
                         val paymentNow = current.payment.status.uppercase(Locale.ROOT)
                         val paymentBefore = knownPayments[current.id]
@@ -1577,6 +1588,8 @@ private fun MoreScreen(
         return
     }
     var vibration by remember { mutableStateOf(AlertPreferences.vibration(context)) }
+    var cancellationAlerts by remember { mutableStateOf(AlertPreferences.cancellationAlerts(context)) }
+    var orderSoundTitle by remember { mutableStateOf(AlertPreferences.orderSoundTitle(context)) }
     var repeat by remember { mutableStateOf(AlertPreferences.repeatSeconds(context)) }
     var ringMinutes by remember { mutableStateOf(AlertPreferences.maxRingMinutes(context)) }
     var unanswered by remember { mutableStateOf(AlertPreferences.unansweredMinutes(context)) }
@@ -1589,6 +1602,17 @@ private fun MoreScreen(
     var autoPrint by remember { mutableStateOf(AlertPreferences.autoPrintOnAccept(context)) }
     var copies by remember { mutableStateOf(AlertPreferences.printCopies(context)) }
     var paper by remember { mutableStateOf(AlertPreferences.paperWidth(context)) }
+    val soundPicker = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            @Suppress("DEPRECATION")
+            val picked = result.data?.getParcelableExtra<Uri>(RingtoneManager.EXTRA_RINGTONE_PICKED_URI)
+            if (picked != null) {
+                AlertPreferences.setOrderSoundUri(context, picked)
+                orderSoundTitle = AlertPreferences.orderSoundTitle(context)
+                onMessage("Som de novo pedido alterado")
+            }
+        }
+    }
 
     val network = isNetworkAvailable(context)
     val notifications = NotificationManagerCompat.from(context).areNotificationsEnabled()
@@ -1650,6 +1674,28 @@ private fun MoreScreen(
                 }
                 SettingSwitchRow("Vibração", "Vibrar junto com o toque", vibration) {
                     vibration = it; AlertPreferences.setVibration(context, it)
+                }
+                Text("Som de novo pedido", fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 6.dp))
+                Text(orderSoundTitle, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.height(7.dp))
+                OutlinedButton(
+                    onClick = {
+                        soundPicker.launch(Intent(RingtoneManager.ACTION_RINGTONE_PICKER).apply {
+                            putExtra(RingtoneManager.EXTRA_RINGTONE_TYPE, RingtoneManager.TYPE_ALL)
+                            putExtra(RingtoneManager.EXTRA_RINGTONE_TITLE, "Escolha o som de novo pedido")
+                            putExtra(RingtoneManager.EXTRA_RINGTONE_EXISTING_URI, AlertPreferences.orderSoundUri(context))
+                            putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_DEFAULT, true)
+                            putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_SILENT, false)
+                        })
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(Icons.Default.Notifications, null)
+                    Spacer(Modifier.width(7.dp))
+                    Text("ESCOLHER SOM")
+                }
+                SettingSwitchRow("Pedido cancelado", "Som curto e vibração quando houver cancelamento", cancellationAlerts) {
+                    cancellationAlerts = it; AlertPreferences.setCancellationAlerts(context, it)
                 }
                 SettingSwitchRow("Mensagens", "Avisos de conversa do cliente", msgAlerts) {
                     msgAlerts = it; AlertPreferences.setMessageAlerts(context, it)
@@ -1853,6 +1899,7 @@ private fun OrderDetailScreen(
             onBack = { if (!busy) showCancel = false },
             onConfirm = { reason ->
                 busy = true
+                NotificationHelper.markCancellationHandled(context, order.id)
                 repository.cancelOrder(order, reason, {
                     busy = false
                     showCancel = false
@@ -2094,6 +2141,7 @@ private fun OrderDetailScreen(
             onDismiss = { showCancel = false },
             onConfirm = { reason ->
                 busy = true
+                NotificationHelper.markCancellationHandled(context, order.id)
                 repository.cancelOrder(order, reason, {
                     busy = false
                     showCancel = false
