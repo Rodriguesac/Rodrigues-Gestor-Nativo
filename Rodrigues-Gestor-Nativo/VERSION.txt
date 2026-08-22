@@ -1,0 +1,2 @@
+Rodrigues Gestor Nativo v1.3.1
+FCM redundante token+tópico • tela bloqueada • novo status AGUARDANDO_CONFIRMACAO

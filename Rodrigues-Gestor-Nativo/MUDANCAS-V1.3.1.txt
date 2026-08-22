@@ -1,0 +1,23 @@
+RODRIGUES GESTOR NATIVO v1.3.1 — FCM + CONFIRMAÇÃO DA LOJA
+
+NOVO PEDIDO
+- Reconhece AGUARDANDO_CONFIRMACAO como pedido novo.
+- Aceitar muda para CONFIRMADO; iniciar preparo continua sendo uma ação separada.
+- Histórico do aceite agora registra “Pedido confirmado”, não “Em preparo”.
+- Progresso visual separa Novo / Confirmado / Preparo / Pronto / Entrega.
+
+FCM / TELA BLOQUEADA
+- Registro do token preservado e inscrição no tópico monitorada.
+- Backend V22.9 envia por dois caminhos: token direto dos aparelhos registrados + tópico gestor-pedidos.
+- O APK elimina duplicata quando os dois caminhos chegam juntos.
+- Canal do pedido ativo foi renovado para v2, com alta importância e visibilidade na tela bloqueada.
+- Toque persistente e vibração continuam controlados pelas preferências do Gestor.
+
+CLIENTE COMPATÍVEL
+- Usar Cliente V22.9 para criar pedido em AGUARDANDO_CONFIRMACAO.
+- Cliente mostra “Pedido enviado” e “Aguarde a confirmação da loja”.
+- Após o Gestor aceitar, o Cliente recebe CONFIRMADO e mostra “Pedido confirmado”.
+
+VERSÃO
+versionCode: 5
+versionName: 1.3.1-fcm-confirmacao
