@@ -1,8 +1,0 @@
-{
-  "name": "rodrigues-gestor-fcm",
-  "private": true,
-  "type": "module",
-  "dependencies": {
-    "firebase-admin": "^13.4.0"
-  }
-}

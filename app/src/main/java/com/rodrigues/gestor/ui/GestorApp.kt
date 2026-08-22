@@ -128,6 +128,7 @@ private enum class MainSection(val label: String) {
 
 private enum class Stage(val label: String) {
     NEW("Novos"),
+    CONFIRMED("Confirmados"),
     PREPARING("Em preparo"),
     READY("Prontos"),
     DELIVERY("Entrega"),
@@ -530,6 +531,7 @@ private fun OrdersHomeScreen(
     val filtered = remember(orders, stage, search, quickFilter, yellow) {
         val base = when (stage) {
             Stage.NEW -> orders.filter { it.status in StatusGroups.NEW }
+            Stage.CONFIRMED -> orders.filter { it.status in StatusGroups.CONFIRMED }
             Stage.PREPARING -> orders.filter { it.status in StatusGroups.PREPARING }
             Stage.READY -> orders.filter { it.status in StatusGroups.READY }
             Stage.DELIVERY -> orders.filter { it.status in StatusGroups.DELIVERY }
@@ -652,6 +654,7 @@ private fun greetingText(): String = when (Calendar.getInstance().get(Calendar.H
 private fun MetricsRow(orders: List<Order>, selectedStage: Stage, onStage: (Stage) -> Unit) {
     val data = listOf(
         Triple(Stage.NEW, orders.count { it.status in StatusGroups.NEW }, Color(0xFFE9151D)),
+        Triple(Stage.CONFIRMED, orders.count { it.status in StatusGroups.CONFIRMED }, Color(0xFF2878D0)),
         Triple(Stage.PREPARING, orders.count { it.status in StatusGroups.PREPARING }, Color(0xFFF28C18)),
         Triple(Stage.READY, orders.count { it.status in StatusGroups.READY }, Color(0xFF249B3B)),
         Triple(Stage.DELIVERY, orders.count { it.status in StatusGroups.DELIVERY }, Color(0xFF2878D0)),
@@ -698,9 +701,10 @@ private fun MetricBox(
 @Composable
 private fun StageTabs(stage: Stage, orders: List<Order>, onStage: (Stage) -> Unit) {
     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        items(listOf(Stage.NEW, Stage.PREPARING, Stage.READY, Stage.DELIVERY)) { item ->
+        items(listOf(Stage.NEW, Stage.CONFIRMED, Stage.PREPARING, Stage.READY, Stage.DELIVERY)) { item ->
             val count = when (item) {
                 Stage.NEW -> orders.count { it.status in StatusGroups.NEW }
+                Stage.CONFIRMED -> orders.count { it.status in StatusGroups.CONFIRMED }
                 Stage.PREPARING -> orders.count { it.status in StatusGroups.PREPARING }
                 Stage.READY -> orders.count { it.status in StatusGroups.READY }
                 Stage.DELIVERY -> orders.count { it.status in StatusGroups.DELIVERY }
@@ -722,6 +726,7 @@ private fun EmptyStage(stage: Stage) {
             Icon(
                 when (stage) {
                     Stage.NEW -> Icons.Default.Notifications
+                    Stage.CONFIRMED -> Icons.Default.CheckCircle
                     Stage.PREPARING -> Icons.Default.Restaurant
                     Stage.READY -> Icons.Default.CheckCircle
                     Stage.DELIVERY -> Icons.Default.DeliveryDining
@@ -857,6 +862,7 @@ private fun StatusPill(status: String) {
 
 private fun statusColor(status: String): Color = when {
     status in StatusGroups.NEW -> Color(0xFFE9151D)
+    status in StatusGroups.CONFIRMED -> Color(0xFF2878D0)
     status in StatusGroups.PREPARING -> Color(0xFFF28C18)
     status in StatusGroups.READY || status in StatusGroups.DONE -> Color(0xFF249B3B)
     status in StatusGroups.DELIVERY -> Color(0xFF2878D0)
@@ -2134,12 +2140,13 @@ private fun OrderDetailScreen(
 
 @Composable
 private fun OrderProgress(order: Order) {
-    val labels = if (order.pickup) listOf("Recebido", "Preparo", "Pronto", "Retirado") else listOf("Recebido", "Preparo", "Pronto", "Entrega", "Entregue")
+    val labels = if (order.pickup) listOf("Novo", "Confirmado", "Preparo", "Pronto", "Retirado") else listOf("Novo", "Confirmado", "Preparo", "Pronto", "Entrega", "Entregue")
     val current = when {
         order.status in StatusGroups.NEW -> 0
-        order.status in StatusGroups.PREPARING -> 1
-        order.status in StatusGroups.READY -> 2
-        order.status in StatusGroups.DELIVERY -> 3
+        order.status in StatusGroups.CONFIRMED -> 1
+        order.status in StatusGroups.PREPARING -> 2
+        order.status in StatusGroups.READY -> 3
+        order.status in StatusGroups.DELIVERY -> 4
         order.status in StatusGroups.DONE -> labels.lastIndex
         else -> 0
     }
@@ -2226,7 +2233,7 @@ private fun ActionBlock(
                     Text("ACEITAR PEDIDO", fontWeight = FontWeight.Black, fontSize = 16.sp)
                 }
             }
-            order.status == "CONFIRMADO" || order.status == "FILA" || order.status == "ACEITO" -> {
+            order.status in StatusGroups.CONFIRMED -> {
                 Button(
                     onClick = onPrepare,
                     modifier = Modifier.fillMaxWidth().height(54.dp),

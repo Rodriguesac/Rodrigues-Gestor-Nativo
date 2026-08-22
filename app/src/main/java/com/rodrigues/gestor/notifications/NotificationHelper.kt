@@ -15,7 +15,7 @@ import com.rodrigues.gestor.MainActivity
 import com.rodrigues.gestor.R
 
 object NotificationHelper {
-    const val CHANNEL_ORDERS = "pedidos_urgentes_v1"
+    const val CHANNEL_ORDERS = "pedidos_urgentes_v2"
     const val CHANNEL_SERVICE = "gestor_servico_v1"
     const val CHANNEL_MESSAGES = "mensagens_cliente_v1"
 
@@ -102,6 +102,10 @@ object NotificationHelper {
             .addAction(0, "ACEITAR", acceptPending)
             .addAction(0, "SILENCIAR", silencePending)
             .build()
+    }
+
+    fun cancelOrder(context: Context, orderId: String) {
+        NotificationManagerCompat.from(context).cancel(orderId.hashCode())
     }
 
     fun showOrderOnce(context: Context, orderId: String, number: String, clientName: String) {

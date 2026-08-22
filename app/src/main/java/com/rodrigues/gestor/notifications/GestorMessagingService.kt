@@ -2,6 +2,7 @@ package com.rodrigues.gestor.notifications
 
 import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
+import java.util.concurrent.TimeUnit
 
 class GestorMessagingService : FirebaseMessagingService() {
     override fun onNewToken(token: String) {
@@ -15,6 +16,8 @@ class GestorMessagingService : FirebaseMessagingService() {
         val data = message.data
         val type = (data["type"] ?: data["tipo"] ?: "").uppercase()
         val orderId = data["orderId"] ?: data["pedidoId"] ?: ""
+        val eventId = data["eventId"] ?: if (orderId.isNotBlank()) "novo_$orderId" else message.messageId.orEmpty()
+        if (eventId.isNotBlank() && isDuplicate(eventId)) return
         val number = data["number"] ?: data["numeroPedido"] ?: orderId.takeLast(6).uppercase()
         val client = data["clientName"] ?: data["clienteNome"] ?: "Cliente"
         val body = data["body"] ?: data["mensagem"] ?: message.notification?.body ?: "Abra o Gestor para ver."
@@ -40,5 +43,20 @@ class GestorMessagingService : FirebaseMessagingService() {
                 NotificationHelper.showMessage(this, title, body, orderId)
             }
         }
+    }
+
+    private fun isDuplicate(eventId: String): Boolean {
+        val now = System.currentTimeMillis()
+        val ttl = TimeUnit.MINUTES.toMillis(10)
+        val prefs = getSharedPreferences("fcm_event_dedup", MODE_PRIVATE)
+        val lastSeen = prefs.getLong(eventId, 0L)
+        if (lastSeen > 0L && now - lastSeen < ttl) return true
+        val editor = prefs.edit().putLong(eventId, now)
+        prefs.all.forEach { (key, value) ->
+            val timestamp = value as? Long ?: return@forEach
+            if (now - timestamp >= ttl) editor.remove(key)
+        }
+        editor.apply()
+        return false
     }
 }

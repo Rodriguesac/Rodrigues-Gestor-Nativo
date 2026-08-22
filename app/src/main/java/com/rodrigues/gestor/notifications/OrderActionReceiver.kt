@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.FirebaseFirestoreException
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -34,11 +35,36 @@ class OrderActionReceiver : BroadcastReceiver() {
                         )
                     )
                 )
-                FirebaseFirestore.getInstance().collection("pedidos").document(orderId).update(patch)
-                    .addOnCompleteListener {
-                        OrderRingService.stop(context)
-                        pending.finish()
+                val db = FirebaseFirestore.getInstance()
+                val ref = db.collection("pedidos").document(orderId)
+                db.runTransaction { transaction ->
+                    val snapshot = transaction.get(ref)
+                    val current = sequenceOf("status", "statusPedido", "statusLoja")
+                        .mapNotNull { snapshot.getString(it) }
+                        .firstOrNull { it.isNotBlank() }
+                        ?.uppercase()
+                        .orEmpty()
+                    val allowed = setOf("AGUARDANDO_CONFIRMACAO", "RECEBIDO", "PENDENTE", "NOVO", "NOVO_PEDIDO")
+                    if (current !in allowed) {
+                        throw FirebaseFirestoreException(
+                            "Pedido não está mais aguardando confirmação.",
+                            FirebaseFirestoreException.Code.ABORTED
+                        )
                     }
+                    transaction.update(ref, patch)
+                }.addOnSuccessListener {
+                    OrderRingService.stop(context)
+                    NotificationHelper.cancelOrder(context, orderId)
+                }.addOnFailureListener {
+                    NotificationHelper.showMessage(
+                        context,
+                        "Pedido não confirmado",
+                        it.message ?: "Abra o Gestor e confira o status do pedido.",
+                        orderId
+                    )
+                }.addOnCompleteListener {
+                    pending.finish()
+                }
             }
         }
     }

@@ -71,8 +71,9 @@ data class OrderChat(
 )
 
 object StatusGroups {
-    val NEW = setOf("RECEBIDO", "PENDENTE", "NOVO", "NOVO_PEDIDO")
-    val PREPARING = setOf("CONFIRMADO", "FILA", "EM_PREPARO", "PREPARANDO", "ACEITO")
+    val NEW = setOf("AGUARDANDO_CONFIRMACAO", "RECEBIDO", "PENDENTE", "NOVO", "NOVO_PEDIDO")
+    val CONFIRMED = setOf("CONFIRMADO", "FILA", "ACEITO")
+    val PREPARING = setOf("EM_PREPARO", "PREPARANDO")
     val READY = setOf("PRONTO")
     val DELIVERY = setOf(
         "BUSCANDO_ENTREGADOR", "AGUARDANDO_ENTREGADOR", "AGUARDANDO_DECISAO_GESTOR",
@@ -86,6 +87,7 @@ object StatusGroups {
         val s = status.uppercase(Locale.ROOT)
         return when {
             s in NEW -> "Novo"
+            s in CONFIRMED -> "Confirmado"
             s in PREPARING -> "Em preparo"
             s in READY -> "Pronto"
             s in DELIVERY -> "Em entrega"
