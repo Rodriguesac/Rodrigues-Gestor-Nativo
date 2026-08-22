@@ -1,37 +1,39 @@
 package com.rodrigues.gestor.ui.theme
 
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 
-private val RodriguesDarkColors = darkColorScheme(
-    primary = Color(0xFF9EDB47),
-    onPrimary = Color(0xFF142000),
-    primaryContainer = Color(0xFF263719),
-    onPrimaryContainer = Color(0xFFDDF5B8),
-    secondary = Color(0xFF8DBDFF),
-    onSecondary = Color(0xFF08203A),
-    secondaryContainer = Color(0xFF14283E),
-    onSecondaryContainer = Color(0xFFD6E8FF),
-    tertiary = Color(0xFFFFB86B),
-    onTertiary = Color(0xFF3D2100),
-    error = Color(0xFFFF6B65),
-    onError = Color(0xFF4A0002),
-    background = Color(0xFF0B1218),
-    onBackground = Color(0xFFE9EEF3),
-    surface = Color(0xFF121A21),
-    onSurface = Color(0xFFE9EEF3),
-    surfaceVariant = Color(0xFF1A242D),
-    onSurfaceVariant = Color(0xFFAAB5BF),
-    outline = Color(0xFF71808C),
-    outlineVariant = Color(0xFF27333D),
+private val GestorLightColors = lightColorScheme(
+    primary = Color(0xFFE9151D),
+    onPrimary = Color.White,
+    primaryContainer = Color(0xFFFFE8E9),
+    onPrimaryContainer = Color(0xFF7A0007),
+    secondary = Color(0xFF2878D0),
+    onSecondary = Color.White,
+    secondaryContainer = Color(0xFFEAF3FF),
+    onSecondaryContainer = Color(0xFF123A69),
+    tertiary = Color(0xFFF28C18),
+    onTertiary = Color.White,
+    error = Color(0xFFD91E27),
+    onError = Color.White,
+    errorContainer = Color(0xFFFFE9EA),
+    onErrorContainer = Color(0xFF7A0007),
+    background = Color(0xFFF7F7F8),
+    onBackground = Color(0xFF161616),
+    surface = Color.White,
+    onSurface = Color(0xFF1A1A1A),
+    surfaceVariant = Color(0xFFF1F2F4),
+    onSurfaceVariant = Color(0xFF666A70),
+    outline = Color(0xFFB9BDC3),
+    outlineVariant = Color(0xFFE2E4E8),
 )
 
 @Composable
 fun RodriguesGestorTheme(content: @Composable () -> Unit) {
     MaterialTheme(
-        colorScheme = RodriguesDarkColors,
+        colorScheme = GestorLightColors,
         typography = MaterialTheme.typography,
         content = content,
     )

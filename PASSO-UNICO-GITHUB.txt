@@ -1,14 +1,31 @@
-RODRIGUES GESTOR v1.2 — PASSO ÚNICO
+RODRIGUES GESTOR v1.3 — ATUALIZAR PELO TERMUX
 
-1) Extraia este ZIP.
-2) Envie TODO o conteúdo da pasta Rodrigues-Gestor-Nativo para o repositório do Rodrigues Gestor no GitHub, substituindo os arquivos antigos.
-3) Abra Actions > "Gerar APK Rodrigues Gestor".
-4) Execute o workflow.
-5) Baixe o artefato "Rodrigues-Gestor-APK".
+Este ZIP é para substituir os arquivos do projeto existente sem apagar a pasta .git.
 
-O APK gerado pelo workflow terá o nome Rodrigues-Gestor-v1.2-debug.apk.
+1) Extraia o ZIP em uma pasta temporária:
+
+rm -rf ~/gestor-v13
+mkdir -p ~/gestor-v13
+unzip ~/storage/downloads/Rodrigues-Gestor-Nativo-v1.3.0-TEMA-BRANCO-GitHub.zip -d ~/gestor-v13
+
+2) Copie a nova versão para o repositório já clonado:
+
+cp -r ~/gestor-v13/Rodrigues-Gestor-Nativo/. ~/gestor-github/
+
+3) Envie ao GitHub:
+
+cd ~/gestor-github
+git status
+git add .
+git commit -m "Rodrigues Gestor v1.3 tema branco operacional"
+git push
+
+4) O workflow "Gerar APK Rodrigues Gestor" roda automaticamente no push.
+Para acompanhar:
+
+gh run list --limit 3
 
 IMPORTANTE
-- Não altere app/google-services.json se o projeto Firebase continuar rodrigues-d6566.
-- O FCM permanece preparado para o tópico gestor-pedidos.
-- O backend Netlify de notify-gestor continua incluído e não exige Blaze do Firebase; ele usa Firebase Admin no Netlify.
+- Não use find ... rm -rf na pasta HOME.
+- Não apague a pasta .git do repositório.
+- O arquivo REFERENCIA-VISUAL-V1.3.png mostra a direção visual aprovada.

@@ -55,6 +55,18 @@ O app já recebe FCM. A pasta `backend-netlify` contém a função que envia `NE
 - Compose BoM: 2026.06.01 (Compose 1.11.4 — compatível com compileSdk 36 / AGP 8.13.2)
 
 
+## v1.3.0 — Tema branco operacional
+
+- Tema claro branco/cinza, com vermelho para ação principal.
+- Saudação sem “Rodrigues Gestor” ou “Gestor” no topo.
+- Pessoas online visíveis na Home.
+- Status Novos / Em preparo / Prontos / Entrega viraram filtros tocáveis e compactos.
+- Pedido continua abrindo em tela própria para operação.
+- Linha de progresso mais limpa no detalhe.
+- Segurar por aproximadamente 1 segundo para marcar pronto, confirmar retirada e finalizar entrega.
+- Aceitar, iniciar preparo e chamar entregador continuam com 1 toque.
+- FCM, Firestore, impressão, chat, Produtos, Loja, Histórico e UP Entregas preservados.
+
 ## v1.2.0 — Central de Pedidos Mobile
 
 - Tema escuro operacional no estilo aprovado para uso no celular.

@@ -1,2 +1,2 @@
-Rodrigues Gestor Nativo v1.2.0
-Central de Pedidos Mobile • tema escuro • FCM preservado
+Rodrigues Gestor Nativo v1.3.0
+Tema branco operacional • central compacta • segure para status críticos • FCM preservado
