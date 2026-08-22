@@ -17,6 +17,7 @@ import com.rodrigues.gestor.R
 object NotificationHelper {
     const val CHANNEL_ORDERS = "pedidos_urgentes_v2"
     const val CHANNEL_SERVICE = "gestor_servico_v1"
+    const val CHANNEL_CONNECTION = "gestor_conectado_v1"
     const val CHANNEL_MESSAGES = "mensagens_cliente_v1"
 
     fun createChannels(context: Context) {
@@ -40,11 +41,47 @@ object NotificationHelper {
             setSound(null, null)
             enableVibration(false)
         }
+        val connection = NotificationChannel(CHANNEL_CONNECTION, "Gestor conectado", NotificationManager.IMPORTANCE_LOW).apply {
+            description = "Mantém a central de pedidos conectada mesmo fora da tela"
+            setSound(null, null)
+            enableVibration(false)
+            lockscreenVisibility = Notification.VISIBILITY_PUBLIC
+        }
         val messages = NotificationChannel(CHANNEL_MESSAGES, "Mensagens de clientes", NotificationManager.IMPORTANCE_HIGH).apply {
             description = "Novas mensagens e solicitações dos clientes"
             enableVibration(true)
         }
-        manager.createNotificationChannels(listOf(orders, service, messages))
+        manager.createNotificationChannels(listOf(orders, service, connection, messages))
+    }
+
+    fun connectionNotification(
+        context: Context,
+        detail: String = "Monitorando novos pedidos",
+        pendingCount: Int = 0,
+    ): Notification {
+        val openIntent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+        }
+        val pending = PendingIntent.getActivity(
+            context,
+            4601,
+            openIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val text = if (pendingCount > 0) "$detail • $pendingCount aguardando confirmação" else detail
+        return NotificationCompat.Builder(context, CHANNEL_CONNECTION)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setContentTitle("Rodrigues Gestor conectado")
+            .setContentText(text)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(text))
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setCategory(NotificationCompat.CATEGORY_SERVICE)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setOnlyAlertOnce(true)
+            .setOngoing(true)
+            .setContentIntent(pending)
+            .addAction(0, "ABRIR GESTOR", pending)
+            .build()
     }
 
     fun orderNotification(

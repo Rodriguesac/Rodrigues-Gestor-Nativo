@@ -1,3 +1,2 @@
-Rodrigues Gestor Nativo v1.3.2
-Fluxo Novo → Confirmado → Preparo • FCM deduplicado • aceite protegido
-Build: GitHub Actions
+Rodrigues Gestor Nativo v1.3.3
+Serviço permanente • Firestore + FCM • reinício automático • Xiaomi/MIUI

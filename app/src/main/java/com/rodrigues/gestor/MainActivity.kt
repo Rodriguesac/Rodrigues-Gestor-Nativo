@@ -14,6 +14,7 @@ import androidx.compose.runtime.setValue
 import androidx.core.content.ContextCompat
 import com.google.firebase.messaging.FirebaseMessaging
 import com.rodrigues.gestor.notifications.DeviceRegistrar
+import com.rodrigues.gestor.notifications.GestorConnectionService
 import com.rodrigues.gestor.notifications.NotificationHelper
 import com.rodrigues.gestor.ui.GestorApp
 import com.rodrigues.gestor.ui.theme.RodriguesGestorTheme
@@ -21,7 +22,9 @@ import com.rodrigues.gestor.ui.theme.RodriguesGestorTheme
 class MainActivity : ComponentActivity() {
     private var requestedOrderId by mutableStateOf<String?>(null)
 
-    private val notificationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
+    private val notificationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) {
+        GestorConnectionService.start(this)
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -29,6 +32,7 @@ class MainActivity : ComponentActivity() {
         NotificationHelper.createChannels(this)
         requestNotificationsIfNeeded()
         FirebaseMessaging.getInstance().token.addOnSuccessListener(DeviceRegistrar::register)
+        GestorConnectionService.start(this)
 
         setContent {
             RodriguesGestorTheme {
@@ -38,6 +42,11 @@ class MainActivity : ComponentActivity() {
                 )
             }
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        GestorConnectionService.start(this)
     }
 
     override fun onNewIntent(intent: Intent) {

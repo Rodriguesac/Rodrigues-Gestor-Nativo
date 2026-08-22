@@ -24,6 +24,7 @@ class OrderRingService : Service() {
     private var startedAt = 0L
     private var repeatMs = 15_000L
     private var maxRunMs = 5 * 60_000L
+    private var currentOrderId = ""
 
     private val stopBurst = Runnable {
         try { ringtone?.stop() } catch (_: Throwable) { }
@@ -80,6 +81,15 @@ class OrderRingService : Service() {
             return START_NOT_STICKY
         }
 
+        if (orderId == currentOrderId && startedAt > 0L && System.currentTimeMillis() - startedAt < maxRunMs) {
+            startForeground(
+                FOREGROUND_NOTIFICATION_ID,
+                NotificationHelper.orderNotification(this, orderId, number, client, foregroundService = true)
+            )
+            return START_NOT_STICKY
+        }
+        currentOrderId = orderId
+
         startForeground(
             FOREGROUND_NOTIFICATION_ID,
             NotificationHelper.orderNotification(this, orderId, number, client, foregroundService = true)
@@ -117,6 +127,7 @@ class OrderRingService : Service() {
         vibrator?.cancel()
         if (wakeLock?.isHeld == true) wakeLock?.release()
         wakeLock = null
+        currentOrderId = ""
         super.onDestroy()
     }
 

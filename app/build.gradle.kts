@@ -13,8 +13,8 @@ android {
         applicationId = "com.rodrigues.gestor"
         minSdk = 23
         targetSdk = 36
-        versionCode = 6
-        versionName = "1.3.2-fluxo-fcm-seguro"
+        versionCode = 7
+        versionName = "1.3.3-gestor-sempre-conectado"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
