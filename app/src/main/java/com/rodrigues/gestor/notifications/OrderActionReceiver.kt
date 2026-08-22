@@ -29,7 +29,7 @@ class OrderActionReceiver : BroadcastReceiver() {
                     "historicoStatus" to FieldValue.arrayUnion(
                         mapOf(
                             "status" to "CONFIRMADO",
-                            "titulo" to "Em preparo",
+                            "titulo" to "Pedido confirmado",
                             "data" to SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssXXX", Locale.getDefault()).format(Date()),
                             "origem" to "RODRIGUES_GESTOR_ANDROID_NOTIFICACAO"
                         )

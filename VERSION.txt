@@ -1,2 +1,2 @@
-Rodrigues Gestor Nativo v1.3.0
-Tema branco operacional • central compacta • segure para status críticos • FCM preservado
+Rodrigues Gestor Nativo v1.3.2
+Fluxo Novo → Confirmado → Preparo • FCM deduplicado • aceite protegido
