@@ -1,3 +1,3 @@
-Rodrigues Gestor Nativo v1.3.4
-Som selecionável • cancelamento com som/vibração • serviço permanente
+Rodrigues Gestor Nativo v1.4.0
+Entrega rastreável opcional • controle por pedido • GPS interno preservado
 Build: GitHub Actions

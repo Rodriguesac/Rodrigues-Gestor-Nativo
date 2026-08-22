@@ -269,6 +269,7 @@ class OrdersRepository(
         order: Order,
         driver: Driver,
         repasse: Double,
+        shareTracking: Boolean,
         offerSeconds: Int = 45,
         onDone: (String) -> Unit,
         onError: (Throwable) -> Unit,
@@ -352,6 +353,9 @@ class OrdersRepository(
                     "codigoRetirada" to pickupCode,
                     "codigoLiberacao" to pickupCode,
                     "deliveryCodeRequired" to true,
+                    "rastreamentoClienteHabilitado" to shareTracking,
+                    "rastreamentoVisivelCliente" to false,
+                    "rastreamentoClienteAtualizadoEm" to FieldValue.serverTimestamp(),
                     "targetDriverId" to driver.id,
                     "ofertaParaEntregadorId" to driver.id,
                     "driverAtualOferta" to driver.id,
@@ -398,6 +402,7 @@ class OrdersRepository(
                     put("quantidadePedidos", 1)
                     put("pedidoIds", listOf(order.id))
                     put("pedidosIds", listOf(order.id))
+                    put("rastreamentoPedidosHabilitados", if (shareTracking) listOf(order.id) else emptyList<String>())
                 }, com.google.firebase.firestore.SetOptions.merge())
                 tx.set(legacyRef, HashMap<String, Any?>(common).apply { put("sourceRideId", rideId) }, com.google.firebase.firestore.SetOptions.merge())
                 tx.update(orderRef, mapOf(
@@ -430,6 +435,9 @@ class OrdersRepository(
                     "codigoRetirada" to pickupCode,
                     "codigoLiberacao" to pickupCode,
                     "deliveryCodeRequired" to true,
+                    "rastreamentoClienteHabilitado" to shareTracking,
+                    "rastreamentoVisivelCliente" to false,
+                    "rastreamentoClienteAtualizadoEm" to FieldValue.serverTimestamp(),
                     "valorRepasseEntregador" to repasse,
                     "enderecoLoja" to store.address,
                     "coletaEndereco" to store.address,
@@ -499,6 +507,66 @@ class OrdersRepository(
                 onDone(createdRideId)
             }.addOnFailureListener(onError)
         }
+    }
+
+    fun setCustomerTracking(
+        order: Order,
+        enabled: Boolean,
+        onDone: () -> Unit,
+        onError: (Throwable) -> Unit,
+    ) {
+        val delivery = mapValue(order.raw, "entrega") ?: emptyMap()
+        val statuses = listOf(
+            firstString(order.raw, "upState"),
+            firstString(order.raw, "statusEntrega"),
+            firstString(delivery, "status"),
+            order.status,
+        ).map { it.trim().uppercase(Locale.ROOT) }
+        val afterPickup = statuses.any {
+            it in setOf(
+                "TO_CUSTOMER", "AT_CUSTOMER", "EM_ENTREGA", "NO_CLIENTE",
+                "SAIU_ENTREGA", "SAIU_PARA_ENTREGA", "A_CAMINHO_CLIENTE",
+                "ENTREGADOR_NO_LOCAL", "ENTREGADOR_CHEGOU_CLIENTE"
+            )
+        }
+        val visibleNow = enabled && afterPickup
+        val timestamp = FieldValue.serverTimestamp()
+        val missionPatch = mapOf<String, Any>(
+            "rastreamentoClienteHabilitado" to enabled,
+            "rastreamentoVisivelCliente" to visibleNow,
+            "rastreamentoClienteAtualizadoEm" to timestamp,
+            "updatedAt" to timestamp,
+        )
+        val orderPatch = HashMap(missionPatch).apply {
+            put("entrega.rastreamentoClienteHabilitado", enabled)
+            put("entrega.rastreamentoVisivelCliente", visibleNow)
+            put("statusAtualizadoEm", timestamp)
+        }
+        val batch = db.batch()
+        batch.update(db.collection("pedidos").document(order.id), orderPatch)
+
+        listOf("corridaAtualId", "corridaNativaId")
+            .map { firstString(order.raw, it) }
+            .filter { it.isNotBlank() }
+            .distinct()
+            .forEach { id ->
+                batch.set(db.collection("rides").document(id), missionPatch, com.google.firebase.firestore.SetOptions.merge())
+            }
+        listOf("rotaAtualId", "rotaId")
+            .map { firstString(order.raw, it) }
+            .filter { it.isNotBlank() }
+            .distinct()
+            .forEach { id ->
+                val routePatch = HashMap(missionPatch).apply {
+                    put(
+                        "rastreamentoPedidosHabilitados",
+                        if (enabled) FieldValue.arrayUnion(order.id) else FieldValue.arrayRemove(order.id)
+                    )
+                }
+                batch.set(db.collection("rotas_entrega").document(id), routePatch, com.google.firebase.firestore.SetOptions.merge())
+            }
+
+        batch.commit().addOnSuccessListener { onDone() }.addOnFailureListener(onError)
     }
 
 

@@ -13,8 +13,8 @@ android {
         applicationId = "com.rodrigues.gestor"
         minSdk = 23
         targetSdk = 36
-        versionCode = 8
-        versionName = "1.3.4-sons-e-cancelamento"
+        versionCode = 9
+        versionName = "1.4.0-rastreamento-cliente"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true

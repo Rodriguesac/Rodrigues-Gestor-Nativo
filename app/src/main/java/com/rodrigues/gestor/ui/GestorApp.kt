@@ -68,6 +68,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -1598,6 +1599,7 @@ private fun MoreScreen(
     var msgAlerts by remember { mutableStateOf(AlertPreferences.messageAlerts(context)) }
     var changeAlerts by remember { mutableStateOf(AlertPreferences.changeAlerts(context)) }
     var driverAlerts by remember { mutableStateOf(AlertPreferences.driverAlerts(context)) }
+    var trackingDefault by remember { mutableStateOf(AlertPreferences.customerTrackingDefault(context)) }
     var paymentAlerts by remember { mutableStateOf(AlertPreferences.paymentAlerts(context)) }
     var autoPrint by remember { mutableStateOf(AlertPreferences.autoPrintOnAccept(context)) }
     var copies by remember { mutableStateOf(AlertPreferences.printCopies(context)) }
@@ -1665,6 +1667,24 @@ private fun MoreScreen(
                 val ticket = if (doneToday > 0) sales / doneToday else 0.0
                 LabelValue("Ticket médio", money(ticket))
                 Text("Resumo operacional; relatórios completos podem permanecer no GADM.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        item {
+            DetailCard("Entrega rastreável") {
+                SettingSwitchRow(
+                    "Ativar por padrão",
+                    "A decisão ainda pode ser alterada em cada pedido. O mapa só aparece ao cliente depois da retirada.",
+                    trackingDefault
+                ) {
+                    trackingDefault = it
+                    AlertPreferences.setCustomerTrackingDefault(context, it)
+                    onMessage(if (it) "Rastreamento padrão ativado" else "Rastreamento padrão desativado")
+                }
+                Text(
+                    "O GPS interno do UP Entregas continua ativo apenas durante a missão, mesmo quando o mapa do cliente estiver desligado.",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
         item {
@@ -1862,6 +1882,13 @@ private fun OrderDetailScreen(
     var showDrivers by remember { mutableStateOf(false) }
     var showAlteration by remember { mutableStateOf(false) }
     var showIssue by remember { mutableStateOf(false) }
+    var trackingBusy by remember { mutableStateOf(false) }
+    var customerTracking by remember(order.id) {
+        mutableStateOf((order.raw["rastreamentoClienteHabilitado"] as? Boolean) ?: true)
+    }
+    LaunchedEffect(order.raw["rastreamentoClienteHabilitado"]) {
+        customerTracking = (order.raw["rastreamentoClienteHabilitado"] as? Boolean) ?: true
+    }
     val issueActive = (order.raw["problemaOperacional"] as? Map<*, *>)?.get("ativo") == true
 
     fun update(status: String, success: String) {
@@ -2005,6 +2032,43 @@ private fun OrderDetailScreen(
                     if (driverName.isNotBlank()) LabelValue("Entregador", driverName)
                     if (pickupCode.isNotBlank()) LabelValue("Código de retirada", pickupCode)
                     if (deliveryCode.isNotBlank()) LabelValue("Código de entrega", deliveryCode)
+                }
+            }
+
+            val upDelivery = !order.pickup && (
+                order.raw["entregaModo"]?.toString()?.uppercase(Locale.ROOT) == "UP" ||
+                    order.raw["tipoEntregaOperacional"]?.toString()?.uppercase(Locale.ROOT) == "UP" ||
+                    order.raw["corridaAtualId"]?.toString()?.isNotBlank() == true ||
+                    order.raw["rotaAtualId"]?.toString()?.isNotBlank() == true
+                )
+            if (upDelivery) {
+                DetailCard("Mapa para o cliente") {
+                    SettingSwitchRow(
+                        "Entrega rastreável",
+                        "Mostra o entregador no mapa somente depois que o pedido sair da loja.",
+                        customerTracking
+                    ) { enabled ->
+                        if (!trackingBusy) {
+                            val previous = customerTracking
+                            customerTracking = enabled
+                            trackingBusy = true
+                            repository.setCustomerTracking(order, enabled, {
+                                trackingBusy = false
+                                onChanged(if (enabled) "Mapa do cliente ativado" else "Mapa do cliente desativado")
+                            }, {
+                                trackingBusy = false
+                                customerTracking = previous
+                                onChanged(it.message ?: "Não foi possível alterar o rastreamento")
+                            })
+                        }
+                    }
+                    Text(
+                        if (customerTracking) "Ativo para este pedido • o UP controla a visibilidade conforme a etapa."
+                        else "Desativado para este pedido • o cliente acompanha apenas a linha do tempo.",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    if (trackingBusy) LinearProgressIndicator(Modifier.fillMaxWidth().padding(top = 8.dp))
                 }
             }
 
@@ -2497,8 +2561,10 @@ private fun DriverSelectionScreen(
     onMessage: (String) -> Unit,
     onSent: () -> Unit,
 ) {
+    val context = LocalContext.current
     var selectedId by remember { mutableStateOf<String?>(null) }
     var repasseText by remember { mutableStateOf("") }
+    var shareTracking by remember(order.id) { mutableStateOf(AlertPreferences.customerTrackingDefault(context)) }
     var sending by remember { mutableStateOf(false) }
     val available = drivers.filter { it.available }
 
@@ -2523,6 +2589,20 @@ private fun DriverSelectionScreen(
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
             )
+            Spacer(Modifier.height(10.dp))
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(18.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
+            ) {
+                Column(Modifier.padding(horizontal = 14.dp, vertical = 8.dp)) {
+                    SettingSwitchRow(
+                        "Compartilhar mapa com o cliente",
+                        "Fica visível somente depois da retirada; pode ser alterado mais tarde no pedido.",
+                        shareTracking
+                    ) { shareTracking = it }
+                }
+            }
             Spacer(Modifier.height(10.dp))
             Text("Entregadores disponíveis", fontWeight = FontWeight.Black, fontSize = 18.sp)
             Spacer(Modifier.height(8.dp))
@@ -2568,7 +2648,7 @@ private fun DriverSelectionScreen(
                         return@Button
                     }
                     sending = true
-                    repository.dispatchToDriver(order, driver, repasse, onDone = {
+                    repository.dispatchToDriver(order, driver, repasse, shareTracking = shareTracking, onDone = {
                         sending = false
                         onMessage("Oferta enviada para ${driver.name}")
                         onSent()
@@ -2838,8 +2918,10 @@ private fun DriverDialog(
     onMessage: (String) -> Unit,
     onSent: () -> Unit,
 ) {
+    val context = LocalContext.current
     var selectedId by remember { mutableStateOf<String?>(null) }
     var repasseText by remember { mutableStateOf("") }
+    var shareTracking by remember(order.id) { mutableStateOf(AlertPreferences.customerTrackingDefault(context)) }
     var sending by remember { mutableStateOf(false) }
     val available = drivers.filter { it.available }
 
@@ -2857,6 +2939,12 @@ private fun DriverDialog(
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true
                 )
+                Spacer(Modifier.height(10.dp))
+                SettingSwitchRow(
+                    "Compartilhar mapa",
+                    "Visível ao cliente somente depois da retirada.",
+                    shareTracking
+                ) { shareTracking = it }
                 Spacer(Modifier.height(10.dp))
                 if (available.isEmpty()) {
                     Text("Nenhum entregador online e livre agora.", color = MaterialTheme.colorScheme.error)
@@ -2889,7 +2977,7 @@ private fun DriverDialog(
                         return@Button
                     }
                     sending = true
-                    repository.dispatchToDriver(order, driver, repasse, onDone = {
+                    repository.dispatchToDriver(order, driver, repasse, shareTracking = shareTracking, onDone = {
                         sending = false
                         onMessage("Oferta enviada para ${driver.name}")
                         onSent()

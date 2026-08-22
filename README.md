@@ -23,6 +23,7 @@ O arquivo `google-services.json` recebido foi colocado em `app/google-services.j
 - Chat na coleção `chats`, compatível com o chat do Cliente.
 - Lista de entregadores da coleção `entregadores`.
 - Despacho manual para UP Entregas, criando `rides`, `rotas_entrega`, `corridas`, `alertas_operacionais` e `app_notifications` no formato já usado pelo Gestor web.
+- Entrega rastreável opcional: padrão configurável, escolha no despacho e liga/desliga por pedido em andamento; o mapa só aparece após a retirada.
 - Status e dados de Pagamento visíveis no pedido.
 - Alerta nativo com toque selecionável e vibração.
 - Aviso curto com som e vibração quando um pedido é cancelado, inclusive fora da tela.
@@ -54,6 +55,14 @@ O app já recebe FCM. A pasta `backend-netlify` contém a função que envia `NE
 - Gradle: 8.13
 - Firebase BoM: 34.17.0
 - Compose BoM: 2026.06.01 (Compose 1.11.4 — compatível com compileSdk 36 / AGP 8.13.2)
+
+## v1.4.0 — Entrega rastreável opcional
+
+- Controle padrão nas configurações do Gestor.
+- Escolha independente ao chamar cada entregador.
+- Alteração do mapa durante a entrega pelo detalhe do pedido.
+- Preferência sincronizada em pedido, corrida e rota.
+- GPS interno do UP preservado durante a missão mesmo com o mapa do cliente desligado.
 
 
 ## v1.3.0 — Tema branco operacional

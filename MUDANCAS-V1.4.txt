@@ -1,0 +1,11 @@
+RODRIGUES GESTOR NATIVO V1.4.0
+
+- Entrega rastreável pode ser ativada ou desativada por pedido.
+- Existe uma preferência padrão local nas configurações.
+- A seleção manual do entregador mostra a opção de compartilhar o mapa.
+- O detalhe de uma entrega UP permite mudar a opção durante a rota.
+- O mapa do cliente só é liberado depois da retirada.
+- Desligar o mapa não interrompe o GPS interno da missão do UP Entregas.
+
+Build: versionCode 9
+Versão: 1.4.0-rastreamento-cliente

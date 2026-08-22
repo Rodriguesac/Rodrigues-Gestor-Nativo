@@ -61,6 +61,11 @@ object AlertPreferences {
     fun driverAlerts(context: Context): Boolean = prefs(context).getBoolean("driver_alerts", true)
     fun setDriverAlerts(context: Context, value: Boolean) = prefs(context).edit().putBoolean("driver_alerts", value).apply()
 
+    fun customerTrackingDefault(context: Context): Boolean = prefs(context).getBoolean("customer_tracking_default", true)
+    fun setCustomerTrackingDefault(context: Context, value: Boolean) = prefs(context).edit()
+        .putBoolean("customer_tracking_default", value)
+        .apply()
+
     fun paymentAlerts(context: Context): Boolean = prefs(context).getBoolean("payment_alerts", true)
     fun setPaymentAlerts(context: Context, value: Boolean) = prefs(context).edit().putBoolean("payment_alerts", value).apply()
 
