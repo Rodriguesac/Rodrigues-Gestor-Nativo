@@ -32,6 +32,18 @@ O arquivo `google-services.json` recebido foi colocado em `app/google-services.j
 - Registro do token do aparelho em `gestor_dispositivos`.
 - Workflow GitHub Actions para gerar APK sem Android Studio.
 
+## v2.0.0 — Operação premium e entrega inteligente
+
+- Identidade Rodrigues em roxo e verde, com hierarquia visual, cards responsivos e indicadores roláveis sem texto cortado.
+- Cabeçalho operacional com loja, tempo de preparo, clientes online, sacolas e checkouts em tempo real.
+- Carregamento com skeleton para eliminar a sensação de tela branca.
+- Fluxo de ações corrigido: cada status mostra somente a próxima ação válida.
+- Mapa operacional com ponteiro roxo do cliente e verde do entregador.
+- Distância percorrida, distância restante, paradas anteriores e ETA em faixa; a previsão é ocultada quando o GPS está desatualizado.
+- Cliente pode confirmar o recebimento com o código; o Gestor mantém confirmação manual como contingência.
+- Detalhes completos de coberturas, acompanhamentos e adicionais no pedido e na impressão.
+- Escolha de impressão entre comanda térmica 58/80 mm e PDF A4 diagramado para ocupar corretamente a página.
+
 ## Como gerar o APK com pouco trabalho
 
 1. Criar/usar um repositório GitHub.

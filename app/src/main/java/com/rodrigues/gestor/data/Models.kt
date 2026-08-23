@@ -5,6 +5,14 @@ import java.text.NumberFormat
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlin.math.asin
+import kotlin.math.ceil
+import kotlin.math.cos
+import kotlin.math.max
+import kotlin.math.min
+import kotlin.math.roundToInt
+import kotlin.math.sin
+import kotlin.math.sqrt
 
 data class PaymentInfo(
     val form: String = "—",
@@ -55,6 +63,75 @@ data class Driver(
     val raw: Map<String, Any?>,
 ) {
     val available: Boolean get() = online && approved && !busy && acceptsOffers
+}
+
+data class TrackingPoint(
+    val lat: Double = 0.0,
+    val lng: Double = 0.0,
+) {
+    val valid: Boolean get() = lat in -90.0..90.0 && lng in -180.0..180.0 && lat != 0.0 && lng != 0.0
+}
+
+data class DeliveryTracking(
+    val driver: TrackingPoint = TrackingPoint(),
+    val customer: TrackingPoint = TrackingPoint(),
+    val store: TrackingPoint = TrackingPoint(),
+    val updatedMillis: Long = 0L,
+    val accuracyMeters: Double = 0.0,
+    val speedMetersPerSecond: Double = 0.0,
+    val traveledMeters: Double = 0.0,
+    val remainingMeters: Double = 0.0,
+    val routeMeters: Double = 0.0,
+    val etaMinutes: Int = 0,
+    val stopsBefore: Int = 0,
+    val source: String = "",
+) {
+    val hasMap: Boolean get() = driver.valid && customer.valid
+
+    fun remainingKm(): Double? {
+        if (remainingMeters > 0.0) return remainingMeters / 1_000.0
+        if (!hasMap) return null
+        // Fallback conservador: a malha viária costuma ser maior que a linha reta.
+        return haversineKm(driver, customer) * 1.22
+    }
+
+    fun etaRange(): IntRange? {
+        val center = when {
+            etaMinutes > 0 -> etaMinutes
+            else -> {
+                val km = remainingKm() ?: return null
+                val measuredKmh = speedMetersPerSecond * 3.6
+                val operationalKmh = measuredKmh.takeIf { it in 8.0..70.0 } ?: 24.0
+                ((km / operationalKmh) * 60.0 + stopsBefore * 4.0 + 1.0).roundToInt().coerceAtLeast(2)
+            }
+        }
+        val spread = max(2, ceil(center * 0.20).toInt())
+        return max(2, center - spread)..max(center + 1, center + spread)
+    }
+
+    fun freshness(now: Long = System.currentTimeMillis()): String {
+        if (updatedMillis <= 0L) return "Aguardando a primeira localização"
+        val seconds = ((now - updatedMillis).coerceAtLeast(0L) / 1_000L).toInt()
+        return when {
+            seconds < 25 -> "Localização atualizada agora"
+            seconds < 60 -> "Atualizada há $seconds segundos"
+            else -> "Última localização há ${seconds / 60} min"
+        }
+    }
+
+    fun stale(now: Long = System.currentTimeMillis()): Boolean =
+        updatedMillis > 0L && now - updatedMillis >= 3 * 60_000L
+}
+
+fun haversineKm(a: TrackingPoint, b: TrackingPoint): Double {
+    if (!a.valid || !b.valid) return 0.0
+    val radius = 6_371.0
+    val rad = Math.PI / 180.0
+    val dLat = (b.lat - a.lat) * rad
+    val dLng = (b.lng - a.lng) * rad
+    val h = sin(dLat / 2).let { it * it } +
+        cos(a.lat * rad) * cos(b.lat * rad) * sin(dLng / 2).let { it * it }
+    return 2 * radius * asin(sqrt(min(1.0, h)))
 }
 
 data class ChatMessage(
@@ -241,6 +318,124 @@ fun normalizeDriver(id: String, raw: Map<String, Any?>): Driver {
         acceptsOffers = raw["aceitaNovasOfertas"] != false,
         status = firstString(raw, "statusOperacional", "status", default = if (raw["online"] == true) "Disponível" else "Offline"),
         raw = raw,
+    )
+}
+
+private fun trackingPoint(value: Any?): TrackingPoint {
+    if (value is com.google.firebase.firestore.GeoPoint) {
+        return TrackingPoint(value.latitude, value.longitude)
+    }
+    @Suppress("UNCHECKED_CAST")
+    val map = value as? Map<String, Any?> ?: return TrackingPoint()
+    return TrackingPoint(
+        lat = asDouble(firstValue(map, "lat", "latitude", "_lat")),
+        lng = asDouble(firstValue(map, "lng", "lon", "longitude", "_long")),
+    )
+}
+
+private fun firstTrackingPoint(vararg candidates: Any?): TrackingPoint =
+    candidates.asSequence().map(::trackingPoint).firstOrNull { it.valid } ?: TrackingPoint()
+
+private fun firstPositive(vararg candidates: Any?): Double =
+    candidates.asSequence().map(::asDouble).firstOrNull { it > 0.0 } ?: 0.0
+
+fun normalizeDeliveryTracking(
+    orderRaw: Map<String, Any?>,
+    missionRaw: Map<String, Any?> = emptyMap(),
+    driverRaw: Map<String, Any?> = emptyMap(),
+): DeliveryTracking {
+    val delivery = mapValue(orderRaw, "entrega") ?: emptyMap()
+    val address = mapValue(orderRaw, "endereco") ?: emptyMap()
+    val deliveryAddress = mapValue(delivery, "endereco") ?: emptyMap()
+    val orderDriverLocation = mapValue(orderRaw, "localizacaoEntregador") ?: emptyMap()
+    val missionDriverLocation = mapValue(missionRaw, "localizacaoEntregador") ?: emptyMap()
+    val driverCoords = mapValue(driverRaw, "coords")
+        ?: mapValue(driverRaw, "localizacaoAtual")
+        ?: mapValue(driverRaw, "localizacao")
+        ?: emptyMap()
+    val currentStop = mapValue(missionRaw, "paradaAtual") ?: emptyMap()
+
+    val driverPoint = firstTrackingPoint(
+        mapOf("lat" to orderRaw["entregadorLat"], "lng" to orderRaw["entregadorLng"]),
+        orderDriverLocation,
+        mapOf("lat" to missionRaw["entregadorLat"], "lng" to missionRaw["entregadorLng"]),
+        missionDriverLocation,
+        driverCoords,
+    )
+    val customerPoint = firstTrackingPoint(
+        mapOf("lat" to orderRaw["clienteLat"], "lng" to orderRaw["clienteLng"]),
+        orderRaw["clienteCoords"],
+        orderRaw["destinoCoords"],
+        address["coords"],
+        deliveryAddress["coords"],
+        address,
+        deliveryAddress,
+        currentStop["coords"],
+        currentStop,
+    )
+    val storePoint = firstTrackingPoint(
+        mapOf("lat" to orderRaw["lojaLat"], "lng" to orderRaw["lojaLng"]),
+        orderRaw["lojaCoords"],
+        missionRaw["lojaCoords"],
+        mapOf("lat" to missionRaw["lojaLat"], "lng" to missionRaw["lojaLng"]),
+    )
+
+    val remainingMeters = firstPositive(
+        orderRaw["distanciaRestanteMetros"], delivery["distanciaRestanteMetros"],
+        missionRaw["distanciaRestanteMetros"], missionRaw["remainingDistanceMeters"],
+    ).takeIf { it > 0.0 } ?: (firstPositive(
+        orderRaw["distanciaRestanteKm"], delivery["distanciaRestanteKm"],
+        missionRaw["distanciaRestanteKm"], missionRaw["remainingDistanceKm"],
+    ) * 1_000.0)
+
+    val routeMeters = firstPositive(
+        orderRaw["distanciaRotaMetros"], delivery["distanciaRotaMetros"],
+        missionRaw["distanciaRotaMetros"], missionRaw["routeDistanceMeters"],
+    ).takeIf { it > 0.0 } ?: (firstPositive(
+        orderRaw["distanciaRotaKm"], missionRaw["distanciaKm"], missionRaw["kmEstimado"],
+    ) * 1_000.0)
+
+    return DeliveryTracking(
+        driver = driverPoint,
+        customer = customerPoint,
+        store = storePoint,
+        updatedMillis = sequenceOf(
+            orderRaw["localizacaoEntregadorAtualizadaEm"], orderDriverLocation["updatedAt"],
+            missionRaw["localizacaoEntregadorAtualizadaEm"], missionDriverLocation["updatedAt"],
+            driverRaw["localizacaoAtualizadaEm"], driverCoords["updatedAt"],
+        ).map(::asLongTime).firstOrNull { it > 0L } ?: 0L,
+        accuracyMeters = firstPositive(
+            orderRaw["entregadorAccuracy"], orderDriverLocation["accuracy"],
+            missionDriverLocation["accuracy"], driverCoords["accuracy"],
+        ),
+        speedMetersPerSecond = firstPositive(
+            orderRaw["entregadorSpeed"], orderDriverLocation["speed"],
+            missionRaw["entregadorSpeed"], missionDriverLocation["speed"], driverCoords["speed"],
+        ),
+        traveledMeters = firstPositive(
+            orderRaw["distanciaPercorridaEntregaMetros"], delivery["distanciaPercorridaEntregaMetros"],
+            orderDriverLocation["distanciaPercorridaEntregaMetros"],
+            orderRaw["distanciaPercorridaMetros"], missionRaw["distanciaPercorridaEntregaMetros"],
+            missionDriverLocation["distanciaPercorridaEntregaMetros"],
+            missionRaw["distanciaPercorridaMetros"], driverRaw["distanciaPercorridaEntregaMetros"],
+            driverCoords["distanciaPercorridaEntregaMetros"],
+        ),
+        remainingMeters = remainingMeters,
+        routeMeters = routeMeters,
+        etaMinutes = firstPositive(
+            orderRaw["etaMinutos"], delivery["etaMinutos"], missionRaw["etaMinutos"],
+            missionRaw["etaMinutes"],
+        ).roundToInt(),
+        stopsBefore = firstPositive(
+            orderRaw["paradasAntesCliente"], orderRaw["paradasAntes"], orderRaw["entregasAntes"],
+            currentStop["indice"], missionRaw["paradasAntesCliente"],
+        ).roundToInt().coerceAtLeast(0),
+        source = firstString(missionRaw, "metricasOrigem", "localizacaoOrigem").ifBlank {
+            firstString(missionDriverLocation, "metricasOrigem").ifBlank {
+                firstString(orderDriverLocation, "metricasOrigem")
+            }
+        }
+            .ifBlank { firstString(driverRaw, "localizacaoOrigem") },
     )
 }
 

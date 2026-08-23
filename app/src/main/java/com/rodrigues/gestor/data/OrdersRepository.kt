@@ -569,6 +569,30 @@ class OrdersRepository(
         batch.commit().addOnSuccessListener { onDone() }.addOnFailureListener(onError)
     }
 
+    fun listenDeliveryTracking(
+        order: Order,
+        onData: (DeliveryTracking) -> Unit,
+        onError: (Throwable) -> Unit,
+    ): ListenerRegistration {
+        val routeId = firstString(order.raw, "rotaAtualId", "rotaId")
+        val rideId = firstString(order.raw, "corridaAtualId", "corridaNativaId")
+        val collection = if (routeId.isNotBlank()) "rotas_entrega" else "rides"
+        val missionId = routeId.ifBlank { rideId }
+        if (missionId.isBlank()) {
+            onData(normalizeDeliveryTracking(order.raw))
+            return object : ListenerRegistration { override fun remove() = Unit }
+        }
+        return db.collection(collection).document(missionId).addSnapshotListener { snapshot, error ->
+            if (error != null) {
+                onError(error)
+                return@addSnapshotListener
+            }
+            @Suppress("UNCHECKED_CAST")
+            val mission = snapshot?.data as? Map<String, Any?> ?: emptyMap()
+            onData(normalizeDeliveryTracking(order.raw, mission))
+        }
+    }
+
 
 
     fun listenCatalogProducts(

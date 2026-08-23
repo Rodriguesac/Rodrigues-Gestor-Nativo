@@ -13,6 +13,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -27,6 +28,7 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -93,6 +95,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -105,6 +108,7 @@ import com.rodrigues.gestor.data.ChatMessage
 import com.rodrigues.gestor.data.ChatSummary
 import com.rodrigues.gestor.data.CatalogProduct
 import com.rodrigues.gestor.data.Driver
+import com.rodrigues.gestor.data.DeliveryTracking
 import com.rodrigues.gestor.data.Order
 import com.rodrigues.gestor.data.OrderAlteration
 import com.rodrigues.gestor.data.OrderChat
@@ -113,11 +117,18 @@ import com.rodrigues.gestor.data.PresenceSummary
 import com.rodrigues.gestor.data.StatusGroups
 import com.rodrigues.gestor.data.StoreOperation
 import com.rodrigues.gestor.data.money
+import com.rodrigues.gestor.data.normalizeDeliveryTracking
 import com.rodrigues.gestor.data.timeText
 import com.rodrigues.gestor.notifications.AlertPreferences
 import com.rodrigues.gestor.notifications.NotificationHelper
 import com.rodrigues.gestor.notifications.OrderRingService
 import com.rodrigues.gestor.printing.OrderPrinter
+import com.rodrigues.gestor.ui.theme.AcaiPurple
+import com.rodrigues.gestor.ui.theme.AcaiPurpleDark
+import com.rodrigues.gestor.ui.theme.DestructiveRed
+import com.rodrigues.gestor.ui.theme.RodriguesLime
+import com.rodrigues.gestor.ui.theme.RodriguesLimeDark
+import com.rodrigues.gestor.ui.theme.WarningOrange
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.util.Calendar
@@ -352,27 +363,15 @@ fun GestorApp(
     }
 
     Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
         snackbarHost = { SnackbarHost(snackbar) },
         topBar = {
-            TopAppBar(
-                title = {
-                    Column {
-                        Text(greetingText(), fontWeight = FontWeight.Black, color = MaterialTheme.colorScheme.onBackground)
-                        Text(
-                            when (section) {
-                                MainSection.ORDERS -> "Pedidos em tempo real"
-                                MainSection.HISTORY -> "Histórico"
-                                MainSection.PRODUCTS -> "Produtos"
-                                MainSection.STORE -> "Loja"
-                                MainSection.MORE -> "Mais"
-                            },
-                            fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                },
-                actions = {
-                    IconButton(onClick = {
+            if (section == MainSection.ORDERS) {
+                DashboardHeader(
+                    operation = operation,
+                    presence = presence,
+                    alertsEnabled = alertsEnabled,
+                    onAlertsClick = {
                         alertsEnabled = !alertsEnabled
                         AlertPreferences.setEnabled(context, alertsEnabled)
                         if (alertsEnabled) {
@@ -381,15 +380,41 @@ fun GestorApp(
                             }
                             showMessage("Alertas de novos pedidos ativados")
                         } else showMessage("Alertas de novos pedidos silenciados")
-                    }) {
-                        Icon(
-                            if (alertsEnabled) Icons.Default.Notifications else Icons.Default.NotificationsOff,
-                            contentDescription = "Alertas",
-                            tint = if (alertsEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                    },
+                )
+            } else {
+                TopAppBar(
+                    title = {
+                        Column {
+                            Text(greetingText(), fontWeight = FontWeight.Black, color = MaterialTheme.colorScheme.onBackground)
+                            Text(
+                                when (section) {
+                                    MainSection.ORDERS -> "Pedidos em tempo real"
+                                    MainSection.HISTORY -> "Histórico"
+                                    MainSection.PRODUCTS -> "Produtos"
+                                    MainSection.STORE -> "Loja"
+                                    MainSection.MORE -> "Mais"
+                                },
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    },
+                    actions = {
+                        IconButton(onClick = {
+                            alertsEnabled = !alertsEnabled
+                            AlertPreferences.setEnabled(context, alertsEnabled)
+                            showMessage(if (alertsEnabled) "Alertas ativados" else "Alertas silenciados")
+                        }) {
+                            Icon(
+                                if (alertsEnabled) Icons.Default.Notifications else Icons.Default.NotificationsOff,
+                                contentDescription = "Alertas",
+                                tint = if (alertsEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
-                }
-            )
+                )
+            }
         },
         bottomBar = {
             NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
@@ -460,6 +485,84 @@ fun GestorApp(
                 onOpenOrder = { selectedId = it },
                 onMessage = ::showMessage,
             )
+        }
+    }
+}
+
+@Composable
+private fun DashboardHeader(
+    operation: StoreOperation,
+    presence: PresenceSummary,
+    alertsEnabled: Boolean,
+    onAlertsClick: () -> Unit,
+) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .background(
+                Brush.linearGradient(
+                    listOf(AcaiPurpleDark, AcaiPurple, Color(0xFF7B18A9))
+                ),
+                RoundedCornerShape(bottomStart = 28.dp, bottomEnd = 28.dp),
+            )
+            .statusBarsPadding()
+            .padding(start = 18.dp, end = 14.dp, top = 14.dp, bottom = 18.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(greetingText(), color = Color.White, fontWeight = FontWeight.Black, fontSize = 25.sp)
+                Text("Central de pedidos ao vivo", color = Color.White.copy(alpha = .76f), fontSize = 13.sp)
+            }
+            Surface(
+                color = Color.White.copy(alpha = .15f),
+                shape = RoundedCornerShape(16.dp),
+            ) {
+                IconButton(onClick = onAlertsClick) {
+                    Icon(
+                        if (alertsEnabled) Icons.Default.Notifications else Icons.Default.NotificationsOff,
+                        contentDescription = "Alertas",
+                        tint = if (alertsEnabled) RodriguesLime else Color.White.copy(alpha = .72f),
+                    )
+                }
+            }
+        }
+        Spacer(Modifier.height(14.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            DashboardBadge(
+                text = if (operation.acceptingOrders) "Loja aberta" else "Pedidos pausados",
+                dot = if (operation.acceptingOrders) RodriguesLime else WarningOrange,
+                modifier = Modifier.weight(1f),
+            )
+            DashboardBadge(
+                text = "Preparo ~${operation.prepMinutes} min",
+                dot = Color.White.copy(alpha = .8f),
+                modifier = Modifier.weight(1f),
+            )
+        }
+        Spacer(Modifier.height(8.dp))
+        DashboardBadge(
+            text = "${presence.online} online • ${presence.cart} na sacola • ${presence.checkout} no checkout",
+            dot = RodriguesLime,
+            modifier = Modifier.fillMaxWidth(),
+        )
+    }
+}
+
+@Composable
+private fun DashboardBadge(text: String, dot: Color, modifier: Modifier = Modifier) {
+    Surface(
+        modifier = modifier,
+        color = Color.White.copy(alpha = .12f),
+        shape = RoundedCornerShape(50),
+        border = BorderStroke(1.dp, Color.White.copy(alpha = .10f)),
+    ) {
+        Row(
+            Modifier.padding(horizontal = 11.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(Modifier.size(7.dp).background(dot, RoundedCornerShape(50)))
+            Spacer(Modifier.width(7.dp))
+            Text(text, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
 }
@@ -572,10 +675,9 @@ private fun OrdersHomeScreen(
     Column(
         modifier = modifier.fillMaxSize().padding(horizontal = 14.dp)
     ) {
-        StoreAndPresenceStrip(operation, presence)
-        Spacer(Modifier.height(9.dp))
+        Spacer(Modifier.height(12.dp))
         MetricsRow(orders = orders, selectedStage = stage, onStage = onStage)
-        Spacer(Modifier.height(10.dp))
+        Spacer(Modifier.height(12.dp))
         OutlinedTextField(
             value = search,
             onValueChange = onSearch,
@@ -597,7 +699,7 @@ private fun OrdersHomeScreen(
         }
         Spacer(Modifier.height(6.dp))
         if (loading) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+            LoadingOrders()
         } else if (filtered.isEmpty()) {
             EmptyStage(stage)
         } else {
@@ -665,21 +767,25 @@ private fun greetingText(): String = when (Calendar.getInstance().get(Calendar.H
 @Composable
 private fun MetricsRow(orders: List<Order>, selectedStage: Stage, onStage: (Stage) -> Unit) {
     val data = listOf(
-        Triple(Stage.NEW, orders.count { it.status in StatusGroups.NEW }, Color(0xFFE9151D)),
-        Triple(Stage.CONFIRMED, orders.count { it.status in StatusGroups.CONFIRMED }, Color(0xFF2878D0)),
-        Triple(Stage.PREPARING, orders.count { it.status in StatusGroups.PREPARING }, Color(0xFFF28C18)),
-        Triple(Stage.READY, orders.count { it.status in StatusGroups.READY }, Color(0xFF249B3B)),
-        Triple(Stage.DELIVERY, orders.count { it.status in StatusGroups.DELIVERY }, Color(0xFF2878D0)),
+        Triple(Stage.NEW, orders.count { it.status in StatusGroups.NEW }, DestructiveRed),
+        Triple(Stage.CONFIRMED, orders.count { it.status in StatusGroups.CONFIRMED }, AcaiPurple),
+        Triple(Stage.PREPARING, orders.count { it.status in StatusGroups.PREPARING }, WarningOrange),
+        Triple(Stage.READY, orders.count { it.status in StatusGroups.READY }, RodriguesLimeDark),
+        Triple(Stage.DELIVERY, orders.count { it.status in StatusGroups.DELIVERY }, AcaiPurple),
     )
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-        data.forEach { (stage, count, color) ->
+    LazyRow(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(9.dp),
+        contentPadding = PaddingValues(end = 4.dp),
+    ) {
+        items(data) { (stage, count, color) ->
             MetricBox(
                 label = stage.label,
                 value = count.toString(),
                 color = color,
                 selected = selectedStage == stage,
                 onClick = { onStage(stage) },
-                modifier = Modifier.weight(1f)
+                modifier = Modifier.width(112.dp)
             )
         }
     }
@@ -698,14 +804,56 @@ private fun MetricBox(
         onClick = onClick,
         modifier = modifier,
         colors = CardDefaults.cardColors(containerColor = if (selected) color.copy(alpha = .10f) else MaterialTheme.colorScheme.surface),
-        shape = RoundedCornerShape(14.dp),
+        shape = RoundedCornerShape(18.dp),
         border = androidx.compose.foundation.BorderStroke(if (selected) 1.5.dp else 1.dp, if (selected) color else MaterialTheme.colorScheme.outlineVariant),
-        elevation = CardDefaults.cardElevation(defaultElevation = if (selected) 1.dp else 0.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = if (selected) 3.dp else 1.dp)
     ) {
-        Column(Modifier.fillMaxWidth().padding(vertical = 11.dp, horizontal = 4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(value, fontWeight = FontWeight.Black, color = color, fontSize = 22.sp)
-            Spacer(Modifier.height(2.dp))
-            Text(label, fontWeight = FontWeight.Bold, color = if (selected) color else MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 9.sp, maxLines = 1)
+        Column(Modifier.fillMaxWidth().padding(vertical = 13.dp, horizontal = 10.dp)) {
+            Text(value, fontWeight = FontWeight.Black, color = color, fontSize = 24.sp)
+            Spacer(Modifier.height(3.dp))
+            Text(label, fontWeight = FontWeight.Bold, color = if (selected) color else MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp, maxLines = 1)
+        }
+    }
+}
+
+@Composable
+private fun LoadingOrders() {
+    Column(
+        Modifier.fillMaxWidth().padding(top = 4.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        repeat(3) { index ->
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(22.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                elevation = CardDefaults.cardElevation(1.dp),
+            ) {
+                Column(Modifier.padding(16.dp)) {
+                    Surface(
+                        Modifier.fillMaxWidth(if (index == 0) .48f else .62f).height(18.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant,
+                        shape = RoundedCornerShape(50),
+                    ) {}
+                    Spacer(Modifier.height(12.dp))
+                    Surface(
+                        Modifier.fillMaxWidth(.82f).height(13.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant,
+                        shape = RoundedCornerShape(50),
+                    ) {}
+                    Spacer(Modifier.height(18.dp))
+                    Surface(
+                        Modifier.fillMaxWidth().height(1.dp),
+                        color = MaterialTheme.colorScheme.outlineVariant,
+                    ) {}
+                    Spacer(Modifier.height(12.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Sincronizando pedidos…", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
         }
     }
 }
@@ -873,11 +1021,11 @@ private fun StatusPill(status: String) {
 }
 
 private fun statusColor(status: String): Color = when {
-    status in StatusGroups.NEW -> Color(0xFFE9151D)
-    status in StatusGroups.CONFIRMED -> Color(0xFF2878D0)
-    status in StatusGroups.PREPARING -> Color(0xFFF28C18)
-    status in StatusGroups.READY || status in StatusGroups.DONE -> Color(0xFF249B3B)
-    status in StatusGroups.DELIVERY -> Color(0xFF2878D0)
+    status in StatusGroups.NEW -> DestructiveRed
+    status in StatusGroups.CONFIRMED -> AcaiPurple
+    status in StatusGroups.PREPARING -> WarningOrange
+    status in StatusGroups.READY || status in StatusGroups.DONE -> RodriguesLimeDark
+    status in StatusGroups.DELIVERY -> AcaiPurple
     status in StatusGroups.CANCELED -> Color(0xFF6B7280)
     else -> Color(0xFF6B7280)
 }
@@ -1882,6 +2030,7 @@ private fun OrderDetailScreen(
     var showDrivers by remember { mutableStateOf(false) }
     var showAlteration by remember { mutableStateOf(false) }
     var showIssue by remember { mutableStateOf(false) }
+    var showPrintOptions by remember { mutableStateOf(false) }
     var trackingBusy by remember { mutableStateOf(false) }
     var customerTracking by remember(order.id) {
         mutableStateOf((order.raw["rastreamentoClienteHabilitado"] as? Boolean) ?: true)
@@ -1890,6 +2039,33 @@ private fun OrderDetailScreen(
         customerTracking = (order.raw["rastreamentoClienteHabilitado"] as? Boolean) ?: true
     }
     val issueActive = (order.raw["problemaOperacional"] as? Map<*, *>)?.get("ativo") == true
+    val driverName = (order.raw["entregadorNome"] ?: order.raw["driverName"] ?: (order.raw["entrega"] as? Map<*, *>)?.get("entregadorNome"))?.toString().orEmpty()
+    val upDelivery = !order.pickup && (
+        order.raw["entregaModo"]?.toString()?.uppercase(Locale.ROOT) == "UP" ||
+            order.raw["tipoEntregaOperacional"]?.toString()?.uppercase(Locale.ROOT) == "UP" ||
+            order.raw["corridaAtualId"]?.toString()?.isNotBlank() == true ||
+            order.raw["rotaAtualId"]?.toString()?.isNotBlank() == true
+        )
+    var deliveryTracking by remember(order.id) { mutableStateOf(normalizeDeliveryTracking(order.raw)) }
+
+    DisposableEffect(
+        order.id,
+        order.raw["rotaAtualId"],
+        order.raw["rotaId"],
+        order.raw["corridaAtualId"],
+        order.raw["corridaNativaId"],
+    ) {
+        if (!upDelivery) {
+            onDispose { }
+        } else {
+            val registration = repository.listenDeliveryTracking(
+                order = order,
+                onData = { deliveryTracking = it },
+                onError = { deliveryTracking = normalizeDeliveryTracking(order.raw) },
+            )
+            onDispose { registration.remove() }
+        }
+    }
 
     fun update(status: String, success: String) {
         if (busy) return
@@ -1975,14 +2151,7 @@ private fun OrderDetailScreen(
                 navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, "Voltar") } },
                 actions = {
                     IconButton(
-                        onClick = {
-                            OrderPrinter.print(
-                                context,
-                                order,
-                                AlertPreferences.printCopies(context),
-                                AlertPreferences.paperWidth(context)
-                            )
-                        }
+                        onClick = { showPrintOptions = true }
                     ) { Icon(Icons.Default.Print, "Imprimir comanda") }
                     StatusPill(order.status)
                 }
@@ -2026,7 +2195,6 @@ private fun OrderDetailScreen(
 
             val pickupCode = (order.raw["codigoRetirada"] ?: order.raw["codigoLiberacao"] ?: order.raw["codigoParaRetirada"])?.toString().orEmpty()
             val deliveryCode = (order.raw["codigoEntrega"] ?: order.raw["codigoCurto"])?.toString().orEmpty()
-            val driverName = (order.raw["entregadorNome"] ?: order.raw["driverName"] ?: (order.raw["entrega"] as? Map<*, *>)?.get("entregadorNome"))?.toString().orEmpty()
             if (pickupCode.isNotBlank() || deliveryCode.isNotBlank() || driverName.isNotBlank()) {
                 DetailCard("Entrega e códigos") {
                     if (driverName.isNotBlank()) LabelValue("Entregador", driverName)
@@ -2035,13 +2203,12 @@ private fun OrderDetailScreen(
                 }
             }
 
-            val upDelivery = !order.pickup && (
-                order.raw["entregaModo"]?.toString()?.uppercase(Locale.ROOT) == "UP" ||
-                    order.raw["tipoEntregaOperacional"]?.toString()?.uppercase(Locale.ROOT) == "UP" ||
-                    order.raw["corridaAtualId"]?.toString()?.isNotBlank() == true ||
-                    order.raw["rotaAtualId"]?.toString()?.isNotBlank() == true
-                )
             if (upDelivery) {
+                DeliveryTrackingCard(
+                    tracking = deliveryTracking,
+                    driverName = driverName,
+                    trackingEnabled = customerTracking,
+                )
                 DetailCard("Mapa para o cliente") {
                     SettingSwitchRow(
                         "Entrega rastreável",
@@ -2079,6 +2246,15 @@ private fun OrderDetailScreen(
                         Text("${item.quantity}x", modifier = Modifier.width(34.dp), fontWeight = FontWeight.Black, fontSize = 17.sp, color = MaterialTheme.colorScheme.primary)
                         Column(Modifier.weight(1f)) {
                             Text(item.name, fontWeight = FontWeight.Black, fontSize = 17.sp)
+                            item.details.forEach { detail ->
+                                Text(
+                                    "• $detail",
+                                    modifier = Modifier.padding(top = 3.dp),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    fontSize = 13.sp,
+                                    lineHeight = 17.sp,
+                                )
+                            }
                         }
                         if (item.price > 0) {
                             Spacer(Modifier.width(8.dp))
@@ -2132,14 +2308,34 @@ private fun OrderDetailScreen(
 
             DetailCard("Atendimento e ações") {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick = { showChat = true }, modifier = Modifier.weight(1f)) {
+                    OutlinedButton(
+                        onClick = { showChat = true },
+                        modifier = Modifier.weight(1f),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 10.dp),
+                    ) {
                         Icon(Icons.Default.Chat, null)
                         Spacer(Modifier.width(5.dp))
                         Text("CHAT")
                     }
-                    OutlinedButton(onClick = { showAlteration = true }, modifier = Modifier.weight(1f)) {
-                        Text("ALTERAR ITEM")
+                    if (order.phone.isNotBlank()) {
+                        OutlinedButton(
+                            onClick = {
+                                val digits = order.phone.filter(Char::isDigit)
+                                val phone = if (digits.startsWith("55")) digits else "55$digits"
+                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://wa.me/$phone")))
+                            },
+                            modifier = Modifier.weight(1f),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 10.dp),
+                        ) {
+                            Icon(Icons.Default.Phone, null)
+                            Spacer(Modifier.width(5.dp))
+                            Text("WHATSAPP", fontSize = 12.sp)
+                        }
                     }
+                }
+                Spacer(Modifier.height(7.dp))
+                OutlinedButton(onClick = { showAlteration = true }, modifier = Modifier.fillMaxWidth()) {
+                    Text("ALTERAR ITENS DO PEDIDO")
                 }
                 Spacer(Modifier.height(7.dp))
                 OutlinedButton(
@@ -2155,36 +2351,13 @@ private fun OrderDetailScreen(
                     Text(if (issueActive) "RESOLVER PROBLEMA" else "MARCAR PROBLEMA")
                 }
                 Spacer(Modifier.height(7.dp))
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(
-                        onClick = {
-                            OrderPrinter.print(
-                                context,
-                                order,
-                                AlertPreferences.printCopies(context),
-                                AlertPreferences.paperWidth(context)
-                            )
-                        },
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Icon(Icons.Default.Print, null)
-                        Spacer(Modifier.width(5.dp))
-                        Text("COMANDA")
-                    }
-                    if (order.phone.isNotBlank()) {
-                        OutlinedButton(
-                            onClick = {
-                                val digits = order.phone.filter(Char::isDigit)
-                                val phone = if (digits.startsWith("55")) digits else "55$digits"
-                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://wa.me/$phone")))
-                            },
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Icon(Icons.Default.Phone, null)
-                            Spacer(Modifier.width(5.dp))
-                            Text("WHATSAPP")
-                        }
-                    }
+                OutlinedButton(
+                    onClick = { showPrintOptions = true },
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Icon(Icons.Default.Print, null)
+                    Spacer(Modifier.width(6.dp))
+                    Text("IMPRIMIR OU SALVAR PDF")
                 }
             }
 
@@ -2248,6 +2421,53 @@ private fun OrderDetailScreen(
             }
         )
     }
+    if (showPrintOptions) {
+        PrintOptionsDialog(
+            onDismiss = { showPrintOptions = false },
+            onReceipt = {
+                showPrintOptions = false
+                OrderPrinter.printReceipt(
+                    context,
+                    order,
+                    AlertPreferences.printCopies(context),
+                    AlertPreferences.paperWidth(context),
+                )
+            },
+            onA4 = {
+                showPrintOptions = false
+                OrderPrinter.printA4(context, order)
+            },
+        )
+    }
+}
+
+@Composable
+private fun PrintOptionsDialog(
+    onDismiss: () -> Unit,
+    onReceipt: () -> Unit,
+    onA4: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Imprimir pedido", fontWeight = FontWeight.Black) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                Text("Escolha o formato. O PDF A4 usa a página inteira e a comanda mantém a largura da impressora térmica.")
+                Button(onClick = onReceipt, modifier = Modifier.fillMaxWidth()) {
+                    Icon(Icons.Default.Print, null)
+                    Spacer(Modifier.width(7.dp))
+                    Text("COMANDA TÉRMICA")
+                }
+                OutlinedButton(onClick = onA4, modifier = Modifier.fillMaxWidth()) {
+                    Icon(Icons.Default.Print, null)
+                    Spacer(Modifier.width(7.dp))
+                    Text("PDF A4 PROFISSIONAL")
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = { TextButton(onClick = onDismiss) { Text("FECHAR") } },
+    )
 }
 
 @Composable
@@ -2272,9 +2492,14 @@ private fun OrderProgress(order: Order) {
         Column(Modifier.padding(14.dp)) {
             Text(StatusGroups.label(order.status), fontWeight = FontWeight.Black, color = active, fontSize = 16.sp)
             Spacer(Modifier.height(12.dp))
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                labels.forEachIndexed { index, label ->
-                    Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+            LazyRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(5.dp),
+                contentPadding = PaddingValues(end = 4.dp),
+            ) {
+                items(labels.size) { index ->
+                    val label = labels[index]
+                    Column(Modifier.width(86.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                         Surface(
                             color = if (index <= current) active else MaterialTheme.colorScheme.surfaceVariant,
                             shape = RoundedCornerShape(50)
@@ -2288,7 +2513,13 @@ private fun OrderProgress(order: Order) {
                             )
                         }
                         Spacer(Modifier.height(4.dp))
-                        Text(label, fontSize = 9.sp, fontWeight = if (index == current) FontWeight.Black else FontWeight.Normal, maxLines = 1)
+                        Text(
+                            label,
+                            fontSize = 10.sp,
+                            fontWeight = if (index == current) FontWeight.Black else FontWeight.Medium,
+                            maxLines = 1,
+                            color = if (index == current) active else MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                     }
                 }
             }
@@ -2356,13 +2587,6 @@ private fun ActionBlock(
                     Spacer(Modifier.width(8.dp))
                     Text("INICIAR PREPARO", fontWeight = FontWeight.Black)
                 }
-                Spacer(Modifier.height(8.dp))
-                HoldActionButton(
-                    label = "SEGURE PARA MARCAR COMO PRONTO",
-                    color = Color(0xFFF28C18),
-                    enabled = !busy,
-                    onConfirmed = onReady
-                )
             }
             order.status in StatusGroups.PREPARING -> {
                 HoldActionButton(
@@ -2394,9 +2618,15 @@ private fun ActionBlock(
                 }
             }
             order.status in StatusGroups.DELIVERY -> {
+                Text(
+                    "O cliente pode confirmar o recebimento pelo código de entrega. Use o botão abaixo apenas como alternativa operacional.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 12.sp,
+                )
+                Spacer(Modifier.height(9.dp))
                 HoldActionButton(
-                    label = "SEGURE PARA FINALIZAR ENTREGA",
-                    color = Color(0xFF2878D0),
+                    label = "SEGURE PARA CONFIRMAR MANUALMENTE",
+                    color = AcaiPurple,
                     enabled = !busy,
                     onConfirmed = onFinish
                 )
