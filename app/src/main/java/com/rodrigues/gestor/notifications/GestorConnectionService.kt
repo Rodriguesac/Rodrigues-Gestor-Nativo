@@ -6,10 +6,11 @@ import android.content.Intent
 import android.os.IBinder
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
-import com.google.firebase.Timestamp
-import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
 import com.google.firebase.messaging.FirebaseMessaging
+import com.rodrigues.gestor.data.Order
+import com.rodrigues.gestor.data.StatusGroups
+import com.rodrigues.gestor.data.SupabaseOrdersApi
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -39,86 +40,81 @@ class GestorConnectionService : Service() {
 
     private fun listenOrders() {
         orderListener?.remove()
-        orderListener = FirebaseFirestore.getInstance().collection("pedidos")
-            .addSnapshotListener { snapshot, error ->
-                if (error != null) {
-                    updateConnectionNotification("Sem conexão • tentando novamente", knownPending.size)
-                    return@addSnapshotListener
-                }
+        orderListener = SupabaseOrdersApi.listenOrders(
+            intervalMs = 5_000L,
+            onData = { orders -> handleOrders(orders) },
+            onError = {
+                updateConnectionNotification("Sem conexão • tentando novamente", knownPending.size)
+            }
+        )
+    }
 
-                val documents = snapshot?.documents.orEmpty()
-                val currentStatuses = documents.associate { doc -> doc.id to statusOf(doc.data.orEmpty()) }
+    private fun handleOrders(orders: List<Order>) {
+        val currentStatuses = orders.associate { it.id to it.status.uppercase(Locale.ROOT) }
 
-                if (!firstSnapshot) {
-                    documents.forEach { doc ->
-                        val status = currentStatuses[doc.id].orEmpty()
-                        val previous = knownStatuses[doc.id]
-                        if (previous != null && previous !in CANCELED_STATUSES && status in CANCELED_STATUSES) {
-                            val number = sequenceOf("numeroPedido", "codigoPedido", "numero")
-                                .mapNotNull { doc.getString(it) }
-                                .firstOrNull { it.isNotBlank() }
-                                ?: doc.id.takeLast(6).uppercase(Locale.ROOT)
-                            val client = doc.getString("clienteNome")
-                                ?: doc.getString("nomeCliente")
-                                ?: (doc.get("cliente") as? Map<*, *>)?.get("nome")?.toString()
-                                ?: "Cliente"
-                            val reason = sequenceOf("motivoCancelamento", "detalheCancelamento")
-                                .mapNotNull { doc.getString(it) }
-                                .firstOrNull { it.isNotBlank() }
-                                ?: "Cancelado pelo cliente"
-                            NotificationHelper.showCancellation(this, doc.id, number, client, reason)
-                        }
-                    }
-                }
-
-                val pending = documents.mapNotNull { doc ->
-                    val status = currentStatuses[doc.id].orEmpty()
-                    if (status !in NEW_STATUSES) return@mapNotNull null
-                    PendingOrder(
-                        id = doc.id,
-                        number = sequenceOf("numeroPedido", "codigoPedido", "numero")
-                            .mapNotNull { doc.getString(it) }
-                            .firstOrNull { it.isNotBlank() }
-                            ?: doc.id.takeLast(6).uppercase(Locale.ROOT),
-                        client = doc.getString("clienteNome")
-                            ?: doc.getString("nomeCliente")
-                            ?: (doc.get("cliente") as? Map<*, *>)?.get("nome")?.toString()
-                            ?: "Cliente",
-                        createdAt = timestampMillis(doc.get("createdAt") ?: doc.get("criadoEm"))
+        if (!firstSnapshot) {
+            orders.forEach { order ->
+                val status = currentStatuses[order.id].orEmpty()
+                val previous = knownStatuses[order.id]
+                if (previous != null && previous !in CANCELED_STATUSES && status in CANCELED_STATUSES) {
+                    val reason = sequenceOf("motivoCancelamento", "detalheCancelamento")
+                        .mapNotNull { order.raw[it]?.toString() }
+                        .firstOrNull { it.isNotBlank() }
+                        ?: "Cancelado pelo cliente"
+                    NotificationHelper.showCancellation(
+                        this,
+                        order.id,
+                        order.number,
+                        order.clientName,
+                        reason
                     )
-                }.sortedBy { if (it.createdAt > 0L) it.createdAt else Long.MAX_VALUE }
-
-                val pendingIds = pending.map { it.id }.toSet()
-                val target = if (firstSnapshot) {
-                    pending.firstOrNull()
-                } else {
-                    pending.firstOrNull { it.id !in knownPending }
-                }
-                firstSnapshot = false
-                knownPending.clear()
-                knownPending.addAll(pendingIds)
-                knownStatuses.clear()
-                knownStatuses.putAll(currentStatuses)
-
-                updateConnectionNotification(
-                    "Última atualização às ${SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())}",
-                    pending.size
-                )
-
-                val nextRing = when {
-                    target != null -> target
-                    activeRingOrderId.isNotBlank() && activeRingOrderId !in pendingIds -> pending.firstOrNull()
-                    else -> null
-                }
-                nextRing?.let {
-                    activeRingOrderId = it.id
-                    OrderRingService.start(this, it.id, it.number, it.client)
-                }
-                if (pending.isEmpty()) {
-                    activeRingOrderId = ""
-                    OrderRingService.stop(this)
                 }
             }
+        }
+
+        val pending = orders
+            .filter { it.status.uppercase(Locale.ROOT) in StatusGroups.NEW }
+            .map {
+                PendingOrder(
+                    id = it.id,
+                    number = it.number,
+                    client = it.clientName,
+                    createdAt = it.createdMillis
+                )
+            }
+            .sortedBy { if (it.createdAt > 0L) it.createdAt else Long.MAX_VALUE }
+
+        val pendingIds = pending.map { it.id }.toSet()
+        val target = if (firstSnapshot) {
+            pending.firstOrNull()
+        } else {
+            pending.firstOrNull { it.id !in knownPending }
+        }
+
+        firstSnapshot = false
+        knownPending.clear()
+        knownPending.addAll(pendingIds)
+        knownStatuses.clear()
+        knownStatuses.putAll(currentStatuses)
+
+        updateConnectionNotification(
+            "Supabase atualizado às ${SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())}",
+            pending.size
+        )
+
+        val nextRing = when {
+            target != null -> target
+            activeRingOrderId.isNotBlank() && activeRingOrderId !in pendingIds -> pending.firstOrNull()
+            else -> null
+        }
+        nextRing?.let {
+            activeRingOrderId = it.id
+            OrderRingService.start(this, it.id, it.number, it.client)
+        }
+        if (pending.isEmpty()) {
+            activeRingOrderId = ""
+            OrderRingService.stop(this)
+        }
     }
 
     private fun updateConnectionNotification(detail: String, pendingCount: Int) {
@@ -130,19 +126,6 @@ class GestorConnectionService : Service() {
         } catch (_: SecurityException) {
         }
     }
-
-    private fun timestampMillis(value: Any?): Long = when (value) {
-        is Timestamp -> value.toDate().time
-        is Date -> value.time
-        is Number -> value.toLong()
-        else -> 0L
-    }
-
-    private fun statusOf(data: Map<String, Any>): String = sequenceOf("status", "statusPedido", "statusLoja", "statusAtual")
-        .mapNotNull { data[it]?.toString() }
-        .firstOrNull { it.isNotBlank() }
-        ?.uppercase(Locale.ROOT)
-        .orEmpty()
 
     override fun onDestroy() {
         orderListener?.remove()
@@ -161,9 +144,6 @@ class GestorConnectionService : Service() {
 
     companion object {
         const val CONNECTION_NOTIFICATION_ID = 9901
-        private val NEW_STATUSES = setOf(
-            "AGUARDANDO_CONFIRMACAO", "RECEBIDO", "PENDENTE", "NOVO", "NOVO_PEDIDO"
-        )
         private val CANCELED_STATUSES = setOf("CANCELADO", "CANCELADA", "CANCELED", "CANCELLED")
 
         fun start(context: Context) {
