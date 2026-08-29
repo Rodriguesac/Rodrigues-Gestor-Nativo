@@ -32,15 +32,18 @@ jobs:
         with:
           gradle-version: "8.13"
 
+      - name: Ativar leitura de pedidos pelo Supabase
+        run: python3 scripts/patch-supabase-orders.py
+
       - name: Compilar APK
         run: gradle :app:assembleDebug --stacktrace
 
       - name: Renomear APK
-        run: cp app/build/outputs/apk/debug/app-debug.apk Rodrigues-Gestor-v2.0.0-debug.apk
+        run: cp app/build/outputs/apk/debug/app-debug.apk Rodrigues-Gestor-v2.1.0-Supabase-debug.apk
 
       - name: Disponibilizar APK
         uses: actions/upload-artifact@v4
         with:
           name: Rodrigues-Gestor-APK
-          path: Rodrigues-Gestor-v2.0.0-debug.apk
+          path: Rodrigues-Gestor-v2.1.0-Supabase-debug.apk
           retention-days: 30
