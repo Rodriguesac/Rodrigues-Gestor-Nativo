@@ -8,6 +8,7 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import com.google.firebase.firestore.ListenerRegistration
 import com.google.firebase.messaging.FirebaseMessaging
+import com.rodrigues.gestor.data.GestorCredentials
 import com.rodrigues.gestor.data.Order
 import com.rodrigues.gestor.data.StatusGroups
 import com.rodrigues.gestor.data.SupabaseOrdersApi
@@ -24,6 +25,7 @@ class GestorConnectionService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        GestorCredentials.load(this)
         NotificationHelper.createChannels(this)
         startForeground(
             CONNECTION_NOTIFICATION_ID,
@@ -34,6 +36,7 @@ class GestorConnectionService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (GestorCredentials.pin.length != 6) GestorCredentials.load(this)
         if (orderListener == null) listenOrders()
         return START_STICKY
     }
