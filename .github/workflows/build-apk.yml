@@ -9,7 +9,7 @@ on:
       - "work/gestor-voice-v1.3.1"
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -47,3 +47,18 @@ jobs:
           name: Rodrigues-Gestor-Voice-APK
           path: Rodrigues-Gestor-v1.3.5-Voice-Supabase-debug.apk
           retention-days: 30
+
+      - name: Publicar APK para download direto
+        env:
+          GH_TOKEN: ${{ github.token }}
+          APK_PATH: Rodrigues-Gestor-v1.3.5-Voice-Supabase-debug.apk
+          RELEASE_TAG: gestor-voice-v1.3.5
+        run: |
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" "$APK_PATH" --clobber
+          else
+            gh release create "$RELEASE_TAG" "$APK_PATH" \
+              --target "$GITHUB_SHA" \
+              --title "Rodrigues Gestor v1.3.5 — Voz + Supabase" \
+              --notes "APK Android compilado a partir da base v1.3.1, com comando de voz e catálogo dinâmico do Supabase."
+          fi
