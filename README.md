@@ -1,5 +1,16 @@
 # Rodrigues Gestor — Android nativo
 
+## v1.3.5 — Comando de voz com Supabase
+
+Esta ramificação parte da base v1.3.1 e acrescenta um botão **COMANDO DE VOZ** no Android. A fala é reconhecida em português e executa, pela administração segura do Supabase:
+
+- abrir ou fechar a loja;
+- pausar produto ou adicional pelo nome;
+- reativar produto ou adicional pelo nome.
+
+O catálogo é consultado a cada comando, sem lista fixa dentro do aplicativo. Se houver nomes parecidos, nada é alterado até o operador falar o nome completo ou o tamanho. Na primeira utilização, o app pede o PIN de 5 números do GADM, guarda apenas a sessão temporária e nunca salva o PIN.
+
+
 Aplicativo Android nativo do Gestor/Montador da Rodrigues Açaí e Cia, focado em operação rápida no celular.
 
 ## Firebase já encaixado
@@ -54,6 +65,14 @@ O app já recebe FCM. A pasta `backend-netlify` contém a função que envia `NE
 - Firebase BoM: 34.17.0
 - Compose BoM: 2026.06.01 (Compose 1.11.4 — compatível com compileSdk 36 / AGP 8.13.2)
 
+
+## v1.3.1 — FCM fechado + confirmação da loja
+
+- Novo pedido passa a aceitar `AGUARDANDO_CONFIRMACAO` como estado inicial.
+- Aceite (`CONFIRMADO`) não é mais apresentado como “Em preparo”.
+- Backend compatível com Cliente V22.9 envia FCM por token direto e por tópico, com deduplicação no APK.
+- Canal do pedido ativo renovado para alta importância e tela bloqueada.
+- versionCode 5 / versionName `1.3.1-fcm-confirmacao`.
 
 ## v1.3.0 — Tema branco operacional
 

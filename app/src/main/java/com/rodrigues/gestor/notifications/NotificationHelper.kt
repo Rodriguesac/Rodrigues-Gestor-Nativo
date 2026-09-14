@@ -15,8 +15,8 @@ import com.rodrigues.gestor.MainActivity
 import com.rodrigues.gestor.R
 
 object NotificationHelper {
-    const val CHANNEL_ORDERS = "pedidos_urgentes_v1"
-    const val CHANNEL_SERVICE = "gestor_servico_v1"
+    const val CHANNEL_ORDERS = "pedidos_urgentes_v2"
+    const val CHANNEL_SERVICE = "gestor_pedido_ativo_v2"
     const val CHANNEL_MESSAGES = "mensagens_cliente_v1"
 
     fun createChannels(context: Context) {
@@ -35,10 +35,11 @@ object NotificationHelper {
             setSound(ringtoneUri, attrs)
             lockscreenVisibility = Notification.VISIBILITY_PUBLIC
         }
-        val service = NotificationChannel(CHANNEL_SERVICE, "Gestor ativo", NotificationManager.IMPORTANCE_LOW).apply {
-            description = "Mantém o toque de novo pedido ativo enquanto necessário"
+        val service = NotificationChannel(CHANNEL_SERVICE, "Novo pedido ativo", NotificationManager.IMPORTANCE_HIGH).apply {
+            description = "Mantém o novo pedido visível na tela bloqueada enquanto o toque está ativo"
             setSound(null, null)
             enableVibration(false)
+            lockscreenVisibility = Notification.VISIBILITY_PUBLIC
         }
         val messages = NotificationChannel(CHANNEL_MESSAGES, "Mensagens de clientes", NotificationManager.IMPORTANCE_HIGH).apply {
             description = "Novas mensagens e solicitações dos clientes"

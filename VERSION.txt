@@ -1,2 +1,3 @@
-Rodrigues Gestor Nativo v1.3.0
-Tema branco operacional • central compacta • segure para status críticos • FCM preservado
+Rodrigues Gestor Nativo v1.3.5
+Base v1.3.1 • comando de voz Android • catálogo e operação pelo Supabase
+Build: GitHub Actions
