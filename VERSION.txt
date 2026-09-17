@@ -1,3 +1,3 @@
-Rodrigues Gestor Nativo v2.0.0
-Operação premium • mapa ao vivo • distâncias e ETA • impressão térmica/A4
+Rodrigues Gestor Nativo v3.0.0
+Supabase • pedidos completos • Monte seu Pedido • mapa do cliente • comando de voz • FCM
 Build: GitHub Actions
