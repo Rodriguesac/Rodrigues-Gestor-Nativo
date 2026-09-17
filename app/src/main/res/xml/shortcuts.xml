@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="voice_command"
+        android:enabled="true"
+        android:icon="@drawable/ic_notification"
+        android:shortcutShortLabel="@string/voice_shortcut_short"
+        android:shortcutLongLabel="@string/voice_shortcut_long"
+        android:shortcutDisabledMessage="@string/voice_shortcut_disabled">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:data="rodriguesgestor://voice"
+            android:targetClass="com.rodrigues.gestor.MainActivity"
+            android:targetPackage="com.rodrigues.gestor" />
+    </shortcut>
+</shortcuts>
