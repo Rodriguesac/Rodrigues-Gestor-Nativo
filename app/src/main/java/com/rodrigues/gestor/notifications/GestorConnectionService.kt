@@ -29,7 +29,11 @@ class GestorConnectionService : Service() {
         NotificationHelper.createChannels(this)
         startForeground(
             CONNECTION_NOTIFICATION_ID,
-            NotificationHelper.connectionNotification(this, "Conectando à central de pedidos…")
+            NotificationHelper.connectionNotification(
+                this,
+                "Conectando à central de pedidos…",
+                DailyOrderSummary.load(this),
+            )
         )
         FirebaseMessaging.getInstance().token.addOnSuccessListener(DeviceRegistrar::register)
         listenOrders()
@@ -47,7 +51,10 @@ class GestorConnectionService : Service() {
             intervalMs = 5_000L,
             onData = { orders -> handleOrders(orders) },
             onError = {
-                updateConnectionNotification("Sem conexão • tentando novamente", knownPending.size)
+                updateConnectionNotification(
+                    "Sem conexão • tentando novamente",
+                    DailyOrderSummary.load(this),
+                )
             }
         )
     }
@@ -100,9 +107,11 @@ class GestorConnectionService : Service() {
         knownStatuses.clear()
         knownStatuses.putAll(currentStatuses)
 
+        val dailySummary = DailyOrderSummary.fromOrders(orders)
+        dailySummary.save(this)
         updateConnectionNotification(
-            "Supabase atualizado às ${SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())}",
-            pending.size
+            "atualizado às ${SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())}",
+            dailySummary,
         )
 
         val nextRing = when {
@@ -120,11 +129,11 @@ class GestorConnectionService : Service() {
         }
     }
 
-    private fun updateConnectionNotification(detail: String, pendingCount: Int) {
+    private fun updateConnectionNotification(detail: String, summary: DailyOrderSummary) {
         try {
             NotificationManagerCompat.from(this).notify(
                 CONNECTION_NOTIFICATION_ID,
-                NotificationHelper.connectionNotification(this, detail, pendingCount)
+                NotificationHelper.connectionNotification(this, detail, summary)
             )
         } catch (_: SecurityException) {
         }
