@@ -109,6 +109,7 @@ class GestorConnectionService : Service() {
 
         val dailySummary = DailyOrderSummary.fromOrders(orders)
         dailySummary.save(this)
+        RodriguesStatusWidget.updateAll(this, dailySummary)
         updateConnectionNotification(
             "atualizado às ${SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())}",
             dailySummary,
