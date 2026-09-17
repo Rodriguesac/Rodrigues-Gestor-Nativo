@@ -40,15 +40,18 @@ jobs:
         with:
           gradle-version: "8.13"
 
+      - name: Ativar opção de painel flutuante
+        run: python3 scripts/patch-floating-panel-ui.py
+
       - name: Compilar APK
         run: gradle :app:assembleDebug --stacktrace
 
       - name: Renomear APK
-        run: cp app/build/outputs/apk/debug/app-debug.apk Rodrigues-Gestor-Daily-Notification-debug.apk
+        run: cp app/build/outputs/apk/debug/app-debug.apk Rodrigues-Gestor-Painel-Rapido-debug.apk
 
       - name: Disponibilizar APK
         uses: actions/upload-artifact@v4
         with:
-          name: Rodrigues-Gestor-Daily-Notification-APK
-          path: Rodrigues-Gestor-Daily-Notification-debug.apk
+          name: Rodrigues-Gestor-Painel-Rapido-APK
+          path: Rodrigues-Gestor-Painel-Rapido-debug.apk
           retention-days: 30
