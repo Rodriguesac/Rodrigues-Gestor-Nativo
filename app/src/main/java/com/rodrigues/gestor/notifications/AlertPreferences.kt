@@ -72,6 +72,9 @@ object AlertPreferences {
     fun compactCards(context: Context): Boolean = prefs(context).getBoolean("compact_cards", false)
     fun setCompactCards(context: Context, value: Boolean) = prefs(context).edit().putBoolean("compact_cards", value).apply()
 
+    fun floatingPanel(context: Context): Boolean = prefs(context).getBoolean("floating_panel", false)
+    fun setFloatingPanel(context: Context, value: Boolean) = prefs(context).edit().putBoolean("floating_panel", value).apply()
+
     fun autoPrintOnAccept(context: Context): Boolean = prefs(context).getBoolean("auto_print_accept", false)
     fun setAutoPrintOnAccept(context: Context, value: Boolean) = prefs(context).edit().putBoolean("auto_print_accept", value).apply()
 
