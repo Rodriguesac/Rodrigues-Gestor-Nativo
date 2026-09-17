@@ -12,10 +12,14 @@ import android.os.Build
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
+import android.widget.RemoteViews
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import com.rodrigues.gestor.MainActivity
 import com.rodrigues.gestor.R
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 object NotificationHelper {
     const val CHANNEL_ORDERS = "pedidos_urgentes_v3"
@@ -46,7 +50,7 @@ object NotificationHelper {
             enableVibration(false)
         }
         val connection = NotificationChannel(CHANNEL_CONNECTION, "Gestor conectado", NotificationManager.IMPORTANCE_LOW).apply {
-            description = "Mantém a central de pedidos conectada mesmo fora da tela"
+            description = "Resumo dos pedidos de hoje e conexão em segundo plano"
             setSound(null, null)
             enableVibration(false)
             lockscreenVisibility = Notification.VISIBILITY_PUBLIC
@@ -68,7 +72,7 @@ object NotificationHelper {
     fun connectionNotification(
         context: Context,
         detail: String = "Monitorando novos pedidos",
-        pendingCount: Int = 0,
+        summary: DailyOrderSummary = DailyOrderSummary.load(context),
     ): Notification {
         val openIntent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
@@ -79,12 +83,39 @@ object NotificationHelper {
             openIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-        val text = if (pendingCount > 0) "$detail • $pendingCount aguardando confirmação" else detail
+
+        val compact = dailySummaryView(
+            context = context,
+            layoutId = R.layout.notification_daily_summary,
+            summary = summary,
+            detail = detail,
+            expanded = false,
+        )
+        val expanded = dailySummaryView(
+            context = context,
+            layoutId = R.layout.notification_daily_summary_expanded,
+            summary = summary,
+            detail = detail,
+            expanded = true,
+        )
+        val accessibleText = buildString {
+            append("Hoje: ")
+            append(summary.newOrders).append(" novos, ")
+            append(summary.queue).append(" fila, ")
+            append(summary.preparing).append(" preparo, ")
+            append(summary.ready).append(" prontos, ")
+            append(summary.delivery).append(" em entrega, ")
+            append(summary.completed).append(" finalizados e ")
+            append(summary.canceled).append(" cancelados")
+        }
+
         return NotificationCompat.Builder(context, CHANNEL_CONNECTION)
             .setSmallIcon(R.drawable.ic_notification)
-            .setContentTitle("Rodrigues Gestor conectado")
-            .setContentText(text)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(text))
+            .setContentTitle("Rodrigues Gestor • Hoje")
+            .setContentText(accessibleText)
+            .setCustomContentView(compact)
+            .setCustomBigContentView(expanded)
+            .setStyle(NotificationCompat.DecoratedCustomViewStyle())
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
@@ -93,6 +124,28 @@ object NotificationHelper {
             .setContentIntent(pending)
             .addAction(0, "ABRIR GESTOR", pending)
             .build()
+    }
+
+    private fun dailySummaryView(
+        context: Context,
+        layoutId: Int,
+        summary: DailyOrderSummary,
+        detail: String,
+        expanded: Boolean,
+    ): RemoteViews = RemoteViews(context.packageName, layoutId).apply {
+        setTextViewText(R.id.count_new, summary.newOrders.toString())
+        setTextViewText(R.id.count_queue, summary.queue.toString())
+        setTextViewText(R.id.count_preparing, summary.preparing.toString())
+        setTextViewText(R.id.count_ready, summary.ready.toString())
+        setTextViewText(R.id.count_delivery, summary.delivery.toString())
+        setTextViewText(R.id.count_completed, summary.completed.toString())
+        setTextViewText(R.id.count_canceled, summary.canceled.toString())
+        if (expanded) {
+            val time = summary.updatedAt.takeIf { it > 0L } ?: System.currentTimeMillis()
+            val clock = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(time))
+            val text = if (detail.isBlank()) "Hoje • atualizado às $clock" else "Hoje • $detail"
+            setTextViewText(R.id.daily_update_text, text)
+        }
     }
 
     fun orderNotification(
