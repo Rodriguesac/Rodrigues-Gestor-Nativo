@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="48dp"
+    android:gravity="center_vertical"
+    android:orientation="horizontal"
+    android:paddingStart="4dp"
+    android:paddingEnd="4dp">
+
+    <LinearLayout android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:gravity="center" android:orientation="vertical">
+        <ImageView android:layout_width="18dp" android:layout_height="18dp" android:contentDescription="Novos" android:src="@drawable/ic_stat_new" />
+        <TextView android:id="@+id/count_new" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="0" android:textColor="#212121" android:textSize="12sp" android:textStyle="bold" />
+    </LinearLayout>
+
+    <LinearLayout android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:gravity="center" android:orientation="vertical">
+        <ImageView android:layout_width="18dp" android:layout_height="18dp" android:contentDescription="Fila" android:src="@drawable/ic_stat_queue" />
+        <TextView android:id="@+id/count_queue" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="0" android:textColor="#212121" android:textSize="12sp" android:textStyle="bold" />
+    </LinearLayout>
+
+    <LinearLayout android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:gravity="center" android:orientation="vertical">
+        <ImageView android:layout_width="18dp" android:layout_height="18dp" android:contentDescription="Em preparo" android:src="@drawable/ic_stat_preparing" />
+        <TextView android:id="@+id/count_preparing" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="0" android:textColor="#212121" android:textSize="12sp" android:textStyle="bold" />
+    </LinearLayout>
+
+    <LinearLayout android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:gravity="center" android:orientation="vertical">
+        <ImageView android:layout_width="18dp" android:layout_height="18dp" android:contentDescription="Prontos" android:src="@drawable/ic_stat_ready" />
+        <TextView android:id="@+id/count_ready" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="0" android:textColor="#212121" android:textSize="12sp" android:textStyle="bold" />
+    </LinearLayout>
+
+    <LinearLayout android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:gravity="center" android:orientation="vertical">
+        <ImageView android:layout_width="18dp" android:layout_height="18dp" android:contentDescription="Em entrega" android:src="@drawable/ic_stat_delivery" />
+        <TextView android:id="@+id/count_delivery" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="0" android:textColor="#212121" android:textSize="12sp" android:textStyle="bold" />
+    </LinearLayout>
+
+    <LinearLayout android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:gravity="center" android:orientation="vertical">
+        <ImageView android:layout_width="18dp" android:layout_height="18dp" android:contentDescription="Finalizados" android:src="@drawable/ic_stat_completed" />
+        <TextView android:id="@+id/count_completed" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="0" android:textColor="#212121" android:textSize="12sp" android:textStyle="bold" />
+    </LinearLayout>
+
+    <LinearLayout android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:gravity="center" android:orientation="vertical">
+        <ImageView android:layout_width="18dp" android:layout_height="18dp" android:contentDescription="Cancelados" android:src="@drawable/ic_stat_canceled" />
+        <TextView android:id="@+id/count_canceled" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="0" android:textColor="#212121" android:textSize="12sp" android:textStyle="bold" />
+    </LinearLayout>
+
+</LinearLayout>
