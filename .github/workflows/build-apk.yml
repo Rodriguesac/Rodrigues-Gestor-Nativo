@@ -3,7 +3,10 @@ name: Gerar APK Rodrigues Gestor
 on:
   workflow_dispatch:
   push:
-    branches: [ "main", "master" ]
+    branches:
+      - main
+      - master
+      - work/gestor-v3-completo-2026-09-17
 
 permissions:
   contents: read
@@ -32,18 +35,21 @@ jobs:
         with:
           gradle-version: "8.13"
 
-      - name: Ativar leitura de pedidos pelo Supabase
+      - name: Ativar Supabase no Gestor
         run: python3 scripts/patch-supabase-orders.py
+
+      - name: Aplicar recursos v3
+        run: python3 scripts/patch-v3-ui.py
 
       - name: Compilar APK
         run: gradle :app:assembleDebug --stacktrace
 
       - name: Renomear APK
-        run: cp app/build/outputs/apk/debug/app-debug.apk Rodrigues-Gestor-v2.1.0-Supabase-debug.apk
+        run: cp app/build/outputs/apk/debug/app-debug.apk Rodrigues-Gestor-v3.0.0-Supabase-Voice-debug.apk
 
       - name: Disponibilizar APK
         uses: actions/upload-artifact@v4
         with:
-          name: Rodrigues-Gestor-APK
-          path: Rodrigues-Gestor-v2.1.0-Supabase-debug.apk
+          name: Rodrigues-Gestor-v3-APK
+          path: Rodrigues-Gestor-v3.0.0-Supabase-Voice-debug.apk
           retention-days: 30
