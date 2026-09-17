@@ -43,6 +43,9 @@ jobs:
       - name: Pedidos da tela principal no Supabase
         run: python3 scripts/patch-supabase-orders.py
 
+      - name: Cardápio completo no Supabase
+        run: python3 scripts/patch-supabase-catalog.py
+
       - name: Ativar painel flutuante
         run: python3 scripts/patch-floating-panel-ui.py
 
@@ -56,11 +59,11 @@ jobs:
         run: gradle :app:assembleDebug --stacktrace
 
       - name: Renomear APK
-        run: cp app/build/outputs/apk/debug/app-debug.apk Rodrigues-Gestor-v3-Voice-Painel-Mapa-Supabase-debug.apk
+        run: cp app/build/outputs/apk/debug/app-debug.apk Rodrigues-Gestor-v3-Completo-Supabase-Voice-debug.apk
 
       - name: Disponibilizar APK
         uses: actions/upload-artifact@v4
         with:
-          name: Rodrigues-Gestor-v3-Voice-Painel-Mapa-Supabase-APK
-          path: Rodrigues-Gestor-v3-Voice-Painel-Mapa-Supabase-debug.apk
+          name: Rodrigues-Gestor-v3-Completo-Supabase-Voice-APK
+          path: Rodrigues-Gestor-v3-Completo-Supabase-Voice-debug.apk
           retention-days: 30
