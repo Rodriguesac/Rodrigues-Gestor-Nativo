@@ -40,18 +40,24 @@ jobs:
         with:
           gradle-version: "8.13"
 
-      - name: Ativar opção de painel flutuante
+      - name: Ativar painel flutuante
         run: python3 scripts/patch-floating-panel-ui.py
+
+      - name: Ajustar status operacionais
+        run: python3 scripts/patch-operational-status.py
+
+      - name: Ativar mapa real do cliente
+        run: python3 scripts/patch-customer-map.py
 
       - name: Compilar APK
         run: gradle :app:assembleDebug --stacktrace
 
       - name: Renomear APK
-        run: cp app/build/outputs/apk/debug/app-debug.apk Rodrigues-Gestor-Painel-Rapido-debug.apk
+        run: cp app/build/outputs/apk/debug/app-debug.apk Rodrigues-Gestor-v3-Voice-Painel-Mapa-debug.apk
 
       - name: Disponibilizar APK
         uses: actions/upload-artifact@v4
         with:
-          name: Rodrigues-Gestor-Painel-Rapido-APK
-          path: Rodrigues-Gestor-Painel-Rapido-debug.apk
+          name: Rodrigues-Gestor-v3-Voice-Painel-Mapa-APK
+          path: Rodrigues-Gestor-v3-Voice-Painel-Mapa-debug.apk
           retention-days: 30
