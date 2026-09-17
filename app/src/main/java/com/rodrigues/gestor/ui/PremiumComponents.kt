@@ -42,6 +42,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.rodrigues.gestor.data.DeliveryTracking
+import com.rodrigues.gestor.data.Order
+import com.rodrigues.gestor.data.TrackingPoint
 import com.rodrigues.gestor.ui.theme.AcaiPurple
 import com.rodrigues.gestor.ui.theme.AcaiPurpleDark
 import com.rodrigues.gestor.ui.theme.RodriguesLime
@@ -203,6 +205,134 @@ internal fun DeliveryTrackingCard(
         }
     }
 }
+
+@Composable
+internal fun CustomerAddressMapCard(order: Order) {
+    val point = remember(order.id, order.raw) { customerPoint(order) }
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+    ) {
+        Column(Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Surface(
+                    modifier = Modifier.size(44.dp),
+                    color = AcaiPurple.copy(alpha = .10f),
+                    shape = RoundedCornerShape(15.dp),
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(Icons.Default.LocationOn, contentDescription = null, tint = AcaiPurple)
+                    }
+                }
+                Spacer(Modifier.width(10.dp))
+                Column(Modifier.weight(1f)) {
+                    Text("ENDEREÇO DO CLIENTE", fontSize = 10.sp, fontWeight = FontWeight.Black, color = AcaiPurpleDark, letterSpacing = .7.sp)
+                    Text(order.clientName, fontWeight = FontWeight.ExtraBold, fontSize = 17.sp)
+                    Text(order.address, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+            Spacer(Modifier.height(12.dp))
+            if (point.valid) {
+                CustomerMap(point)
+                Spacer(Modifier.height(8.dp))
+                Text("Pino do endereço informado no pedido.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            } else {
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    color = MaterialTheme.colorScheme.surfaceVariant,
+                    shape = RoundedCornerShape(18.dp),
+                ) {
+                    Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.LocationOn, null, tint = AcaiPurple)
+                        Spacer(Modifier.width(9.dp))
+                        Column {
+                            Text("Endereço sem coordenadas", fontWeight = FontWeight.Bold)
+                            Text("O endereço continua disponível acima, mas este pedido não trouxe latitude e longitude.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+private fun customerPoint(order: Order): TrackingPoint {
+    fun number(value: Any?): Double = when (value) {
+        is Number -> value.toDouble()
+        is String -> value.replace(',', '.').toDoubleOrNull() ?: 0.0
+        else -> 0.0
+    }
+    val address = order.raw["endereco"] as? Map<String, Any?>
+        ?: order.raw["delivery_address"] as? Map<String, Any?>
+        ?: order.raw["enderecoCliente"] as? Map<String, Any?>
+        ?: emptyMap()
+    val latLng = address["latlng"] as? Map<String, Any?>
+        ?: address["latLng"] as? Map<String, Any?>
+        ?: emptyMap()
+    val lat = sequenceOf(
+        latLng["lat"], address["lat"], address["latitude"], order.raw["clienteLat"], order.raw["customerLat"], order.raw["destinoLat"]
+    ).map(::number).firstOrNull { it != 0.0 } ?: 0.0
+    val lng = sequenceOf(
+        latLng["lng"], latLng["lon"], address["lng"], address["lon"], address["longitude"], order.raw["clienteLng"], order.raw["customerLng"], order.raw["destinoLng"]
+    ).map(::number).firstOrNull { it != 0.0 } ?: 0.0
+    return TrackingPoint(lat, lng)
+}
+
+@SuppressLint("SetJavaScriptEnabled")
+@Composable
+private fun CustomerMap(point: TrackingPoint) {
+    val context = LocalContext.current
+    val html = remember(point.lat, point.lng) { customerMapHtml(point) }
+    val holder = remember { arrayOfNulls<WebView>(1) }
+    AndroidView(
+        modifier = Modifier.fillMaxWidth().height(220.dp),
+        factory = {
+            WebView(context).apply {
+                holder[0] = this
+                setBackgroundColor(AndroidColor.TRANSPARENT)
+                settings.javaScriptEnabled = true
+                settings.domStorageEnabled = true
+                settings.setSupportZoom(false)
+                webViewClient = WebViewClient()
+                loadDataWithBaseURL("https://www.openstreetmap.org", html, "text/html", "UTF-8", null)
+            }
+        },
+        update = { view ->
+            if (view.tag != html.hashCode()) {
+                view.tag = html.hashCode()
+                view.loadDataWithBaseURL("https://www.openstreetmap.org", html, "text/html", "UTF-8", null)
+            }
+        },
+    )
+    DisposableEffect(Unit) {
+        onDispose {
+            holder[0]?.stopLoading()
+            holder[0]?.destroy()
+            holder[0] = null
+        }
+    }
+}
+
+private fun customerMapHtml(point: TrackingPoint): String = """
+    <!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+    <style>
+      html,body,#map{width:100%;height:100%;margin:0;background:#eeeaf1}body{font-family:Arial,sans-serif}
+      .leaflet-control-attribution{font-size:8px}.tag{padding:5px 8px;border-radius:99px;background:#fff;color:#3e006a;font-size:11px;font-weight:800;box-shadow:0 4px 14px #25003733;white-space:nowrap}
+      .pin{width:26px;height:26px;border:3px solid #fff;border-radius:50% 50% 50% 7px;transform:rotate(-45deg);background:#56008f;box-shadow:0 5px 12px #23003355}
+    </style></head><body><div id="map"></div>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script><script>
+      const customer=[${point.lat},${point.lng}];
+      const map=L.map('map',{zoomControl:true,attributionControl:true}).setView(customer,17);
+      L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(map);
+      const icon=L.divIcon({className:'',html:'<div class="pin"></div>',iconSize:[32,32],iconAnchor:[16,29]});
+      L.marker(customer,{icon}).addTo(map).bindTooltip('<div class="tag">Cliente</div>',{permanent:true,direction:'top',offset:[0,-18],className:''});
+      L.circle(customer,{radius:22,color:'#56008f',weight:2,fillColor:'#56008f',fillOpacity:.08}).addTo(map);
+    </script></body></html>
+""".trimIndent()
 
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
