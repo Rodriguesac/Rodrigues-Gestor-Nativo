@@ -27,14 +27,16 @@ class GestorConnectionService : Service() {
         super.onCreate()
         GestorCredentials.load(this)
         NotificationHelper.createChannels(this)
+        val savedSummary = DailyOrderSummary.load(this)
         startForeground(
             CONNECTION_NOTIFICATION_ID,
             NotificationHelper.connectionNotification(
                 this,
                 "Conectando à central de pedidos…",
-                DailyOrderSummary.load(this),
+                savedSummary,
             )
         )
+        FloatingPanelController.sync(this, savedSummary)
         FirebaseMessaging.getInstance().token.addOnSuccessListener(DeviceRegistrar::register)
         listenOrders()
     }
@@ -42,6 +44,7 @@ class GestorConnectionService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (GestorCredentials.pin.length != 6) GestorCredentials.load(this)
         if (orderListener == null) listenOrders()
+        FloatingPanelController.sync(this)
         return START_STICKY
     }
 
@@ -51,9 +54,11 @@ class GestorConnectionService : Service() {
             intervalMs = 5_000L,
             onData = { orders -> handleOrders(orders) },
             onError = {
+                val saved = DailyOrderSummary.load(this)
+                FloatingPanelController.sync(this, saved)
                 updateConnectionNotification(
                     "Sem conexão • tentando novamente",
-                    DailyOrderSummary.load(this),
+                    saved,
                 )
             }
         )
@@ -110,6 +115,7 @@ class GestorConnectionService : Service() {
         val dailySummary = DailyOrderSummary.fromOrders(orders)
         dailySummary.save(this)
         RodriguesStatusWidget.updateAll(this, dailySummary)
+        FloatingPanelController.sync(this, dailySummary)
         updateConnectionNotification(
             "atualizado às ${SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())}",
             dailySummary,
@@ -143,6 +149,7 @@ class GestorConnectionService : Service() {
     override fun onDestroy() {
         orderListener?.remove()
         orderListener = null
+        FloatingPanelController.hide(this)
         super.onDestroy()
     }
 
