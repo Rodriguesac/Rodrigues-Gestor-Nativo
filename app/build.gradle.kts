@@ -13,8 +13,8 @@ android {
         applicationId = "com.rodrigues.gestor"
         minSdk = 23
         targetSdk = 36
-        versionCode = 11
-        versionName = "2.1.0-supabase-orders"
+        versionCode = 12
+        versionName = "3.0.0-supabase-voice"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
