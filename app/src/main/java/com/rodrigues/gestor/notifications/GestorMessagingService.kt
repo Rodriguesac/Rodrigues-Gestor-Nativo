@@ -16,7 +16,14 @@ class GestorMessagingService : FirebaseMessagingService() {
         val data = message.data
         val type = (data["type"] ?: data["tipo"] ?: "").uppercase()
         val orderId = data["orderId"] ?: data["pedidoId"] ?: ""
-        val eventId = data["eventId"] ?: if (orderId.isNotBlank()) "novo_$orderId" else message.messageId.orEmpty()
+        val status = (data["status"] ?: data["statusPedido"] ?: "").trim().uppercase()
+        if (status in com.rodrigues.gestor.data.StatusGroups.CANCELED) {
+            OrderRingService.stopFor(this, orderId)
+            NotificationHelper.cancelOrder(this, orderId)
+            GestorConnectionService.start(this)
+            return
+        }
+        val eventId = data["eventId"] ?: if (orderId.isNotBlank()) "${type}_$orderId" else message.messageId.orEmpty()
         if (eventId.isNotBlank() && isDuplicate(eventId)) return
         val number = data["number"] ?: data["numeroPedido"] ?: orderId.takeLast(6).uppercase()
         val client = data["clientName"] ?: data["clienteNome"] ?: "Cliente"
@@ -24,7 +31,8 @@ class GestorMessagingService : FirebaseMessagingService() {
 
         when (type) {
             "NEW_ORDER", "NOVO_PEDIDO", "PEDIDO_NOVO" -> {
-                if (orderId.isNotBlank() && AlertPreferences.enabled(this)) OrderRingService.start(this, orderId, number, client)
+                // FCM can arrive late. Only the authoritative order feed may start a ring.
+                GestorConnectionService.start(this)
             }
             "CLIENT_MESSAGE", "MENSAGEM_CLIENTE" -> {
                 if (AlertPreferences.messageAlerts(this)) NotificationHelper.showMessage(this, "Mensagem do cliente", body, orderId)

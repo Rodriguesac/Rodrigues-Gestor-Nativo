@@ -9,6 +9,7 @@ import androidx.core.content.ContextCompat
 import com.google.firebase.firestore.ListenerRegistration
 import com.google.firebase.messaging.FirebaseMessaging
 import com.rodrigues.gestor.data.GestorCredentials
+import com.rodrigues.gestor.data.canAlert
 import com.rodrigues.gestor.data.Order
 import com.rodrigues.gestor.data.StatusGroups
 import com.rodrigues.gestor.data.SupabaseOrdersApi
@@ -88,7 +89,7 @@ class GestorConnectionService : Service() {
         }
 
         val pending = orders
-            .filter { it.status.uppercase(Locale.ROOT) in StatusGroups.NEW }
+            .filter { it.canAlert() }
             .map {
                 PendingOrder(
                     id = it.id,
@@ -100,6 +101,11 @@ class GestorConnectionService : Service() {
             .sortedBy { if (it.createdAt > 0L) it.createdAt else Long.MAX_VALUE }
 
         val pendingIds = pending.map { it.id }.toSet()
+        if (activeRingOrderId.isNotBlank() && activeRingOrderId !in pendingIds) {
+            OrderRingService.stopFor(this, activeRingOrderId)
+            NotificationHelper.cancelOrder(this, activeRingOrderId)
+            activeRingOrderId = ""
+        }
         val target = if (firstSnapshot) {
             pending.firstOrNull()
         } else {
@@ -123,7 +129,7 @@ class GestorConnectionService : Service() {
 
         val nextRing = when {
             target != null -> target
-            activeRingOrderId.isNotBlank() && activeRingOrderId !in pendingIds -> pending.firstOrNull()
+            activeRingOrderId.isBlank() -> pending.firstOrNull { it.id !in knownPending }
             else -> null
         }
         nextRing?.let {

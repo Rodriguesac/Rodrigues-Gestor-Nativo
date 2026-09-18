@@ -148,21 +148,23 @@ data class OrderChat(
 )
 
 object StatusGroups {
-    val NEW = setOf("AGUARDANDO_CONFIRMACAO", "RECEBIDO", "PENDENTE", "NOVO", "NOVO_PEDIDO")
-    val CONFIRMED = setOf("CONFIRMADO", "FILA", "ACEITO")
-    val PREPARING = setOf("EM_PREPARO", "PREPARANDO")
-    val READY = setOf("PRONTO")
+    val NEW = setOf("AGUARDANDO_CONFIRMACAO", "RECEBIDO", "PENDENTE", "NOVO", "NOVO_PEDIDO", "PENDING", "NEW", "RECEIVED", "AGUARDANDO_ACEITE")
+    val PAYMENT = setOf("AGUARDANDO_PAGAMENTO", "PAYMENT_PENDING")
+    val CONFIRMED = setOf("CONFIRMADO", "FILA", "ACEITO", "ACCEPTED", "CONFIRMED")
+    val PREPARING = setOf("EM_PREPARO", "PREPARANDO", "PREPARING", "PREPARO")
+    val READY = setOf("PRONTO", "READY")
     val DELIVERY = setOf(
         "BUSCANDO_ENTREGADOR", "AGUARDANDO_ENTREGADOR", "AGUARDANDO_DECISAO_GESTOR",
         "A_CAMINHO_LOJA", "ENTREGADOR_A_CAMINHO_LOJA", "COLETANDO", "ENTREGADOR_CHEGOU_LOJA",
-        "SAIU_ENTREGA", "SAIU_PARA_ENTREGA", "A_CAMINHO_CLIENTE", "EM_ENTREGA", "ENTREGADOR_NO_LOCAL"
+        "DESPACHADO", "SAIU_ENTREGA", "SAIU_PARA_ENTREGA", "A_CAMINHO_CLIENTE", "EM_ENTREGA", "ENTREGADOR_NO_LOCAL", "DISPATCHED", "OUT_FOR_DELIVERY"
     )
-    val DONE = setOf("ENTREGUE", "CONCLUIDO", "CONCLUÍDO", "FINALIZADO", "RETIRADO")
-    val CANCELED = setOf("CANCELADO", "CANCELADA")
+    val DONE = setOf("ENTREGUE", "CONCLUIDO", "CONCLUÍDO", "FINALIZADO", "RETIRADO", "COMPLETED", "DELIVERED")
+    val CANCELED = setOf("CANCELADO", "CANCELADA", "CANCELED", "CANCELLED", "REJECTED", "REJEITADO")
 
     fun label(status: String): String {
         val s = status.uppercase(Locale.ROOT)
         return when {
+            s in PAYMENT -> "Pagamento pendente"
             s in NEW -> "Novo"
             s in CONFIRMED -> "Confirmado"
             s in PREPARING -> "Em preparo"
@@ -242,7 +244,7 @@ fun normalizeOrder(id: String, raw: Map<String, Any?>): Order {
     }
 
     val status = firstString(raw, "status", "statusPedido", "statusLoja", "statusNormalizado", default = "RECEBIDO")
-        .uppercase(Locale.ROOT)
+        .trim().uppercase(Locale.ROOT)
     val number = firstString(raw, "numeroPedido", "codigoPedido", "numero", "codigoCurto", default = id.takeLast(6).uppercase())
     val clientName = firstString(client, "nome").ifBlank {
         firstString(raw, "clienteNome", "nomeCliente", "nome", default = "Cliente")
@@ -250,14 +252,14 @@ fun normalizeOrder(id: String, raw: Map<String, Any?>): Order {
     val clientUid = firstString(client, "uid").ifBlank { firstString(raw, "clienteUid", "uidCliente") }
     val phone = firstString(client, "telefone").ifBlank { firstString(raw, "clienteTelefone", "telefone") }
 
-    val address = firstString(addressMap, "completo", "texto").ifBlank {
-        val street = firstString(addressMap, "rua")
-        val num = firstString(addressMap, "numero")
-        val bairro = firstString(addressMap, "bairro")
+    val address = firstString(addressMap, "completo", "texto", "formatted", "formatted_address", "address").ifBlank {
+        val street = firstString(addressMap, "rua", "street", "logradouro")
+        val num = firstString(addressMap, "numero", "number")
+        val bairro = firstString(addressMap, "bairro", "neighborhood")
         listOf(street, num, bairro).filter { it.isNotBlank() }.joinToString(", ")
             .ifBlank { firstString(raw, "enderecoEntrega", "enderecoCliente", default = "Endereço não informado") }
     }
-    val neighborhood = firstString(addressMap, "bairro").ifBlank { firstString(raw, "clienteBairro") }
+    val neighborhood = firstString(addressMap, "bairro", "neighborhood").ifBlank { firstString(raw, "clienteBairro") }
 
     val paymentForm = firstString(paymentMap, "forma", "metodo").ifBlank {
         val p = raw["pagamento"]
@@ -367,7 +369,11 @@ fun normalizeDeliveryTracking(
         orderRaw["clienteCoords"],
         orderRaw["destinoCoords"],
         address["coords"],
+        address["latlng"],
+        address["latLng"],
         deliveryAddress["coords"],
+        deliveryAddress["latlng"],
+        deliveryAddress["latLng"],
         address,
         deliveryAddress,
         currentStop["coords"],
@@ -500,3 +506,9 @@ data class CatalogProduct(
     val category: String,
     val available: Boolean,
 )
+
+fun orderDateTime(millis: Long): String = if (millis > 0L)
+    SimpleDateFormat("dd/MM/yyyy • HH:mm", Locale("pt", "BR")).format(Date(millis)) else "Data não informada"
+
+fun Order.canAlert(now: Long = System.currentTimeMillis()): Boolean =
+    status in StatusGroups.NEW && createdMillis > 0L && now - createdMillis in 0L until 480_000L

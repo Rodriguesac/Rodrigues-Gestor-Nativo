@@ -14,6 +14,15 @@ import android.text.InputType
 import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.Toast
+import android.view.ViewGroup
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.runtime.LaunchedEffect
+import com.rodrigues.gestor.ui.HybridGestorView
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
@@ -35,6 +44,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.google.firebase.messaging.FirebaseMessaging
+import com.rodrigues.gestor.data.SupabaseOrdersApi
 import com.rodrigues.gestor.data.GestorCredentials
 import com.rodrigues.gestor.notifications.AlertPreferences
 import com.rodrigues.gestor.notifications.DeviceRegistrar
@@ -50,6 +60,8 @@ import java.util.Locale
 class MainActivity : ComponentActivity() {
     private var requestedOrderId by mutableStateOf<String?>(null)
     private var appStarted = false
+    private var showNativeTools by mutableStateOf(false)
+    private var hybridView: HybridGestorView? = null
     private var voiceBusy by mutableStateOf(false)
     private var textToSpeech: TextToSpeech? = null
 
@@ -107,8 +119,14 @@ class MainActivity : ComponentActivity() {
                     return@setOnClickListener
                 }
                 GestorCredentials.save(this, pin)
-                dialog.dismiss()
-                startGestor()
+                dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled = false
+                SupabaseOrdersApi.ping({
+                    dialog.dismiss()
+                    startGestor()
+                }, { error ->
+                    dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled = true
+                    input.error = error.message ?: "Não foi possível entrar"
+                })
             }
         }
         dialog.show()
@@ -130,17 +148,36 @@ class MainActivity : ComponentActivity() {
         setContent {
             RodriguesGestorTheme {
                 Box(Modifier.fillMaxSize()) {
-                    GestorApp(
-                        requestedOrderId = requestedOrderId,
-                        onRequestedOrderConsumed = { requestedOrderId = null }
-                    )
-                    FloatingActionButton(
+                    if (showNativeTools) {
+                        BackHandler { showNativeTools = false }
+                        Column(Modifier.fillMaxSize().safeDrawingPadding()) {
+                            TextButton(onClick = { showNativeTools = false }) { Text("‹ Voltar ao Gestor") }
+                            Box(Modifier.weight(1f)) {
+                                GestorApp(requestedOrderId = null, startInSettings = true, onRequestedOrderConsumed = {})
+                            }
+                        }
+                    } else {
+                        BackHandler { hybridView?.goBackOrExit { moveTaskToBack(true) } }
+                        AndroidView(
+                            modifier = Modifier.fillMaxSize().safeDrawingPadding(),
+                            factory = {
+                                val view = hybridView ?: HybridGestorView(this@MainActivity, { beginVoiceFlow() }, { showNativeTools = true }).also { hybridView = it }
+                                (view.parent as? ViewGroup)?.removeView(view)
+                                view
+                            },
+                        )
+                        LaunchedEffect(requestedOrderId) {
+                            hybridView?.showOrder(requestedOrderId)
+                            requestedOrderId = null
+                        }
+                    }
+                    if (showNativeTools) FloatingActionButton(
                         onClick = { beginVoiceFlow() },
                         modifier = Modifier
                             .align(Alignment.BottomEnd)
-                            .padding(end = 14.dp, bottom = 82.dp)
+                            .padding(end = 14.dp, bottom = 92.dp)
                             .size(50.dp),
-                        containerColor = Color(0xFF5A078F),
+                        containerColor = Color(0xFFEA1D2C),
                         contentColor = Color.White,
                     ) {
                         if (voiceBusy) {
@@ -164,7 +201,8 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        if (appStarted) {
+        if (appStarted && GestorCredentials.pin.length == 6) {
+            hybridView?.refreshOrders()
             GestorConnectionService.start(this)
             if (AlertPreferences.floatingPanel(this)) {
                 FloatingPanelController.sync(this)
@@ -182,6 +220,8 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
+        hybridView?.destroy()
+        hybridView = null
         textToSpeech?.stop()
         textToSpeech?.shutdown()
         textToSpeech = null

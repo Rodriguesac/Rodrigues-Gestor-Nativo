@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta name="theme-color" content="#ffffff" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <title>Rodrigues Gestor</title>
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <div id="loginView" class="login-view">
+    <div class="login-card">
+      <img src="./logo.png" alt="Rodrigues Açaí & Cia" class="login-logo" />
+      <h1>Rodrigues Gestor</h1>
+      <p>Digite o código de acesso do Gestor.</p>
+      <form id="loginForm">
+        <label>Código de acesso<input id="loginPin" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="off" required placeholder="••••••"></label>
+        <button id="loginBtn" type="submit" class="primary wide">Entrar</button>
+      </form>
+      <div id="loginError" class="form-error hidden"></div>
+      <div class="login-foot">Acesso à operação da loja</div>
+    </div>
+  </div>
+
+  <div id="appView" class="app hidden">
+    <header class="store-header">
+      <button id="storeHeaderButton" class="store-state" type="button">
+        <span id="storeDot" class="green-dot"></span>
+        <div><strong id="openLabel">Loja aberta</strong><span>Rodrigues Açaí & Cia</span></div>
+        <span class="header-chevron">›</span>
+      </button>
+      <div class="header-actions">
+        <button id="refreshBtn" class="round-btn" title="Atualizar" aria-label="Atualizar">↻</button>
+      </div>
+    </header>
+
+    <main id="mainContent" class="main-content">
+      <section id="homePage" class="page active"></section>
+      <section id="operationPage" class="page hidden"></section>
+      <section id="catalogPage" class="page hidden"></section>
+      <section id="reviewsPage" class="page hidden"></section>
+      <section id="morePage" class="page hidden"></section>
+      <section id="reportsPage" class="page hidden"></section>
+      <section id="chatPage" class="page hidden"></section>
+      <section id="storePage" class="page hidden"></section>
+    </main>
+
+    <nav class="bottom-nav" aria-label="Menu principal">
+      <button data-page="home" class="nav-item active"><span>⌂</span><small>Início</small></button>
+      <button data-page="operation" class="nav-item"><span>▣</span><small>Pedidos</small><i id="ordersBadge" class="badge hidden">0</i></button>
+      <button data-page="catalog" class="nav-item"><span>▤</span><small>Cardápio</small></button>
+      <button data-page="reviews" class="nav-item"><span>★</span><small>Avaliações</small></button>
+      <button data-page="more" class="nav-item"><span>☰</span><small>Mais</small></button>
+    </nav>
+  </div>
+
+  <div id="detailView" class="detail-view hidden">
+    <header class="detail-header">
+      <button id="detailBack" class="round-btn plain" aria-label="Voltar">‹</button>
+      <div><strong id="detailTitle">Pedido</strong><span id="detailSubtitle"></span></div>
+      <button id="detailMore" class="round-btn plain" aria-label="Mais ações">⋮</button>
+    </header>
+    <div id="detailScroll" class="detail-scroll"></div>
+    <footer id="detailActions" class="detail-actions"></footer>
+  </div>
+
+  <div id="chatModal" class="chat-modal hidden">
+    <header class="detail-header">
+      <button id="chatBack" class="round-btn plain" aria-label="Voltar">‹</button>
+      <div><strong id="chatTitle">Chat</strong><span id="chatSub"></span></div>
+      <span></span>
+    </header>
+    <div id="messagesList" class="messages-list"></div>
+    <form id="messageForm" class="message-form"><input id="messageInput" placeholder="Digite uma mensagem" autocomplete="off"><button type="submit">Enviar</button></form>
+  </div>
+
+  <div id="mapModal" class="map-modal hidden">
+    <header class="detail-header map-head"><button id="mapBack" class="round-btn plain">×</button><strong>Entrega</strong><span></span></header>
+    <div id="fullMap"></div>
+    <div id="mapCaption" class="map-caption"></div>
+  </div>
+
+  <div id="sheetBackdrop" class="sheet-backdrop hidden"></div>
+  <aside id="actionSheet" class="action-sheet hidden">
+    <div class="sheet-handle"></div>
+    <button data-sheet="print">🖨 Imprimir pedido</button>
+    <button data-sheet="cancel" class="danger-text">Cancelar pedido</button>
+    <button data-sheet="close">Fechar</button>
+  </aside>
+
+  <div id="reasonModal" class="reason-modal hidden">
+    <div class="reason-card">
+      <div class="reason-head"><div><h2 id="reasonTitle">Cancelar pedido</h2><p id="reasonHelp">Informe o motivo. Ele será exibido no pedido e no histórico.</p></div><button id="reasonClose" class="icon-close" type="button">×</button></div>
+      <label>Motivo
+        <select id="reasonSelect">
+          <option value="">Selecione…</option>
+          <option>Produto indisponível</option>
+          <option>Loja sem condições de atender</option>
+          <option>Endereço fora da área de entrega</option>
+          <option>Problema no pagamento</option>
+          <option>Cliente solicitou cancelamento</option>
+          <option>Outro</option>
+        </select>
+      </label>
+      <label>Observação (opcional)
+        <textarea id="reasonOther" rows="3" placeholder="Detalhe o motivo, se necessário"></textarea>
+      </label>
+      <div id="reasonSwipeMount" class="reason-swipe-mount"></div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+  <script>window.__RODRIGUES_ANDROID__ = navigator.userAgent.includes("RodriguesGestor/");</script>
+  <script src="./app.js"></script>
+  <script src="./hybrid.js"></script>
+</body>
+</html>

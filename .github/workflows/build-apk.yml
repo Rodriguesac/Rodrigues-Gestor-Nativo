@@ -6,7 +6,7 @@ on:
     branches:
       - main
       - master
-      - work/gestor-notificacao-diaria-2026-09-17
+      - work/gestor20rac-parceiros-2026-09-18
 
 permissions:
   contents: read
@@ -40,30 +40,15 @@ jobs:
         with:
           gradle-version: "8.13"
 
-      - name: Pedidos da tela principal no Supabase
-        run: python3 scripts/patch-supabase-orders.py
-
-      - name: Cardápio completo no Supabase
-        run: python3 scripts/patch-supabase-catalog.py
-
-      - name: Ativar painel flutuante
-        run: python3 scripts/patch-floating-panel-ui.py
-
-      - name: Ajustar status operacionais
-        run: python3 scripts/patch-operational-status.py
-
-      - name: Ativar mapa real do cliente
-        run: python3 scripts/patch-customer-map.py
-
       - name: Compilar APK
-        run: gradle :app:assembleDebug --stacktrace
+        run: gradle :app:testDebugUnitTest :app:assembleDebug --stacktrace
 
       - name: Renomear APK
-        run: cp app/build/outputs/apk/debug/app-debug.apk Rodrigues-Gestor-v3-Completo-Supabase-Voice-debug.apk
+        run: cp app/build/outputs/apk/debug/app-debug.apk Rodrigues-Gestor-v3.2-Hibrido-debug.apk
 
       - name: Disponibilizar APK
         uses: actions/upload-artifact@v4
         with:
-          name: Rodrigues-Gestor-v3-Completo-Supabase-Voice-APK
-          path: Rodrigues-Gestor-v3-Completo-Supabase-Voice-debug.apk
+          name: Rodrigues-Gestor-v3.2-Hibrido-APK
+          path: Rodrigues-Gestor-v3.2-Hibrido-debug.apk
           retention-days: 30

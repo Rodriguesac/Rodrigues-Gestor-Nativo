@@ -81,6 +81,7 @@ class OrderRingService : Service() {
             return START_NOT_STICKY
         }
         currentOrderId = orderId
+        activeOrderId = orderId
 
         startForeground(
             FOREGROUND_NOTIFICATION_ID,
@@ -128,6 +129,7 @@ class OrderRingService : Service() {
     }
 
     override fun onDestroy() {
+        if (activeOrderId == currentOrderId) activeOrderId = ""
         handler.removeCallbacksAndMessages(null)
         try { ringtone?.stop() } catch (_: Throwable) { }
         vibrator?.cancel()
@@ -140,6 +142,11 @@ class OrderRingService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     companion object {
+        @Volatile private var activeOrderId = ""
+
+        fun stopFor(context: Context, orderId: String) {
+            if (orderId.isNotBlank() && activeOrderId == orderId) stop(context)
+        }
         const val ACTION_STOP = "com.rodrigues.gestor.STOP_ORDER_RING"
         const val EXTRA_ORDER_ID = "order_id"
         const val EXTRA_NUMBER = "order_number"

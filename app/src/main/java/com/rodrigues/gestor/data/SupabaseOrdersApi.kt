@@ -77,6 +77,62 @@ object SupabaseOrdersApi {
         onError,
     )
 
+    fun findOrder(id: String, onData: (Order) -> Unit, onError: (Throwable) -> Unit) {
+        Thread {
+            try {
+                val order = fetchOrders().firstOrNull { it.id == id || it.number == id } ?: error("Pedido não encontrado. Atualize a lista.")
+                mainHandler.post { onData(order) }
+            } catch (e: Throwable) { mainHandler.post { onError(e) } }
+        }.start()
+    }
+
+    fun ping(onDone: () -> Unit, onError: (Throwable) -> Unit) =
+        runAction(JSONObject().put("action", "ping"), onDone, onError)
+
+    fun setStoreOpen(open: Boolean, onDone: () -> Unit, onError: (Throwable) -> Unit) =
+        runAction(JSONObject().put("action", "store_set").put("open", open), onDone, onError)
+
+    fun listenStore(onData: (StoreOperation) -> Unit, onError: (Throwable) -> Unit): ListenerRegistration = poll({
+        val value = request(JSONObject().put("action", "store_get")).optJSONObject("store")?.optJSONObject("value") ?: JSONObject()
+        val raw = jsonObjectToMap(value)
+        StoreOperation(open = value.optBoolean("aberta", false), pausedUntilMillis = parseIsoMillis(value.optString("pausaAte")),
+            maintenance = value.optBoolean("manutencao"), emergency = value.optBoolean("emergencia"),
+            closedMessage = value.optString("mensagemFechada"), demandMessage = value.optString("avisoDemanda"),
+            prepMinutes = value.optInt("tempoPreparoMin", 25), raw = raw)
+    }, onData, onError)
+
+    fun openChat(orderId: String, onReady: (String) -> Unit, onError: (Throwable) -> Unit) {
+        Thread {
+            try {
+                val id = request(JSONObject().put("action", "chat_open").put("orderId", orderId)).getJSONObject("conversation").getString("id")
+                mainHandler.post { onReady(id) }
+            } catch (e: Throwable) { mainHandler.post { onError(e) } }
+        }.start()
+    }
+
+    fun listenChat(id: String, onData: (OrderChat) -> Unit, onError: (Throwable) -> Unit): ListenerRegistration = poll({
+        val rows = request(JSONObject().put("action", "chat_messages").put("conversationId", id)).getJSONArray("messages")
+        val messages = (0 until rows.length()).map { index ->
+            val row = rows.getJSONObject(index)
+            val millis = parseIsoMillis(row.optString("created_at"))
+            ChatMessage(sender = if (row.optString("sender_type") == "staff") "gestor" else "cliente", text = row.optString("body"), time = timeText(millis), timestamp = millis)
+        }
+        OrderChat(id, "", messages)
+    }, onData, onError)
+
+    fun sendChat(id: String, text: String, onDone: () -> Unit, onError: (Throwable) -> Unit) =
+        runAction(JSONObject().put("action", "chat_send").put("conversationId", id).put("body", text.trim()), onDone, onError)
+
+    private fun <T> poll(fetch: () -> T, onData: (T) -> Unit, onError: (Throwable) -> Unit): ListenerRegistration {
+        val stopped = AtomicBoolean(false)
+        val executor = Executors.newSingleThreadScheduledExecutor()
+        executor.scheduleWithFixedDelay({
+            try { val data = fetch(); mainHandler.post { if (!stopped.get()) onData(data) } }
+            catch (e: Throwable) { mainHandler.post { if (!stopped.get()) onError(e) } }
+        }, 0, 5, TimeUnit.SECONDS)
+        return object : ListenerRegistration { override fun remove() { stopped.set(true); executor.shutdownNow() } }
+    }
+
     private fun runAction(payload: JSONObject, onDone: () -> Unit, onError: (Throwable) -> Unit) {
         Thread {
             try {
@@ -96,7 +152,7 @@ object SupabaseOrdersApi {
      */
     private fun fetchOrders(): List<Order> {
         val response = request(JSONObject().put("action", "list").put("limit", 120))
-        val rows = response.optJSONArray("orders") ?: JSONArray()
+        val rows = response.optJSONArray("orders") ?: throw IllegalStateException("Resposta de pedidos inválida. Tentando novamente.")
         return buildList {
             for (index in 0 until rows.length()) {
                 val row = rows.optJSONObject(index) ?: continue
@@ -121,6 +177,9 @@ object SupabaseOrdersApi {
                 val createdMillis = parseIsoMillis(row.optString("created_at"))
                 if (createdMillis > 0L) raw["createdAt"] = createdMillis
 
+                row.optString("cancellation_reason").takeIf { it.isNotBlank() && it != "null" }?.let { raw["motivoCancelamento"] = it }
+                row.optString("source").takeIf { it.isNotBlank() }?.let { raw["source"] = it }
+                row.optJSONObject("courier")?.let { raw["entregadorNome"] = it.optString("name") }
                 row.optJSONObject("delivery_address")?.let { raw["endereco"] = jsonObjectToMap(it) }
 
                 val customer = row.optJSONObject("customer")
@@ -169,7 +228,7 @@ object SupabaseOrdersApi {
         }.sortedByDescending { it.createdMillis }
     }
 
-    private fun request(payload: JSONObject): JSONObject {
+    internal fun request(payload: JSONObject): JSONObject {
         val pin = GestorCredentials.pin.trim()
         if (pin.length != 6) {
             throw IllegalStateException("PIN do Gestor não configurado. Feche e abra o aplicativo.")
@@ -240,7 +299,7 @@ object SupabaseOrdersApi {
         return 0L
     }
 
-    private fun jsonObjectToMap(value: JSONObject): Map<String, Any?> {
+    internal fun jsonObjectToMap(value: JSONObject): Map<String, Any?> {
         val result = linkedMapOf<String, Any?>()
         val keys = value.keys()
         while (keys.hasNext()) {

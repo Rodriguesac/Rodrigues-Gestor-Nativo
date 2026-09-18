@@ -30,7 +30,7 @@ imports = [
     "import android.webkit.WebViewClient\n",
     "import androidx.compose.ui.viewinterop.AndroidView\n",
 ]
-import_anchor = "import android.widget.EditText\n"
+import_anchor = "import android.app.Activity\n"
 for line in imports:
     if line not in ui:
         if import_anchor not in ui:
@@ -84,7 +84,7 @@ private fun CustomerAddressMapCard(
                 factory = { viewContext ->
                     WebView(viewContext).apply {
                         webViewClient = WebViewClient()
-                        settings.javaScriptEnabled = false
+                        settings.javaScriptEnabled = true
                         settings.setSupportZoom(true)
                         settings.builtInZoomControls = true
                         settings.displayZoomControls = false

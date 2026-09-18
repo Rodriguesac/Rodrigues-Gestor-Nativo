@@ -20,48 +20,7 @@ class OrdersRepository(
     fun listenOrders(
         onData: (List<Order>) -> Unit,
         onError: (Throwable) -> Unit,
-    ): ListenerRegistration {
-        var fallbackStarted = false
-        val primary = db.collection("pedidos")
-            .orderBy("createdAt", Query.Direction.DESCENDING)
-            .limit(120)
-            .addSnapshotListener { snapshot, error ->
-                if (error != null) {
-                    if (!fallbackStarted) {
-                        fallbackStarted = true
-                        fallbackOrdersListener = db.collection("pedidos")
-                            .limit(120)
-                            .addSnapshotListener { fallback, fallbackError ->
-                                if (fallbackError != null) onError(fallbackError)
-                                else if (fallback != null) {
-                                    val rows = fallback.documents.mapNotNull { doc ->
-                                        @Suppress("UNCHECKED_CAST")
-                                        val raw = doc.data as? Map<String, Any?> ?: return@mapNotNull null
-                                        normalizeOrder(doc.id, raw)
-                                    }.sortedByDescending { it.createdMillis }
-                                    onData(rows)
-                                }
-                            }
-                    } else onError(error)
-                    return@addSnapshotListener
-                }
-                if (snapshot != null) {
-                    val rows = snapshot.documents.mapNotNull { doc ->
-                        @Suppress("UNCHECKED_CAST")
-                        val raw = doc.data as? Map<String, Any?> ?: return@mapNotNull null
-                        normalizeOrder(doc.id, raw)
-                    }.sortedByDescending { it.createdMillis }
-                    onData(rows)
-                }
-            }
-        return object : ListenerRegistration {
-            override fun remove() {
-                primary.remove()
-                fallbackOrdersListener?.remove()
-                fallbackOrdersListener = null
-            }
-        }
-    }
+    ): ListenerRegistration = SupabaseOrdersApi.listenOrders(onData, onError)
 
     fun listenDrivers(onData: (List<Driver>) -> Unit, onError: (Throwable) -> Unit): ListenerRegistration =
         db.collection("entregadores").addSnapshotListener { snapshot, error ->
@@ -78,192 +37,22 @@ class OrdersRepository(
         }
 
     fun updateStatus(order: Order, nextStatus: String, onDone: () -> Unit, onError: (Throwable) -> Unit) {
-        val status = nextStatus.uppercase(Locale.ROOT)
-        val patch = mutableMapOf<String, Any>(
-            "status" to status,
-            "statusPedido" to status,
-            "statusLoja" to status,
-            "statusAtualizadoEm" to FieldValue.serverTimestamp(),
-            "updatedAt" to FieldValue.serverTimestamp(),
-            "historicoStatus" to FieldValue.arrayUnion(
-                mapOf(
-                    "status" to status,
-                    "titulo" to StatusGroups.label(status),
-                    "data" to isoNow(),
-                    "origem" to "RODRIGUES_GESTOR_ANDROID_NATIVE"
-                )
-            )
-        )
-        when (status) {
-            "CONFIRMADO" -> {
-                patch["aceitoEm"] = FieldValue.serverTimestamp()
-                patch["acceptedAt"] = FieldValue.serverTimestamp()
-            }
-            "EM_PREPARO" -> {
-                patch["preparoIniciadoEm"] = FieldValue.serverTimestamp()
-                patch["montagemAssumidaPorNome"] = "Rodrigues Gestor"
-                patch["montagemAssumidaEm"] = FieldValue.serverTimestamp()
-            }
-            "PRONTO" -> patch["prontoEm"] = FieldValue.serverTimestamp()
-            "ENTREGUE", "FINALIZADO" -> {
-                patch["entregueEm"] = FieldValue.serverTimestamp()
-                patch["finishedAt"] = FieldValue.serverTimestamp()
-                patch["finalizado"] = true
-            }
-        }
-        db.collection("pedidos").document(order.id).update(patch)
-            .addOnSuccessListener { onDone() }
-            .addOnFailureListener(onError)
+        SupabaseOrdersApi.updateStatus(order.id, nextStatus.uppercase(Locale.ROOT), onDone, onError)
     }
 
     fun finishPickup(order: Order, onDone: () -> Unit, onError: (Throwable) -> Unit) {
-        val patch = mapOf<String, Any>(
-            "status" to "FINALIZADO",
-            "statusPedido" to "FINALIZADO",
-            "statusEntrega" to "RETIRADO",
-            "entrega.status" to "RETIRADO",
-            "tipoEntregaOperacional" to "RETIRADA",
-            "entregaModo" to "RETIRADA",
-            "finalizado" to true,
-            "retiradoEm" to FieldValue.serverTimestamp(),
-            "finishedAt" to FieldValue.serverTimestamp(),
-            "updatedAt" to FieldValue.serverTimestamp(),
-            "statusAtualizadoEm" to FieldValue.serverTimestamp(),
-            "historicoStatus" to FieldValue.arrayUnion(
-                mapOf(
-                    "status" to "FINALIZADO",
-                    "titulo" to "Retirado no balcão",
-                    "data" to isoNow(),
-                    "origem" to "RODRIGUES_GESTOR_ANDROID_NATIVE"
-                )
-            )
-        )
-        db.collection("pedidos").document(order.id).update(patch)
-            .addOnSuccessListener { onDone() }
-            .addOnFailureListener(onError)
+        SupabaseOrdersApi.finishPickup(order.id, onDone, onError)
     }
 
     fun cancelOrder(order: Order, reason: String, onDone: () -> Unit, onError: (Throwable) -> Unit) {
-        val cleanReason = reason.trim().ifBlank { "Cancelado pela loja" }
-        val patch = mapOf<String, Any>(
-            "status" to "CANCELADO",
-            "statusPedido" to "CANCELADO",
-            "statusLoja" to "CANCELADO",
-            "cancelado" to true,
-            "motivoCancelamento" to cleanReason,
-            "canceladoEm" to FieldValue.serverTimestamp(),
-            "updatedAt" to FieldValue.serverTimestamp(),
-            "statusAtualizadoEm" to FieldValue.serverTimestamp(),
-            "historicoStatus" to FieldValue.arrayUnion(
-                mapOf(
-                    "status" to "CANCELADO",
-                    "titulo" to "Pedido cancelado",
-                    "motivo" to cleanReason,
-                    "data" to isoNow(),
-                    "origem" to "RODRIGUES_GESTOR_ANDROID_NATIVE"
-                )
-            )
-        )
-        db.collection("pedidos").document(order.id).update(patch)
-            .addOnSuccessListener { onDone() }
-            .addOnFailureListener(onError)
+        SupabaseOrdersApi.cancelOrder(order.id, reason.trim().ifBlank { "Cancelado pela loja" }, onDone, onError)
     }
 
-    fun ensureChat(order: Order, onReady: (String) -> Unit, onError: (Throwable) -> Unit) {
-        findChatByPedidoId(order.id) { id ->
-            if (id != null) onReady(id)
-            else findChatByPedidoId(order.number) { idByNumber ->
-                if (idByNumber != null) onReady(idByNumber)
-                else {
-                    val data = hashMapOf<String, Any>(
-                        "assunto" to "Falar com Atendente",
-                        "pedidoId" to order.id,
-                        "mensagens" to emptyList<Map<String, Any>>(),
-                        "digitandoCliente" to false,
-                        "digitandoGestor" to false,
-                        "gestorOnline" to true,
-                        "lidaCliente" to false,
-                        "lidaGestor" to true,
-                        "ultimoAcesso" to FieldValue.serverTimestamp()
-                    )
-                    db.collection("chats").add(data)
-                        .addOnSuccessListener { onReady(it.id) }
-                        .addOnFailureListener(onError)
-                }
-            }
-        }
-    }
+    fun ensureChat(order: Order, onReady: (String) -> Unit, onError: (Throwable) -> Unit) = SupabaseOrdersApi.openChat(order.id, onReady, onError)
 
-    private fun findChatByPedidoId(value: String, callback: (String?) -> Unit) {
-        db.collection("chats").whereEqualTo("pedidoId", value).limit(1).get()
-            .addOnSuccessListener { snapshot -> callback(snapshot.documents.firstOrNull()?.id) }
-            .addOnFailureListener { callback(null) }
-    }
+    fun listenChat(chatId: String, onData: (OrderChat) -> Unit, onError: (Throwable) -> Unit): ListenerRegistration = SupabaseOrdersApi.listenChat(chatId, onData, onError)
 
-    fun listenChat(chatId: String, onData: (OrderChat) -> Unit, onError: (Throwable) -> Unit): ListenerRegistration =
-        db.collection("chats").document(chatId).addSnapshotListener { doc, error ->
-            if (error != null) {
-                onError(error)
-                return@addSnapshotListener
-            }
-            if (doc == null || !doc.exists()) return@addSnapshotListener
-            @Suppress("UNCHECKED_CAST")
-            val raw = doc.data as? Map<String, Any?> ?: emptyMap()
-            val messages = (raw["mensagens"] as? List<*>)?.mapNotNull { any ->
-                @Suppress("UNCHECKED_CAST")
-                val m = any as? Map<String, Any?> ?: return@mapNotNull null
-                ChatMessage(
-                    sender = firstString(m, "remetente", default = "cliente"),
-                    text = firstString(m, "texto"),
-                    time = firstString(m, "horario"),
-                    timestamp = asDouble(m["timestamp"]).toLong()
-                )
-            } ?: emptyList()
-            onData(OrderChat(doc.id, firstString(raw, "pedidoId"), messages))
-            doc.reference.update(
-                mapOf(
-                    "gestorOnline" to true,
-                    "lidaGestor" to true,
-                    "digitandoGestor" to false,
-                    "ultimoAcesso" to FieldValue.serverTimestamp()
-                )
-            )
-        }
-
-    fun sendChatMessage(chatId: String, order: Order, text: String, onDone: () -> Unit, onError: (Throwable) -> Unit) {
-        val clean = text.trim()
-        if (clean.isBlank()) {
-            onError(IllegalArgumentException("Digite a mensagem."))
-            return
-        }
-        val message = mapOf<String, Any>(
-            "remetente" to "gestor",
-            "texto" to clean,
-            "horario" to SimpleDateFormat("HH:mm", Locale("pt", "BR")).format(Date()),
-            "timestamp" to System.currentTimeMillis()
-        )
-        db.collection("chats").document(chatId).update(
-            mapOf(
-                "mensagens" to FieldValue.arrayUnion(message),
-                "gestorOnline" to true,
-                "digitandoGestor" to false,
-                "lidaGestor" to true,
-                "lidaCliente" to false,
-                "ultimoAcesso" to FieldValue.serverTimestamp()
-            )
-        ).addOnSuccessListener {
-            db.collection("pedidos").document(order.id).update(
-                mapOf(
-                    "atendimento.chatAberto" to true,
-                    "atendimento.ultimaMensagem" to clean,
-                    "atendimento.ultimoAutor" to "LOJA",
-                    "atendimento.precisaAtencao" to false,
-                    "updatedAt" to FieldValue.serverTimestamp()
-                )
-            )
-            onDone()
-        }.addOnFailureListener(onError)
-    }
+    fun sendChatMessage(chatId: String, order: Order, text: String, onDone: () -> Unit, onError: (Throwable) -> Unit) = SupabaseOrdersApi.sendChat(chatId, text, onDone, onError)
 
     fun dispatchToDriver(
         order: Order,
@@ -598,79 +387,20 @@ class OrdersRepository(
     fun listenCatalogProducts(
         onData: (List<CatalogProduct>) -> Unit,
         onError: (Throwable) -> Unit,
-    ): ListenerRegistration = db.collection("catalogo_produtos").limit(250).addSnapshotListener { snapshot, error ->
-        if (error != null) {
-            onError(error)
-            return@addSnapshotListener
-        }
-        val rows = snapshot?.documents?.mapNotNull { doc ->
-            @Suppress("UNCHECKED_CAST")
-            val raw = doc.data as? Map<String, Any?> ?: return@mapNotNull null
-            CatalogProduct(
-                id = doc.id,
-                name = firstString(raw, "nome", "titulo", "n", default = doc.id),
-                category = firstString(raw, "categoriaNome", "categoria", "departamento"),
-                available = raw["disponivel"] != false && raw["pausado"] != true && raw["ativo"] != false,
-            )
-        }?.sortedBy { it.name.lowercase(Locale.ROOT) } ?: emptyList()
-        onData(rows)
-    }
+    ): ListenerRegistration = SupabaseCatalogApi.listenProducts(onData, onError)
 
-    fun setCatalogProductAvailable(product: CatalogProduct, available: Boolean, onDone: () -> Unit, onError: (Throwable) -> Unit) {
-        db.collection("catalogo_produtos").document(product.id)
-            .update(
-                mapOf(
-                    "disponivel" to available,
-                    "pausado" to !available,
-                    "updatedAt" to FieldValue.serverTimestamp(),
-                )
-            )
-            .addOnSuccessListener { onDone() }
-            .addOnFailureListener(onError)
-    }
-
-    fun listenOperation(
-        onData: (StoreOperation) -> Unit,
+    fun setCatalogProductAvailable(
+        product: CatalogProduct,
+        available: Boolean,
+        onDone: () -> Unit,
         onError: (Throwable) -> Unit,
-    ): ListenerRegistration = db.collection("gadm_operacao").document("master")
-        .addSnapshotListener { snapshot, error ->
-            if (error != null) {
-                onError(error)
-                return@addSnapshotListener
-            }
-            @Suppress("UNCHECKED_CAST")
-            val raw = snapshot?.data as? Map<String, Any?> ?: emptyMap()
-            val pauseMillis = asLongTime(raw["pausaAte"])
-            onData(
-                StoreOperation(
-                    open = raw["aberta"] != false,
-                    pausedUntilMillis = pauseMillis,
-                    maintenance = raw["manutencao"] == true,
-                    emergency = raw["emergencia"] == true,
-                    closedMessage = firstString(raw, "mensagemFechada"),
-                    demandMessage = firstString(raw, "avisoDemanda"),
-                    prepMinutes = asDouble(firstValue(raw, "tempoPreparoMin", "tempoPreparo", "previsaoMinutos"))
-                        .toInt().takeIf { it > 0 } ?: 25,
-                    raw = raw,
-                )
-            )
-        }
-
-    fun setStoreOpen(open: Boolean, onDone: () -> Unit, onError: (Throwable) -> Unit) {
-        val patch = hashMapOf<String, Any>(
-            "modo" to "manual",
-            "aberta" to open,
-            "emergencia" to false,
-            "manutencao" to false,
-            "updatedAt" to FieldValue.serverTimestamp(),
-            "atualizadoEm" to FieldValue.serverTimestamp(),
-        )
-        if (open) patch["pausaAte"] = FieldValue.delete()
-        db.collection("gadm_operacao").document("master")
-            .set(patch, com.google.firebase.firestore.SetOptions.merge())
-            .addOnSuccessListener { onDone() }
-            .addOnFailureListener(onError)
+    ) {
+        SupabaseCatalogApi.setAvailable(product, available, onDone, onError)
     }
+
+    fun listenOperation(onData: (StoreOperation) -> Unit, onError: (Throwable) -> Unit): ListenerRegistration = SupabaseOrdersApi.listenStore(onData, onError)
+
+    fun setStoreOpen(open: Boolean, onDone: () -> Unit, onError: (Throwable) -> Unit) = SupabaseOrdersApi.setStoreOpen(open, onDone, onError)
 
     fun pauseStore(minutes: Int, onDone: () -> Unit, onError: (Throwable) -> Unit) {
         val duration = minutes.coerceIn(5, 240)

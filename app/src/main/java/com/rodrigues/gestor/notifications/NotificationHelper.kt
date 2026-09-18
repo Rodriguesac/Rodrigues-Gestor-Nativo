@@ -250,6 +250,8 @@ object NotificationHelper {
         clientName: String,
         reason: String = "",
     ) {
+        OrderRingService.stopFor(context, orderId)
+        cancelOrder(context, orderId)
         if (!AlertPreferences.cancellationAlerts(context) || isCancellationDuplicate(context, orderId)) return
         createChannels(context)
         val openIntent = Intent(context, MainActivity::class.java).apply {

@@ -12,14 +12,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-val AcaiPurple = Color(0xFF5A078F)
-val AcaiPurpleDark = Color(0xFF3F006B)
-val AcaiPurpleSoft = Color(0xFFF4ECF8)
-val RodriguesLime = Color(0xFF79CF13)
-val RodriguesLimeDark = Color(0xFF4F8A0A)
-val WarmBackground = Color(0xFFF7F7F9)
-val Ink = Color(0xFF1D1721)
-val MutedInk = Color(0xFF6C6670)
+val AcaiPurple = Color(0xFFEA1D2C)
+val AcaiPurpleDark = Color(0xFFB41420)
+val AcaiPurpleSoft = Color(0xFFFFECEE)
+val RodriguesLime = Color(0xFF259B53)
+val RodriguesLimeDark = Color(0xFF208348)
+val WarmBackground = Color(0xFFF7F7F7)
+val Ink = Color(0xFF252525)
+val MutedInk = Color(0xFF717171)
 val WarningOrange = Color(0xFFF59E0B)
 val DestructiveRed = Color(0xFFD92D20)
 
@@ -30,8 +30,8 @@ private val GestorLightColors = lightColorScheme(
     onPrimaryContainer = AcaiPurpleDark,
     secondary = RodriguesLimeDark,
     onSecondary = Color.White,
-    secondaryContainer = Color(0xFFEEF8E0),
-    onSecondaryContainer = Color(0xFF274600),
+    secondaryContainer = Color(0xFFFFECEE),
+    onSecondaryContainer = Color(0xFFB41420),
     tertiary = WarningOrange,
     onTertiary = Ink,
     error = DestructiveRed,
@@ -42,10 +42,10 @@ private val GestorLightColors = lightColorScheme(
     onBackground = Ink,
     surface = Color.White,
     onSurface = Ink,
-    surfaceVariant = Color(0xFFF2F0F4),
+    surfaceVariant = Color(0xFFF2F2F2),
     onSurfaceVariant = MutedInk,
-    outline = Color(0xFFC9C3CC),
-    outlineVariant = Color(0xFFE7E3E9),
+    outline = Color(0xFFD6D6D6),
+    outlineVariant = Color(0xFFEAEAEA),
 )
 
 private val GestorTypography = Typography(

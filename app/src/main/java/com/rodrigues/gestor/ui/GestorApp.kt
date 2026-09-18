@@ -1,6 +1,9 @@
 package com.rodrigues.gestor.ui
 
 import android.app.Activity
+import android.webkit.WebView
+import android.webkit.WebViewClient
+import androidx.compose.ui.viewinterop.AndroidView
 import android.content.Context
 import android.content.Intent
 import android.media.RingtoneManager
@@ -80,6 +83,8 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -116,10 +121,13 @@ import com.rodrigues.gestor.data.OrdersRepository
 import com.rodrigues.gestor.data.PresenceSummary
 import com.rodrigues.gestor.data.StatusGroups
 import com.rodrigues.gestor.data.StoreOperation
+import com.rodrigues.gestor.data.canAlert
+import com.rodrigues.gestor.data.orderDateTime
 import com.rodrigues.gestor.data.money
 import com.rodrigues.gestor.data.normalizeDeliveryTracking
 import com.rodrigues.gestor.data.timeText
 import com.rodrigues.gestor.notifications.AlertPreferences
+import com.rodrigues.gestor.notifications.FloatingPanelController
 import com.rodrigues.gestor.notifications.NotificationHelper
 import com.rodrigues.gestor.notifications.OrderRingService
 import com.rodrigues.gestor.printing.OrderPrinter
@@ -143,6 +151,7 @@ private enum class MainSection(val label: String) {
 }
 
 private enum class Stage(val label: String) {
+    ALL("Em andamento"),
     NEW("Novos"),
     CONFIRMED("Confirmados"),
     PREPARING("Em preparo"),
@@ -155,6 +164,7 @@ private enum class Stage(val label: String) {
 @Composable
 fun GestorApp(
     requestedOrderId: String?,
+    startInSettings: Boolean = false,
     onRequestedOrderConsumed: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -170,8 +180,10 @@ fun GestorApp(
     var alterations by remember { mutableStateOf<List<OrderAlteration>>(emptyList()) }
     var products by remember { mutableStateOf<List<CatalogProduct>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
-    var stage by remember { mutableStateOf(Stage.NEW) }
-    var section by remember { mutableStateOf(MainSection.ORDERS) }
+    var loadError by remember { mutableStateOf<String?>(null) }
+    var reloadKey by remember { mutableStateOf(0) }
+    var stage by remember { mutableStateOf(Stage.ALL) }
+    var section by remember { mutableStateOf(if (startInSettings) MainSection.MORE else MainSection.ORDERS) }
     var search by remember { mutableStateOf("") }
     var selectedId by remember { mutableStateOf<String?>(null) }
     var urgentOrderId by remember { mutableStateOf<String?>(null) }
@@ -192,10 +204,10 @@ fun GestorApp(
         scope.launch { snackbar.showSnackbar(text) }
     }
 
-    DisposableEffect(Unit) {
+    DisposableEffect(reloadKey) {
         val orderListener = repository.listenOrders(
             onData = { list ->
-                val newOrders = list.filter { it.status in StatusGroups.NEW }
+                val newOrders = list.filter { it.canAlert() }
                 val fresh = newOrders.filter { it.id !in knownIds }
                 if (!firstSnapshot) {
                     list.forEach { current ->
@@ -218,24 +230,16 @@ fun GestorApp(
                     }
                 }
                 orders = list
+                loadError = null
                 loading = false
                 if (urgentOrderId != null && newOrders.none { it.id == urgentOrderId }) urgentOrderId = null
                 if (!firstSnapshot && fresh.isNotEmpty() && selectedId == null && urgentOrderId == null) {
-                    urgentOrderId = fresh.minByOrNull { if (it.createdMillis > 0) it.createdMillis else Long.MAX_VALUE }?.id
+                    urgentOrderId = null
                     section = MainSection.ORDERS
                     stage = Stage.NEW
                 }
 
-                if (alertsEnabled) {
-                    val target = when {
-                        firstSnapshot -> newOrders.minByOrNull { if (it.createdMillis > 0) it.createdMillis else Long.MAX_VALUE }
-                        fresh.isNotEmpty() -> fresh.minByOrNull { if (it.createdMillis > 0) it.createdMillis else Long.MAX_VALUE }
-                        else -> null
-                    }
-                    if (target != null) OrderRingService.start(context, target.id, target.number, target.clientName)
-                }
-                if (newOrders.isEmpty()) OrderRingService.stop(context)
-
+                // The connection service owns ringing, using the same authoritative feed.
                 knownIds.clear()
                 knownIds.addAll(list.map { it.id })
                 knownStatuses.clear()
@@ -246,7 +250,7 @@ fun GestorApp(
             },
             onError = { error ->
                 loading = false
-                showMessage("Erro ao ler pedidos: ${error.message ?: "desconhecido"}")
+                loadError = error.message ?: "Não foi possível atualizar os pedidos."
             }
         )
         val driverListener = repository.listenDrivers(onData = { drivers = it }, onError = { })
@@ -375,7 +379,7 @@ fun GestorApp(
                         alertsEnabled = !alertsEnabled
                         AlertPreferences.setEnabled(context, alertsEnabled)
                         if (alertsEnabled) {
-                            orders.firstOrNull { it.status in StatusGroups.NEW }?.let {
+                            orders.firstOrNull { it.canAlert() }?.let {
                                 OrderRingService.start(context, it.id, it.number, it.clientName)
                             }
                             showMessage("Alertas de novos pedidos ativados")
@@ -445,6 +449,8 @@ fun GestorApp(
                 modifier = Modifier.padding(padding),
                 orders = orders,
                 loading = loading,
+                loadError = loadError,
+                onRetry = { loading = true; reloadKey++ },
                 stage = stage,
                 search = search,
                 presence = presence,
@@ -496,55 +502,27 @@ private fun DashboardHeader(
     alertsEnabled: Boolean,
     onAlertsClick: () -> Unit,
 ) {
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .background(
-                Brush.linearGradient(
-                    listOf(AcaiPurpleDark, AcaiPurple, Color(0xFF7B18A9))
-                ),
-                RoundedCornerShape(bottomStart = 28.dp, bottomEnd = 28.dp),
-            )
-            .statusBarsPadding()
-            .padding(start = 18.dp, end = 14.dp, top = 14.dp, bottom = 18.dp)
-    ) {
+    Column(Modifier.fillMaxWidth().background(Color.White).statusBarsPadding().padding(horizontal = 16.dp, vertical = 12.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
+            Surface(color = MaterialTheme.colorScheme.primaryContainer, shape = RoundedCornerShape(12.dp)) {
+                Icon(Icons.Default.Store, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(10.dp).size(24.dp))
+            }
+            Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
-                Text(greetingText(), color = Color.White, fontWeight = FontWeight.Black, fontSize = 25.sp)
-                Text("Central de pedidos ao vivo", color = Color.White.copy(alpha = .76f), fontSize = 13.sp)
+                Text("Rodrigues Açaí e Cia", fontWeight = FontWeight.Bold, fontSize = 17.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text("Gestor de pedidos", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            Surface(
-                color = Color.White.copy(alpha = .15f),
-                shape = RoundedCornerShape(16.dp),
-            ) {
-                IconButton(onClick = onAlertsClick) {
-                    Icon(
-                        if (alertsEnabled) Icons.Default.Notifications else Icons.Default.NotificationsOff,
-                        contentDescription = "Alertas",
-                        tint = if (alertsEnabled) RodriguesLime else Color.White.copy(alpha = .72f),
-                    )
-                }
+            IconButton(onClick = onAlertsClick) {
+                Icon(if (alertsEnabled) Icons.Default.Notifications else Icons.Default.NotificationsOff, "Alertas", tint = MaterialTheme.colorScheme.primary)
             }
         }
-        Spacer(Modifier.height(14.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            DashboardBadge(
-                text = if (operation.acceptingOrders) "Loja aberta" else "Pedidos pausados",
-                dot = if (operation.acceptingOrders) RodriguesLime else WarningOrange,
-                modifier = Modifier.weight(1f),
-            )
-            DashboardBadge(
-                text = "Preparo ~${operation.prepMinutes} min",
-                dot = Color.White.copy(alpha = .8f),
-                modifier = Modifier.weight(1f),
-            )
+        Spacer(Modifier.height(10.dp))
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+            Text(if (operation.acceptingOrders) "● Loja aberta" else "● Loja pausada", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = if (operation.acceptingOrders) RodriguesLimeDark else DestructiveRed)
+            Text("Preparo: ${operation.prepMinutes} min", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        Spacer(Modifier.height(8.dp))
-        DashboardBadge(
-            text = "${presence.online} online • ${presence.cart} na sacola • ${presence.checkout} no checkout",
-            dot = RodriguesLime,
-            modifier = Modifier.fillMaxWidth(),
-        )
+        Spacer(Modifier.height(10.dp))
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
     }
 }
 
@@ -630,6 +608,8 @@ private fun OrdersHomeScreen(
     modifier: Modifier,
     orders: List<Order>,
     loading: Boolean,
+    loadError: String?,
+    onRetry: () -> Unit,
     stage: Stage,
     search: String,
     presence: PresenceSummary,
@@ -645,7 +625,8 @@ private fun OrdersHomeScreen(
     val red = AlertPreferences.lateRedMinutes(context)
     val filtered = remember(orders, stage, search, quickFilter, yellow) {
         val base = when (stage) {
-            Stage.NEW -> orders.filter { it.status in StatusGroups.NEW }
+            Stage.ALL -> orders.filter { it.status !in StatusGroups.DONE && it.status !in StatusGroups.CANCELED }
+            Stage.NEW -> orders.filter { it.status in StatusGroups.NEW || it.status in StatusGroups.PAYMENT }
             Stage.CONFIRMED -> orders.filter { it.status in StatusGroups.CONFIRMED }
             Stage.PREPARING -> orders.filter { it.status in StatusGroups.PREPARING }
             Stage.READY -> orders.filter { it.status in StatusGroups.READY }
@@ -684,7 +665,7 @@ private fun OrdersHomeScreen(
             modifier = Modifier.fillMaxWidth(),
             singleLine = true,
             leadingIcon = { Icon(Icons.Default.Search, null) },
-            placeholder = { Text("Pedido, cliente ou item") },
+            placeholder = { Text("Buscar pedido ou cliente", fontSize = 14.sp) },
             shape = RoundedCornerShape(16.dp),
         )
         Spacer(Modifier.height(6.dp))
@@ -698,9 +679,18 @@ private fun OrdersHomeScreen(
             }
         }
         Spacer(Modifier.height(6.dp))
+        if (loadError != null) {
+            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)) {
+                Column(Modifier.fillMaxWidth().padding(12.dp)) {
+                    Text("Não foi possível atualizar", fontWeight = FontWeight.Bold)
+                    Text(loadError, fontSize = 13.sp)
+                    TextButton(onClick = onRetry) { Text("Tentar novamente") }
+                }
+            }
+        }
         if (loading) {
             LoadingOrders()
-        } else if (filtered.isEmpty()) {
+        } else if (filtered.isEmpty() && loadError == null) {
             EmptyStage(stage)
         } else {
             LazyColumn(
@@ -767,6 +757,7 @@ private fun greetingText(): String = when (Calendar.getInstance().get(Calendar.H
 @Composable
 private fun MetricsRow(orders: List<Order>, selectedStage: Stage, onStage: (Stage) -> Unit) {
     val data = listOf(
+        Triple(Stage.ALL, orders.count { it.status !in StatusGroups.DONE && it.status !in StatusGroups.CANCELED }, AcaiPurple),
         Triple(Stage.NEW, orders.count { it.status in StatusGroups.NEW }, DestructiveRed),
         Triple(Stage.CONFIRMED, orders.count { it.status in StatusGroups.CONFIRMED }, AcaiPurple),
         Triple(Stage.PREPARING, orders.count { it.status in StatusGroups.PREPARING }, WarningOrange),
@@ -775,7 +766,7 @@ private fun MetricsRow(orders: List<Order>, selectedStage: Stage, onStage: (Stag
     )
     LazyRow(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(9.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
         contentPadding = PaddingValues(end = 4.dp),
     ) {
         items(data) { (stage, count, color) ->
@@ -785,7 +776,7 @@ private fun MetricsRow(orders: List<Order>, selectedStage: Stage, onStage: (Stag
                 color = color,
                 selected = selectedStage == stage,
                 onClick = { onStage(stage) },
-                modifier = Modifier.width(112.dp)
+                modifier = Modifier.width(if (stage == Stage.ALL) 128.dp else 100.dp)
             )
         }
     }
@@ -804,12 +795,12 @@ private fun MetricBox(
         onClick = onClick,
         modifier = modifier,
         colors = CardDefaults.cardColors(containerColor = if (selected) color.copy(alpha = .10f) else MaterialTheme.colorScheme.surface),
-        shape = RoundedCornerShape(18.dp),
+        shape = RoundedCornerShape(10.dp),
         border = androidx.compose.foundation.BorderStroke(if (selected) 1.5.dp else 1.dp, if (selected) color else MaterialTheme.colorScheme.outlineVariant),
-        elevation = CardDefaults.cardElevation(defaultElevation = if (selected) 3.dp else 1.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
-        Column(Modifier.fillMaxWidth().padding(vertical = 13.dp, horizontal = 10.dp)) {
-            Text(value, fontWeight = FontWeight.Black, color = color, fontSize = 24.sp)
+        Column(Modifier.fillMaxWidth().padding(vertical = 9.dp, horizontal = 10.dp)) {
+            Text(value, fontWeight = FontWeight.Black, color = color, fontSize = 20.sp)
             Spacer(Modifier.height(3.dp))
             Text(label, fontWeight = FontWeight.Bold, color = if (selected) color else MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp, maxLines = 1)
         }
@@ -863,6 +854,7 @@ private fun StageTabs(stage: Stage, orders: List<Order>, onStage: (Stage) -> Uni
     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         items(listOf(Stage.NEW, Stage.CONFIRMED, Stage.PREPARING, Stage.READY, Stage.DELIVERY)) { item ->
             val count = when (item) {
+                Stage.ALL -> orders.count { it.status !in StatusGroups.DONE && it.status !in StatusGroups.CANCELED }
                 Stage.NEW -> orders.count { it.status in StatusGroups.NEW }
                 Stage.CONFIRMED -> orders.count { it.status in StatusGroups.CONFIRMED }
                 Stage.PREPARING -> orders.count { it.status in StatusGroups.PREPARING }
@@ -885,6 +877,7 @@ private fun EmptyStage(stage: Stage) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Icon(
                 when (stage) {
+                    Stage.ALL -> Icons.Default.Restaurant
                     Stage.NEW -> Icons.Default.Notifications
                     Stage.CONFIRMED -> Icons.Default.CheckCircle
                     Stage.PREPARING -> Icons.Default.Restaurant
@@ -898,7 +891,7 @@ private fun EmptyStage(stage: Stage) {
             )
             Spacer(Modifier.height(8.dp))
             Text("Nenhum pedido aqui", fontWeight = FontWeight.Bold, fontSize = 18.sp)
-            Text("A lista atualiza automaticamente pelo Firestore.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("Os pedidos desta etapa aparecerão aqui.", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
@@ -926,16 +919,17 @@ private fun OrderCard(
     Card(
         onClick = onClick,
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(if (compact) 18.dp else 22.dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+        shape = RoundedCornerShape(12.dp),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
         colors = CardDefaults.cardColors(containerColor = urgency)
     ) {
         Column(Modifier.padding(if (compact) 12.dp else 15.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text("PEDIDO #${order.number}", fontWeight = FontWeight.Black, fontSize = if (compact) 17.sp else 19.sp)
+                    Text("PEDIDO #${order.number}", fontWeight = FontWeight.Black, fontSize = if (compact) 16.sp else 17.sp)
                     Text(
-                        "${timeText(order.createdMillis)} • ${order.clientName}",
+                        "${order.clientName} • ${orderDateTime(order.createdMillis)}",
                         fontSize = if (compact) 13.sp else 14.sp,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -1146,7 +1140,7 @@ private fun ProductsScreen(
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
         ) {
             Text(
-                "Aqui é operação rápida: pausar ou reativar. Cadastro completo continua no GADM.",
+                "Cardápio do Supabase: produtos e todo o Monte seu Pedido. Pause ou reative por aqui; cadastro completo continua no GADM.",
                 modifier = Modifier.padding(12.dp),
                 fontSize = 12.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -1224,7 +1218,7 @@ private fun StoreScreen(
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(24.dp),
-                colors = CardDefaults.cardColors(containerColor = if (operation.acceptingOrders) Color(0xFF182814) else Color(0xFF2B1717))
+                colors = CardDefaults.cardColors(containerColor = if (operation.acceptingOrders) Color(0xFF182814) else Color(0xFFFFECEE))
             ) {
                 Column(Modifier.padding(18.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                     Icon(Icons.Default.Store, null, modifier = Modifier.size(44.dp), tint = if (operation.acceptingOrders) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error)
@@ -1494,7 +1488,7 @@ private fun MessagesScreen(
             item { Text("Respostas do cliente", fontWeight = FontWeight.Black, fontSize = 18.sp, color = MaterialTheme.colorScheme.primary) }
             items(clientResponses, key = { "resp:${it.id}" }) { alt ->
                 val approved = alt.status.uppercase(Locale.ROOT) == "APROVADO_CLIENTE"
-                Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = if (approved) Color(0xFF182814) else Color(0xFF2B1717))) {
+                Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = if (approved) Color(0xFF182814) else Color(0xFFFFECEE))) {
                     Row(Modifier.padding(13.dp), verticalAlignment = Alignment.CenterVertically) {
                         Icon(if (approved) Icons.Default.CheckCircle else Icons.Default.Cancel, null, tint = if (approved) Color(0xFF65D66E) else Color(0xFFFF6B65))
                         Spacer(Modifier.width(8.dp))
@@ -1562,7 +1556,7 @@ private fun OperationScreen(
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(24.dp),
-                colors = CardDefaults.cardColors(containerColor = if (operation.acceptingOrders) Color(0xFF182814) else Color(0xFF2B1717))
+                colors = CardDefaults.cardColors(containerColor = if (operation.acceptingOrders) Color(0xFF182814) else Color(0xFFFFECEE))
             ) {
                 Column(Modifier.padding(17.dp)) {
                     Text(if (operation.acceptingOrders) "● LOJA ABERTA" else "● LOJA PAUSADA/FECHADA", fontWeight = FontWeight.Black, fontSize = 20.sp, color = if (operation.acceptingOrders) Color(0xFF65D66E) else Color(0xFFFF6B65))
@@ -1748,6 +1742,7 @@ private fun MoreScreen(
     var changeAlerts by remember { mutableStateOf(AlertPreferences.changeAlerts(context)) }
     var driverAlerts by remember { mutableStateOf(AlertPreferences.driverAlerts(context)) }
     var trackingDefault by remember { mutableStateOf(AlertPreferences.customerTrackingDefault(context)) }
+    var floatingPanel by remember { mutableStateOf(AlertPreferences.floatingPanel(context)) }
     var paymentAlerts by remember { mutableStateOf(AlertPreferences.paymentAlerts(context)) }
     var autoPrint by remember { mutableStateOf(AlertPreferences.autoPrintOnAccept(context)) }
     var copies by remember { mutableStateOf(AlertPreferences.printCopies(context)) }
@@ -1949,6 +1944,16 @@ private fun MoreScreen(
             DetailCard("Tela e aparência") {
                 SettingSwitchRow("Cards compactos", "Mostra mais pedidos por tela sem cortar nomes", compactCards) {
                     AlertPreferences.setCompactCards(context, it); onCompactChanged(it)
+                }
+                SettingSwitchRow("Painel flutuante", "Mostra um atalho sobre outros apps com os contadores de hoje", floatingPanel) { enabled ->
+                    floatingPanel = enabled
+                    if (enabled) {
+                        val granted = FloatingPanelController.enableOrRequest(context)
+                        onMessage(if (granted) "Painel flutuante ativado" else "Autorize o Rodrigues Gestor a aparecer sobre outros apps")
+                    } else {
+                        FloatingPanelController.disable(context)
+                        onMessage("Painel flutuante desativado")
+                    }
                 }
                 Text("Tema escuro operacional • alto contraste para balcão e celular", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
@@ -2167,6 +2172,11 @@ private fun OrderDetailScreen(
                 .navigationBarsPadding(),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
+            if (order.status in StatusGroups.CANCELED) {
+                DetailCard("Pedido cancelado") {
+                    Text(order.raw["motivoCancelamento"]?.toString()?.takeIf { it.isNotBlank() } ?: "Motivo não informado", color = MaterialTheme.colorScheme.error)
+                }
+            }
             OrderProgress(order)
 
             DetailCard("Cliente e entrega") {
@@ -2175,7 +2185,15 @@ private fun OrderDetailScreen(
                 LabelValue("Tipo", if (order.pickup) "Retirada no balcão" else "Entrega")
                 if (!order.pickup) LabelValue("Endereço", order.address)
                 val age = if (order.createdMillis > 0) ((System.currentTimeMillis() - order.createdMillis) / 60_000L).coerceAtLeast(0) else 0
-                LabelValue("Recebido", if (age == 0L) "Agora" else "Há $age min • ${timeText(order.createdMillis)}")
+                LabelValue("Recebido", orderDateTime(order.createdMillis))
+            }
+
+            if (!order.pickup && deliveryTracking.customer.valid) {
+                CustomerAddressMapCard(
+                    lat = deliveryTracking.customer.lat,
+                    lng = deliveryTracking.customer.lng,
+                    address = order.address,
+                )
             }
 
             DetailCard("Pagamento") {
@@ -2368,7 +2386,7 @@ private fun OrderDetailScreen(
             ) {
                 Icon(Icons.Default.Cancel, null)
                 Spacer(Modifier.width(6.dp))
-                Text("CANCELAR PEDIDO")
+                Text(if (order.status in StatusGroups.NEW) "REJEITAR PEDIDO" else "CANCELAR PEDIDO")
             }
         }
     }
@@ -2528,6 +2546,78 @@ private fun OrderProgress(order: Order) {
 }
 
 @Composable
+private fun CustomerAddressMapCard(
+    lat: Double,
+    lng: Double,
+    address: String,
+) {
+    val context = LocalContext.current
+    val delta = 0.006
+    val left = lng - delta
+    val bottom = lat - delta
+    val right = lng + delta
+    val top = lat + delta
+    val mapUrl = remember(lat, lng) {
+        "https://www.openstreetmap.org/export/embed.html?bbox=${left}%2C${bottom}%2C${right}%2C${top}&layer=mapnik&marker=${lat}%2C${lng}"
+    }
+
+    DetailCard("Mapa do endereço") {
+        Card(
+            modifier = Modifier.fillMaxWidth().height(190.dp),
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+        ) {
+            AndroidView(
+                modifier = Modifier.fillMaxSize(),
+                factory = { viewContext ->
+                    WebView(viewContext).apply {
+                        webViewClient = WebViewClient()
+                        settings.javaScriptEnabled = true
+                        settings.setSupportZoom(true)
+                        settings.builtInZoomControls = true
+                        settings.displayZoomControls = false
+                        loadUrl(mapUrl)
+                    }
+                },
+                update = { webView ->
+                    if (webView.url != mapUrl) webView.loadUrl(mapUrl)
+                }
+            )
+        }
+        Spacer(Modifier.height(8.dp))
+        Text(
+            address,
+            fontSize = 12.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Spacer(Modifier.height(8.dp))
+        OutlinedButton(
+            onClick = {
+                val label = Uri.encode(address.ifBlank { "Cliente" })
+                val geo = Uri.parse("geo:$lat,$lng?q=$lat,$lng($label)")
+                try {
+                    context.startActivity(Intent(Intent.ACTION_VIEW, geo))
+                } catch (_: Throwable) {
+                    context.startActivity(
+                        Intent(
+                            Intent.ACTION_VIEW,
+                            Uri.parse("https://www.openstreetmap.org/?mlat=$lat&mlon=$lng#map=17/$lat/$lng")
+                        )
+                    )
+                }
+            },
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Icon(Icons.Default.LocalShipping, null)
+            Spacer(Modifier.width(7.dp))
+            Text("ABRIR NO MAPA")
+        }
+    }
+}
+
+@Composable
 private fun DetailCard(title: String, content: @Composable () -> Unit) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -2565,82 +2655,40 @@ private fun ActionBlock(
     DetailCard("Próxima ação") {
         when {
             order.status in StatusGroups.NEW -> {
-                Button(
-                    onClick = onAccept,
-                    modifier = Modifier.fillMaxWidth().height(54.dp),
-                    enabled = !busy,
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
-                ) {
-                    Icon(Icons.Default.CheckCircle, null)
-                    Spacer(Modifier.width(8.dp))
-                    Text("ACEITAR PEDIDO", fontWeight = FontWeight.Black, fontSize = 16.sp)
-                }
+                var now by remember { mutableStateOf(System.currentTimeMillis()) }
+                LaunchedEffect(order.id) { while (true) { now = System.currentTimeMillis(); delay(1000) } }
+                val remaining = ((order.createdMillis + 480_000L - now) / 1000L).coerceAtLeast(0)
+                Text(if (remaining > 0) "Aceitar em ${remaining / 60}:${(remaining % 60).toString().padStart(2, '0')}" else "Prazo de aceite encerrado. Aguardando atualização.", fontSize = 13.sp, color = DestructiveRed)
+                SwipeActionButton("Arraste para aceitar", AcaiPurple, !busy && order.canAlert(now), onAccept)
             }
-            order.status in StatusGroups.CONFIRMED -> {
-                Button(
-                    onClick = onPrepare,
-                    modifier = Modifier.fillMaxWidth().height(54.dp),
-                    enabled = !busy,
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
-                ) {
-                    Icon(Icons.Default.Restaurant, null)
-                    Spacer(Modifier.width(8.dp))
-                    Text("INICIAR PREPARO", fontWeight = FontWeight.Black)
-                }
-            }
-            order.status in StatusGroups.PREPARING -> {
-                HoldActionButton(
-                    label = "SEGURE PARA MARCAR COMO PRONTO",
-                    color = Color(0xFFF28C18),
-                    enabled = !busy,
-                    onConfirmed = onReady
-                )
-            }
+            order.status in StatusGroups.CONFIRMED -> SwipeActionButton("Arraste para iniciar preparo", AcaiPurple, !busy, onPrepare)
+            order.status in StatusGroups.PREPARING -> SwipeActionButton("Arraste para marcar pronto", RodriguesLimeDark, !busy, onReady)
             order.status in StatusGroups.READY -> {
-                if (order.pickup) {
-                    HoldActionButton(
-                        label = "SEGURE PARA CONFIRMAR RETIRADA",
-                        color = Color(0xFF249B3B),
-                        enabled = !busy,
-                        onConfirmed = onFinish
-                    )
-                } else {
-                    Button(
-                        onClick = onCallDriver,
-                        modifier = Modifier.fillMaxWidth().height(54.dp),
-                        enabled = !busy,
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF249B3B))
-                    ) {
-                        Icon(Icons.Default.DeliveryDining, null)
-                        Spacer(Modifier.width(8.dp))
-                        Text("CHAMAR ENTREGADOR", fontWeight = FontWeight.Black)
-                    }
-                }
+                if (order.pickup) SwipeActionButton("Arraste para confirmar retirada", RodriguesLimeDark, !busy, onFinish)
+                else Button(onClick = onCallDriver, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("Chamar entregador") }
             }
-            order.status in StatusGroups.DELIVERY -> {
-                Text(
-                    "O cliente pode confirmar o recebimento pelo código de entrega. Use o botão abaixo apenas como alternativa operacional.",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontSize = 12.sp,
-                )
-                Spacer(Modifier.height(9.dp))
-                HoldActionButton(
-                    label = "SEGURE PARA CONFIRMAR MANUALMENTE",
-                    color = AcaiPurple,
-                    enabled = !busy,
-                    onConfirmed = onFinish
-                )
-            }
+            order.status in StatusGroups.DELIVERY -> SwipeActionButton("Arraste para finalizar entrega", AcaiPurple, !busy, onFinish)
+            order.status in StatusGroups.PAYMENT -> Text("Aguardando confirmação do pagamento.")
             else -> Text("Pedido encerrado.", fontWeight = FontWeight.Bold)
         }
-        if (busy) {
-            Spacer(Modifier.height(10.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
-                Spacer(Modifier.width(8.dp))
-                Text("Atualizando…")
-            }
-        }
+        if (busy) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+    }
+}
+
+@Composable
+private fun SwipeActionButton(label: String, color: Color, enabled: Boolean, onConfirmed: () -> Unit) {
+    var progress by remember(label) { mutableStateOf(0f) }
+    LaunchedEffect(enabled) { if (!enabled) progress = 0f }
+    Column(Modifier.fillMaxWidth().background(color.copy(alpha = .07f), RoundedCornerShape(12.dp)).padding(horizontal = 12.dp, vertical = 6.dp)) {
+        Text(label, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = if (enabled) color else MaterialTheme.colorScheme.onSurfaceVariant)
+        Slider(
+            value = progress,
+            onValueChange = { progress = it },
+            onValueChangeFinished = { val confirmed = progress >= .95f; progress = 0f; if (enabled && confirmed) onConfirmed() },
+            enabled = enabled,
+            colors = SliderDefaults.colors(thumbColor = color, activeTrackColor = color),
+            modifier = Modifier.fillMaxWidth(),
+        )
     }
 }
 
@@ -2735,13 +2783,13 @@ private fun CancelOrderScreen(
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             Text("Motivo do cancelamento", fontWeight = FontWeight.Black, fontSize = 20.sp)
-            Text("Escolha um motivo. Ele ficará registrado no pedido.", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
+            Text("Escolha um motivo. O cliente poderá vê-lo no pedido.", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
             reasons.forEach { option ->
                 Card(
                     onClick = { if (!busy) reason = option },
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = if (reason == option) Color(0xFF2B1717) else MaterialTheme.colorScheme.surface)
+                    colors = CardDefaults.cardColors(containerColor = if (reason == option) Color(0xFFFFECEE) else MaterialTheme.colorScheme.surface)
                 ) {
                     Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
                         Text(if (reason == option) "●" else "○", color = if (reason == option) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 20.sp)
@@ -2761,22 +2809,12 @@ private fun CancelOrderScreen(
             }
             Spacer(Modifier.weight(1f))
             val finalReason = if (reason == "Outro motivo") customReason.trim() else reason
-            Button(
-                onClick = { onConfirm(finalReason) },
-                modifier = Modifier.fillMaxWidth().height(56.dp),
+            SwipeActionButton(
+                label = if (busy) "Cancelando…" else if (order.status in StatusGroups.NEW) "Arraste para rejeitar" else "Arraste para cancelar",
+                color = MaterialTheme.colorScheme.error,
                 enabled = finalReason.isNotBlank() && !busy,
-                shape = RoundedCornerShape(16.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.error,
-                    contentColor = MaterialTheme.colorScheme.onError
-                )
-            ) {
-                if (busy) {
-                    CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
-                    Spacer(Modifier.width(8.dp))
-                }
-                Text(if (busy) "CANCELANDO…" else "CANCELAR PEDIDO", fontWeight = FontWeight.Black)
-            }
+                onConfirmed = { onConfirm(finalReason) },
+            )
         }
     }
 }
@@ -2837,7 +2875,7 @@ private fun DriverSelectionScreen(
             Text("Entregadores disponíveis", fontWeight = FontWeight.Black, fontSize = 18.sp)
             Spacer(Modifier.height(8.dp))
             if (available.isEmpty()) {
-                Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color(0xFF2B1717))) {
+                Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color(0xFFFFECEE))) {
                     Text("Nenhum entregador online e livre agora.", modifier = Modifier.padding(16.dp), color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
                 }
                 Spacer(Modifier.weight(1f))
