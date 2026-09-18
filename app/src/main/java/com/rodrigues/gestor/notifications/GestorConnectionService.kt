@@ -129,7 +129,7 @@ class GestorConnectionService : Service() {
 
         val nextRing = when {
             target != null -> target
-            activeRingOrderId.isBlank() -> pending.firstOrNull { it.id !in knownPending }
+            activeRingOrderId.isBlank() -> pending.firstOrNull()
             else -> null
         }
         nextRing?.let {
