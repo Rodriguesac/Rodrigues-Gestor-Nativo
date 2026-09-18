@@ -1,0 +1,52 @@
+const {chromium}=require('playwright');
+const assert=require('node:assert/strict');
+(async()=>{
+ const browser=await chromium.launch({headless:true,args:['--no-sandbox']});
+ const page=await browser.newPage({viewport:{width:393,height:852},userAgent:'Test RodriguesGestor/3.2.0'});
+ const errors=[];const mutations=[];let failOrders=false;
+ page.on('pageerror',e=>errors.push(e.message));
+ await page.addInitScript(()=>{window.bridgeMessages=[];window.RodriguesNative={postMessage:m=>window.bridgeMessages.push(JSON.parse(m))};});
+ const now=new Date().toISOString();
+ let orders=[{id:'test-new',order_code:'101',status:'PENDENTE',created_at:now,updated_at:now,total:24,customer_id:'test-customer',raw_payload:{},fulfillment_type:'delivery',delivery_address:{street:'Rua de teste',number:'10',district:'Centro'}},{id:'test-confirmed',order_code:'102',status:'CONFIRMADO',created_at:now,updated_at:now,total:30,customer_id:'test-customer',raw_payload:{}},{id:'test-cancel',order_code:'103',status:'CANCELED',created_at:now,updated_at:now,total:20,customer_id:'test-customer',cancellation_reason:'O tempo para aceite acabou, pedido cancelado automaticamente',raw_payload:{}}];
+ await page.route('https://**/*',async route=>{
+   if(!route.request().url().includes('gestor20rac-api'))return route.abort();
+   const body=route.request().postDataJSON();let data={ok:true};
+   if(body.action==='orders'){if(failOrders)return route.fulfill({status:503,json:{message:'Sem conexão de teste'}});data={...data,orders,customers:[{id:'test-customer',name:'Cliente de teste',phone:''}]};}
+   if(body.action==='login')data.session_token='test-only';
+   if(body.action==='store')data.operation={value:{aberta:true}};
+   if(body.action==='order_items')data.items=[{name:'Açaí 500 ml',quantity:1,total_price:24,unit_price:24,modifiers:{linhas:['Banana','Leite em pó']}}];
+   if(body.action==='products')data.products=[];
+   if(body.action==='reviews')data={...data,reviews:[],orders:[],customers:[]};
+   if(body.action==='conversations')data.conversations=[];
+   if(body.action==='update_order'){mutations.push(body);orders=orders.map(o=>o.id===body.order_id?{...o,...body.patch,updated_at:new Date().toISOString()}:o);}
+   return route.fulfill({json:data});
+ });
+ await page.goto('http://localhost:8765/index.html');
+ await page.evaluate(()=>window.startRodriguesNative('test-pin',null));
+ await page.locator('[data-page="operation"]').click();
+ await page.getByText('#102',{exact:false}).first().waitFor();
+ assert.equal(await page.evaluate(()=>statusKind('CANCELED')),'cancelled');
+ assert.equal(await page.evaluate(()=>statusKind('COMPLETED')),'done');
+ await page.screenshot({path:'hybrid-orders.png',fullPage:true});
+ await page.evaluate(()=>openOrder('test-new'));
+ const thumb=page.locator('#swipeAccept .swipe-thumb');await thumb.waitFor();
+ const box=await thumb.boundingBox();await page.mouse.move(box.x+25,box.y+25);await page.mouse.down();await page.mouse.move(box.x+40,box.y+25);await page.mouse.up();assert.equal(mutations.length,0,'incomplete swipe must not mutate');
+ await page.mouse.move(box.x+25,box.y+25);await page.mouse.down();await page.mouse.move(box.x+300,box.y+25,{steps:8});
+ await thumb.dispatchEvent('pointercancel',{pointerId:1});await page.mouse.up();
+ assert.equal(mutations.length,0,'cancelled pointer must not mutate');
+ await page.mouse.move(box.x+25,box.y+25);await page.mouse.down();await page.mouse.move(box.x+320,box.y+25,{steps:10});await page.mouse.up();
+ await page.waitForFunction(()=>state.orders.some(o=>o.id==='test-new'&&o.status==='CONFIRMADO'));
+ assert.equal(mutations.length,1,'full deliberate swipe confirms exactly once');
+ await page.evaluate(()=>openOrder('test-cancel'));
+ assert.match(await page.locator('#detailScroll').innerText(),/O tempo para aceite acabou/);
+ await page.screenshot({path:'hybrid-cancelled.png',fullPage:true});
+ await page.locator('#detailBack').click();
+ for(const tab of ['catalog','reviews','more'])await page.locator(`[data-page="${tab}"]`).click();
+ await page.getByText('Recursos Android',{exact:true}).click();
+ assert.equal(await page.evaluate(()=>bridgeMessages.at(-1).action),'tools');
+ failOrders=true;await page.evaluate(()=>window.refreshNativeOrders());
+ assert.match(await page.locator('#connectionError').innerText(),/Sem atualização/);
+ assert.equal(errors.length,0,JSON.stringify(errors));
+ console.log(JSON.stringify({passed:true,viewport:'393x852',checks:['active confirmed orders visible','canceled and completed aliases','incomplete drag no mutation','cancellation reason','catalog/reviews/more','Android tools bridge','connection error visible'],mutations:mutations.length}));
+ await browser.close();
+})().catch(e=>{console.error(e);process.exit(1)});

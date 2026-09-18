@@ -40,6 +40,27 @@ jobs:
         with:
           gradle-version: "8.13"
 
+      - name: Node para testar interface
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Testar interface hibrida
+        run: |
+          npm install --prefix /tmp/gestor-web-tests playwright@1.58.2
+          /tmp/gestor-web-tests/node_modules/.bin/playwright install --with-deps chromium
+          python3 -m http.server 8765 --directory app/src/main/assets/gestor &
+          server_pid=$!
+          trap 'kill "$server_pid"' EXIT
+          NODE_PATH=/tmp/gestor-web-tests/node_modules node scripts/test-hybrid.cjs
+
+      - name: Capturas dos testes
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Gestor-Hibrido-Interface
+          path: hybrid-*.png
+
       - name: Compilar APK
         run: gradle :app:testDebugUnitTest :app:assembleDebug --stacktrace
 
