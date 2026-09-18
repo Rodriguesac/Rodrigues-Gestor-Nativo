@@ -34,8 +34,12 @@ const assert=require('node:assert/strict');
  await page.mouse.move(box.x+25,box.y+25);await page.mouse.down();await page.mouse.move(box.x+300,box.y+25,{steps:8});
  await thumb.dispatchEvent('pointercancel',{pointerId:1});await page.mouse.up();
  assert.equal(mutations.length,0,'cancelled pointer must not mutate');
- await page.mouse.move(box.x+25,box.y+25);await page.mouse.down();await page.mouse.move(box.x+320,box.y+25,{steps:10});await page.mouse.up();
- await page.waitForFunction(()=>state.orders.some(o=>o.id==='test-new'&&o.status==='CONFIRMADO'));
+ // resetSwipe animates the thumb back to x=0; wait for that transition before the next real drag.
+ await page.waitForTimeout(220);
+ const resetBox=await thumb.boundingBox();
+ assert.ok(resetBox,'accept thumb must still be visible after pointercancel');
+ await page.mouse.move(resetBox.x+25,resetBox.y+25);await page.mouse.down();await page.mouse.move(resetBox.x+320,resetBox.y+25,{steps:10});await page.mouse.up();
+ await page.waitForFunction(()=>state.orders.some(o=>o.id==='test-new'&&o.status==='CONFIRMADO'),null,{timeout:5000});
  assert.equal(mutations.length,1,'full deliberate swipe confirms exactly once');
  await page.evaluate(()=>openOrder('test-cancel'));
  assert.match(await page.locator('#detailScroll').innerText(),/O tempo para aceite acabou/);
