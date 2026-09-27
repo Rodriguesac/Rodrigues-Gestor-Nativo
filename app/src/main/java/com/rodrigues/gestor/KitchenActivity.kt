@@ -1,5 +1,6 @@
 package com.rodrigues.gestor
 
+import android.content.Intent
 import android.os.Bundle
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
@@ -41,6 +42,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.rodrigues.gestor.data.GestorCredentials
 import com.rodrigues.gestor.data.Order
 import com.rodrigues.gestor.data.OrdersRepository
 import com.rodrigues.gestor.data.StatusGroups
@@ -52,6 +54,11 @@ import kotlin.math.max
 class KitchenActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (GestorCredentials.load(this).length != 6) {
+            startActivity(Intent(this, MainActivity::class.java))
+            finish()
+            return
+        }
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         setContent {
             RodriguesGestorTheme {
