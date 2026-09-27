@@ -5,6 +5,7 @@ import android.os.Bundle
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -12,11 +13,11 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -24,12 +25,15 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -37,104 +41,220 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.mediarouter.app.MediaRouteButton
+import com.google.android.gms.cast.framework.CastButtonFactory
+import com.rodrigues.gestor.cast.RodriguesCastBridge
+import com.rodrigues.gestor.cast.RodriguesCastConfig
 import com.rodrigues.gestor.data.GestorCredentials
 import com.rodrigues.gestor.data.Order
 import com.rodrigues.gestor.data.OrdersRepository
 import com.rodrigues.gestor.data.StatusGroups
 import com.rodrigues.gestor.data.money
 import com.rodrigues.gestor.ui.theme.RodriguesGestorTheme
+import kotlinx.coroutines.delay
 import java.util.Locale
 import kotlin.math.max
 
 class KitchenActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
         if (GestorCredentials.load(this).length != 6) {
             startActivity(Intent(this, MainActivity::class.java))
             finish()
             return
         }
+
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         setContent {
             RodriguesGestorTheme {
-                KitchenBoard()
+                KitchenRemoteScreen()
             }
         }
     }
 }
 
-private enum class KitchenStage(val title: String) {
-    NEW("NOVOS"),
-    CONFIRMED("ACEITOS"),
-    PREPARING("PREPARANDO"),
-    READY("PRONTOS"),
-}
-
 @Composable
-private fun KitchenBoard() {
+private fun KitchenRemoteScreen() {
+    val context = LocalContext.current
     val repository = remember { OrdersRepository() }
+
     var orders by remember { mutableStateOf<List<Order>>(emptyList()) }
+    var loading by remember { mutableStateOf(true) }
     var errorText by remember { mutableStateOf<String?>(null) }
     var updatingId by remember { mutableStateOf<String?>(null) }
+
+    var configuredId by remember { mutableStateOf(RodriguesCastConfig.receiverAppId(context)) }
+    var appIdInput by remember { mutableStateOf(configuredId) }
+    var castConnected by remember { mutableStateOf(false) }
+    var castDevice by remember { mutableStateOf<String?>(null) }
 
     DisposableEffect(Unit) {
         val listener = repository.listenOrders(
             onData = {
                 orders = it
+                loading = false
                 errorText = null
             },
-            onError = { errorText = it.message ?: "Falha ao carregar pedidos" }
+            onError = {
+                loading = false
+                errorText = it.message ?: "Erro ao carregar pedidos"
+            }
         )
         onDispose { listener.remove() }
     }
 
-    val active = orders.filter {
-        it.status !in StatusGroups.DONE &&
-            it.status !in StatusGroups.CANCELED &&
-            (it.status in StatusGroups.NEW ||
-                it.status in StatusGroups.CONFIRMED ||
-                it.status in StatusGroups.PREPARING ||
-                it.status in StatusGroups.READY)
+    LaunchedEffect(configuredId) {
+        if (configuredId.isBlank()) {
+            castConnected = false
+            castDevice = null
+            return@LaunchedEffect
+        }
+        while (true) {
+            castConnected = RodriguesCastBridge.isConnected(context)
+            castDevice = RodriguesCastBridge.deviceName(context)
+            delay(1_000)
+        }
+    }
+
+    LaunchedEffect(orders, castConnected) {
+        if (castConnected) RodriguesCastBridge.sendOrders(context, orders)
     }
 
     Surface(
         modifier = Modifier.fillMaxSize(),
-        color = Color(0xFF101014),
+        color = Color(0xFFF7F4FA),
     ) {
         Column(Modifier.fillMaxSize()) {
-            KitchenHeader(active.size, errorText)
-            Row(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(10.dp),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                KitchenStage.entries.forEach { stage ->
-                    KitchenColumn(
-                        modifier = Modifier.weight(1f).fillMaxHeight(),
-                        stage = stage,
-                        orders = active.filter { it.matchesKitchenStage(stage) },
-                        updatingId = updatingId,
-                        onAdvance = { order, status ->
-                            updatingId = order.id
-                            repository.updateStatus(
-                                order,
-                                status,
-                                {
-                                    updatingId = null
-                                    errorText = null
-                                },
-                                {
-                                    updatingId = null
-                                    errorText = it.message ?: "Não foi possível atualizar o pedido"
-                                }
-                            )
+            RemoteHeader(
+                configured = configuredId.isNotBlank(),
+                connected = castConnected,
+                deviceName = castDevice,
+            )
+
+            if (configuredId.isBlank()) {
+                CastSetupCard(
+                    appId = appIdInput,
+                    onAppId = { appIdInput = it.filter { ch -> ch.isLetterOrDigit() }.uppercase() },
+                    onSave = {
+                        val clean = appIdInput.trim().uppercase()
+                        if (clean.length < 6) {
+                            errorText = "Digite o ID do aplicativo Cast fornecido pelo Google."
+                        } else {
+                            RodriguesCastConfig.saveReceiverAppId(context, clean)
+                            configuredId = clean
+                            errorText = null
                         }
+                    }
+                )
+                errorText?.let { ErrorBanner(it) }
+                return@Column
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp),
+                horizontalArrangement = Arrangement.spacedBy(9.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                CastPickerButton()
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        if (castConnected) "TV conectada" else "Toque no ícone para escolher a TV",
+                        fontWeight = FontWeight.Black,
+                        fontSize = 15.sp,
                     )
+                    Text(
+                        castDevice ?: if (castConnected) "Chromecast" else "Nenhuma TV conectada",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 12.sp,
+                    )
+                }
+                OutlinedButton(onClick = {
+                    appIdInput = configuredId
+                    RodriguesCastConfig.saveReceiverAppId(context, "")
+                    configuredId = ""
+                }) {
+                    Text("ID Cast")
+                }
+            }
+
+            errorText?.let { ErrorBanner(it) }
+
+            if (loading) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator()
+                }
+                return@Column
+            }
+
+            val active = orders.filter { order ->
+                order.status !in StatusGroups.DONE &&
+                    order.status !in StatusGroups.CANCELED &&
+                    (order.status in StatusGroups.NEW ||
+                        order.status in StatusGroups.CONFIRMED ||
+                        order.status in StatusGroups.PREPARING ||
+                        order.status in StatusGroups.READY)
+            }
+
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 14.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Metric("Novos", active.count { it.status in StatusGroups.NEW }, Modifier.weight(1f))
+                Metric("Preparo", active.count { it.status in StatusGroups.PREPARING }, Modifier.weight(1f))
+                Metric("Prontos", active.count { it.status in StatusGroups.READY }, Modifier.weight(1f))
+            }
+
+            Spacer(Modifier.height(8.dp))
+
+            if (active.isEmpty()) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text(
+                        "Nenhum pedido na cozinha",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 18.sp,
+                    )
+                }
+            } else {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize().padding(horizontal = 14.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    contentPadding = PaddingValues(bottom = 28.dp),
+                ) {
+                    items(active.sortedBy { if (it.createdMillis > 0L) it.createdMillis else Long.MAX_VALUE }, key = { it.id }) { order ->
+                        RemoteOrderCard(
+                            order = order,
+                            busy = updatingId == order.id,
+                            castConnected = castConnected,
+                            onAdvance = { status ->
+                                updatingId = order.id
+                                repository.updateStatus(
+                                    order,
+                                    status,
+                                    {
+                                        updatingId = null
+                                        errorText = null
+                                    },
+                                    {
+                                        updatingId = null
+                                        errorText = it.message ?: "Não foi possível atualizar o pedido"
+                                    }
+                                )
+                            },
+                            onAttention = {
+                                if (!RodriguesCastBridge.sendAttention(context, order)) {
+                                    errorText = "Conecte a TV antes de chamar atenção."
+                                }
+                            },
+                        )
+                    }
                 }
             }
         }
@@ -142,235 +262,204 @@ private fun KitchenBoard() {
 }
 
 @Composable
-private fun KitchenHeader(activeCount: Int, errorText: String?) {
-    Row(
-        modifier = Modifier
+private fun RemoteHeader(configured: Boolean, connected: Boolean, deviceName: String?) {
+    Column(
+        Modifier
             .fillMaxWidth()
             .background(Color(0xFF64118B))
-            .padding(horizontal = 18.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
+            .padding(horizontal = 18.dp, vertical = 16.dp)
     ) {
-        Column(Modifier.weight(1f)) {
+        Text(
+            "Controle da Cozinha",
+            color = Color.White,
+            fontSize = 26.sp,
+            fontWeight = FontWeight.Black,
+        )
+        Text(
+            when {
+                !configured -> "Configure o Receiver do Chromecast"
+                connected -> "Transmitindo painel para ${deviceName ?: "a TV"}"
+                else -> "Chromecast pronto para conectar"
+            },
+            color = Color.White.copy(alpha = .80f),
+            fontSize = 13.sp,
+            fontWeight = FontWeight.Bold,
+        )
+    }
+}
+
+@Composable
+private fun CastSetupCard(appId: String, onAppId: (String) -> Unit, onSave: () -> Unit) {
+    Card(
+        modifier = Modifier.fillMaxWidth().padding(16.dp),
+        shape = RoundedCornerShape(22.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+    ) {
+        Column(Modifier.padding(18.dp)) {
+            Text("Ativar Chromecast nativo", fontWeight = FontWeight.Black, fontSize = 20.sp)
+            Spacer(Modifier.height(5.dp))
             Text(
-                "RODRIGUES • COZINHA",
-                color = Color.White,
-                fontSize = 25.sp,
-                fontWeight = FontWeight.Black,
-            )
-            Text(
-                "Painel ao vivo • ${activeCount} pedido(s) na produção",
-                color = Color.White.copy(alpha = 0.78f),
+                "Cole aqui o ID do aplicativo Receiver criado no Google Cast. Isso é feito uma única vez.",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontSize = 13.sp,
-                fontWeight = FontWeight.Bold,
             )
-        }
-        if (errorText != null) {
-            Text(
-                errorText,
-                color = Color(0xFFFFD1D1),
-                fontWeight = FontWeight.Bold,
-                fontSize = 12.sp,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.fillMaxWidth(0.35f),
+            Spacer(Modifier.height(12.dp))
+            OutlinedTextField(
+                value = appId,
+                onValueChange = onAppId,
+                label = { Text("ID Cast") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
             )
+            Spacer(Modifier.height(10.dp))
+            Button(
+                onClick = onSave,
+                modifier = Modifier.fillMaxWidth().height(52.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF64118B)),
+            ) {
+                Text("SALVAR E ATIVAR TV", fontWeight = FontWeight.Black)
+            }
         }
     }
 }
 
 @Composable
-private fun KitchenColumn(
-    modifier: Modifier,
-    stage: KitchenStage,
-    orders: List<Order>,
-    updatingId: String?,
-    onAdvance: (Order, String) -> Unit,
-) {
-    Column(
-        modifier = modifier
-            .background(Color(0xFF1A1A20), RoundedCornerShape(18.dp))
-            .padding(10.dp)
+private fun CastPickerButton() {
+    val context = LocalContext.current
+    Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = Color.White,
+        border = BorderStroke(1.dp, Color(0xFFE2DAE8)),
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                stage.title,
-                color = stage.stageColor(),
-                fontWeight = FontWeight.Black,
-                fontSize = 16.sp,
-                modifier = Modifier.weight(1f),
-            )
-            Text(
-                orders.size.toString(),
-                color = Color.White,
-                fontWeight = FontWeight.Black,
-                fontSize = 18.sp,
-            )
-        }
-        HorizontalDivider(color = Color.White.copy(alpha = 0.08f))
-        Spacer(Modifier.height(7.dp))
-
-        if (orders.isEmpty()) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text(
-                    "Sem pedidos",
-                    color = Color.White.copy(alpha = 0.35f),
-                    fontWeight = FontWeight.Bold,
-                )
-            }
-        } else {
-            LazyColumn(
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-                contentPadding = PaddingValues(bottom = 16.dp),
-            ) {
-                items(orders, key = { it.id }) { order ->
-                    KitchenOrderCard(
-                        order = order,
-                        stage = stage,
-                        busy = updatingId == order.id,
-                        onAdvance = onAdvance,
-                    )
+        AndroidView(
+            modifier = Modifier.size(54.dp),
+            factory = {
+                MediaRouteButton(it).apply {
+                    CastButtonFactory.setUpMediaRouteButton(context, this)
                 }
             }
+        )
+    }
+}
+
+@Composable
+private fun ErrorBanner(text: String) {
+    Surface(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 5.dp),
+        color = Color(0xFFFFE5E5),
+        shape = RoundedCornerShape(14.dp),
+    ) {
+        Text(
+            text,
+            modifier = Modifier.padding(12.dp),
+            color = Color(0xFF9E1D1D),
+            fontWeight = FontWeight.Bold,
+            fontSize = 13.sp,
+        )
+    }
+}
+
+@Composable
+private fun Metric(label: String, value: Int, modifier: Modifier = Modifier) {
+    Surface(
+        modifier = modifier,
+        color = Color.White,
+        shape = RoundedCornerShape(16.dp),
+        border = BorderStroke(1.dp, Color(0xFFE5DFE9)),
+    ) {
+        Column(Modifier.padding(10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(value.toString(), fontWeight = FontWeight.Black, fontSize = 21.sp, color = Color(0xFF64118B))
+            Text(label, fontSize = 11.sp, fontWeight = FontWeight.Bold)
         }
     }
 }
 
 @Composable
-private fun KitchenOrderCard(
+private fun RemoteOrderCard(
     order: Order,
-    stage: KitchenStage,
     busy: Boolean,
-    onAdvance: (Order, String) -> Unit,
+    castConnected: Boolean,
+    onAdvance: (String) -> Unit,
+    onAttention: () -> Unit,
 ) {
     val minutes = if (order.createdMillis > 0L) {
         max(0L, (System.currentTimeMillis() - order.createdMillis) / 60_000L)
     } else 0L
 
     Card(
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF26262E)),
-        shape = RoundedCornerShape(14.dp),
         modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(19.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
     ) {
-        Column(Modifier.padding(12.dp)) {
+        Column(Modifier.padding(15.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    "#${order.number}",
-                    color = Color.White,
-                    fontSize = 24.sp,
-                    fontWeight = FontWeight.Black,
-                    modifier = Modifier.weight(1f),
-                )
-                Text(
-                    "${minutes} min",
-                    color = when {
-                        minutes >= 30 -> Color(0xFFFF6B6B)
-                        minutes >= 20 -> Color(0xFFFFC857)
-                        else -> Color(0xFF8BE28B)
-                    },
-                    fontWeight = FontWeight.Black,
-                    fontSize = 14.sp,
-                )
-            }
-
-            Text(
-                order.clientName.uppercase(Locale("pt", "BR")),
-                color = Color.White.copy(alpha = 0.82f),
-                fontWeight = FontWeight.Black,
-                fontSize = 15.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                if (order.pickup) "RETIRADA" else "ENTREGA",
-                color = Color.White.copy(alpha = 0.48f),
-                fontWeight = FontWeight.Bold,
-                fontSize = 11.sp,
-            )
-
-            Spacer(Modifier.height(7.dp))
-            order.items.take(8).forEach { item ->
-                Text(
-                    "${item.quantity}x ${item.name}",
-                    color = Color.White,
-                    fontWeight = FontWeight.Black,
-                    fontSize = 14.sp,
-                )
-                item.details.take(6).forEach { detail ->
+                Column(Modifier.weight(1f)) {
+                    Text("#${order.number}", fontWeight = FontWeight.Black, fontSize = 23.sp, color = Color(0xFF64118B))
                     Text(
-                        "• ${detail}",
-                        color = Color.White.copy(alpha = 0.72f),
-                        fontSize = 12.sp,
-                        lineHeight = 15.sp,
+                        order.clientName,
+                        fontWeight = FontWeight.Black,
+                        fontSize = 16.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                Column(horizontalAlignment = Alignment.End) {
+                    Text("${minutes} min", fontWeight = FontWeight.Black, fontSize = 14.sp)
+                    Text(
+                        StatusGroups.label(order.status),
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }
-            if (order.items.size > 8) {
-                Text(
-                    "+ ${order.items.size - 8} item(ns)",
-                    color = Color.White.copy(alpha = 0.60f),
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 12.sp,
-                )
-            }
-
-            if (order.observation.isNotBlank()) {
-                Spacer(Modifier.height(6.dp))
-                Text(
-                    "OBS: ${order.observation}",
-                    color = Color(0xFFFFDC73),
-                    fontWeight = FontWeight.Black,
-                    fontSize = 12.sp,
-                )
-            }
 
             Spacer(Modifier.height(8.dp))
-            Text(
-                money(order.total),
-                color = Color.White.copy(alpha = 0.80f),
-                fontWeight = FontWeight.Black,
-                fontSize = 15.sp,
-            )
+            order.items.take(4).forEach { item ->
+                Text(
+                    "${item.quantity}x ${item.name}",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 13.sp,
+                )
+            }
+            if (order.items.size > 4) {
+                Text("+ ${order.items.size - 4} item(ns)", fontSize = 12.sp)
+            }
 
-            stage.nextStatus()?.let { next ->
-                Spacer(Modifier.height(8.dp))
-                Button(
-                    onClick = { onAdvance(order, next.first) },
-                    enabled = !busy,
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.buttonColors(containerColor = stage.stageColor()),
-                    shape = RoundedCornerShape(11.dp),
+            Spacer(Modifier.height(6.dp))
+            Text(money(order.total), fontWeight = FontWeight.Black, fontSize = 16.sp)
+
+            Row(
+                Modifier.fillMaxWidth().padding(top = 10.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                nextKitchenAction(order.status)?.let { action ->
+                    Button(
+                        onClick = { onAdvance(action.first) },
+                        enabled = !busy,
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF64118B)),
+                    ) {
+                        Text(if (busy) "ATUALIZANDO..." else action.second, fontWeight = FontWeight.Black)
+                    }
+                }
+                OutlinedButton(
+                    onClick = onAttention,
+                    enabled = castConnected,
                 ) {
-                    Text(
-                        if (busy) "ATUALIZANDO..." else next.second,
-                        color = Color(0xFF121212),
-                        fontWeight = FontWeight.Black,
-                    )
+                    Text("TV", fontWeight = FontWeight.Black)
                 }
             }
         }
     }
 }
 
-private fun Order.matchesKitchenStage(stage: KitchenStage): Boolean = when (stage) {
-    KitchenStage.NEW -> status in StatusGroups.NEW
-    KitchenStage.CONFIRMED -> status in StatusGroups.CONFIRMED
-    KitchenStage.PREPARING -> status in StatusGroups.PREPARING
-    KitchenStage.READY -> status in StatusGroups.READY
-}
-
-private fun KitchenStage.nextStatus(): Pair<String, String>? = when (this) {
-    KitchenStage.NEW -> "CONFIRMADO" to "ACEITAR"
-    KitchenStage.CONFIRMED -> "EM_PREPARO" to "INICIAR PREPARO"
-    KitchenStage.PREPARING -> "PRONTO" to "MARCAR PRONTO"
-    KitchenStage.READY -> null
-}
-
-private fun KitchenStage.stageColor(): Color = when (this) {
-    KitchenStage.NEW -> Color(0xFFFFC857)
-    KitchenStage.CONFIRMED -> Color(0xFF72D6FF)
-    KitchenStage.PREPARING -> Color(0xFFFF9F5A)
-    KitchenStage.READY -> Color(0xFF72E18F)
+private fun nextKitchenAction(status: String): Pair<String, String>? {
+    val s = status.uppercase(Locale.ROOT)
+    return when {
+        s in StatusGroups.NEW -> "CONFIRMADO" to "ACEITAR"
+        s in StatusGroups.CONFIRMED -> "EM_PREPARO" to "INICIAR PREPARO"
+        s in StatusGroups.PREPARING -> "PRONTO" to "MARCAR PRONTO"
+        else -> null
+    }
 }
