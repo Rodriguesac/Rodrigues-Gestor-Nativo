@@ -23,11 +23,15 @@
             android:name="com.google.firebase.messaging.default_notification_channel_id"
             android:value="pedidos_urgentes_v3" />
 
+        <meta-data
+            android:name="com.google.android.gms.cast.framework.OPTIONS_PROVIDER_CLASS_NAME"
+            android:value="com.rodrigues.gestor.cast.RodriguesCastOptionsProvider" />
+
         <activity
             android:name=".KitchenActivity"
             android:exported="true"
             android:label="Rodrigues Cozinha"
-            android:screenOrientation="landscape">
+            android:screenOrientation="portrait">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
