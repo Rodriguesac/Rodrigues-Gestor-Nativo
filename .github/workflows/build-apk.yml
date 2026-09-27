@@ -21,14 +21,13 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - name: Preparar Android SDK
-        run: |
-          SDKMANAGER=$(find "$ANDROID_SDK_ROOT/cmdline-tools" -type f -name sdkmanager | head -1)
-          echo "SDKMANAGER=$SDKMANAGER" >> "$GITHUB_ENV"
-          yes | "$SDKMANAGER" --licenses >/dev/null || true
+      - name: Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: "platform-tools"
 
       - name: Instalar SDK necessário
-        run: "$SDKMANAGER" "platforms;android-36" "build-tools;35.0.0"
+        run: sdkmanager "platforms;android-36" "build-tools;35.0.0"
 
       - name: Gradle 8.13
         uses: gradle/actions/setup-gradle@v4
@@ -48,5 +47,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Rodrigues-Gestor-Cozinha-TV-APK
-          path: Rodrigues-Gestor-v2.1.0-Supabase-debug.apk
+          path: Rodrigues-Gestor-v2.2.0-Cozinha-TV-debug.apk
           retention-days: 30
