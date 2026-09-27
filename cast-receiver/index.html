@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Rodrigues Cozinha TV</title>
+  <link rel="stylesheet" href="./styles.css" />
+  <script src="//www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js"></script>
+</head>
+<body>
+  <cast-media-player class="castMediaElement" style="display:none"></cast-media-player>
+
+  <main class="app">
+    <header class="topbar">
+      <section>
+        <div class="eyebrow">RODRIGUES AÇAÍ E CIA</div>
+        <h1>COZINHA • PEDIDOS AO VIVO</h1>
+      </section>
+      <section class="topright">
+        <div id="clock" class="clock">--:--</div>
+        <div id="connection" class="connection">Aguardando celular</div>
+      </section>
+    </header>
+
+    <section class="summary">
+      <div><strong id="countTotal">0</strong><span>na produção</span></div>
+      <div><strong id="countNew">0</strong><span>novos</span></div>
+      <div><strong id="countPrep">0</strong><span>preparando</span></div>
+      <div><strong id="countReady">0</strong><span>prontos</span></div>
+    </section>
+
+    <section id="board" class="board">
+      <div class="column" data-stage="NEW">
+        <div class="column-title new">NOVOS <b id="badgeNew">0</b></div>
+        <div class="cards" id="colNew"></div>
+      </div>
+      <div class="column" data-stage="CONFIRMED">
+        <div class="column-title confirmed">ACEITOS <b id="badgeConfirmed">0</b></div>
+        <div class="cards" id="colConfirmed"></div>
+      </div>
+      <div class="column" data-stage="PREPARING">
+        <div class="column-title preparing">PREPARANDO <b id="badgePreparing">0</b></div>
+        <div class="cards" id="colPreparing"></div>
+      </div>
+      <div class="column" data-stage="READY">
+        <div class="column-title ready">PRONTOS <b id="badgeReady">0</b></div>
+        <div class="cards" id="colReady"></div>
+      </div>
+    </section>
+
+    <section id="emptyState" class="empty">
+      <div class="empty-icon">✓</div>
+      <h2>Nenhum pedido na cozinha</h2>
+      <p>Quando o celular enviar um pedido, ele aparece aqui automaticamente.</p>
+    </section>
+
+    <div id="attention" class="attention">
+      <div class="attention-box">
+        <div class="attention-kicker">ATENÇÃO NA COZINHA</div>
+        <div id="attentionOrder" class="attention-order">#---</div>
+        <div id="attentionClient" class="attention-client">Cliente</div>
+      </div>
+    </div>
+  </main>
+
+  <script src="./app.js"></script>
+</body>
+</html>
