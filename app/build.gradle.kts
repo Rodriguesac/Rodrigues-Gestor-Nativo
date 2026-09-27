@@ -13,8 +13,8 @@ android {
         applicationId = "com.rodrigues.gestor"
         minSdk = 23
         targetSdk = 36
-        versionCode = 11
-        versionName = "2.1.0-supabase-orders"
+        versionCode = 12
+        versionName = "2.2.0-native-cast"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
@@ -68,4 +68,6 @@ dependencies {
     implementation("com.google.firebase:firebase-firestore")
     implementation("com.google.firebase:firebase-messaging")
     implementation("com.google.firebase:firebase-auth")
+
+    implementation("com.google.android.gms:play-services-cast-framework:22.3.1")
 }
