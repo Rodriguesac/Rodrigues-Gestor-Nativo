@@ -1,0 +1,54 @@
+:root{
+  --purple:#64118b;
+  --purple2:#8d25bd;
+  --bg:#0e0e12;
+  --panel:#18181f;
+  --card:#25252e;
+  --line:#33333d;
+  --text:#fff;
+  --muted:#a8a8b4;
+  --new:#ffc857;
+  --confirmed:#72d6ff;
+  --preparing:#ff9f5a;
+  --ready:#72e18f;
+}
+*{box-sizing:border-box}
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:var(--bg);font-family:Arial,Helvetica,sans-serif;color:var(--text)}
+.app{height:100%;display:flex;flex-direction:column;padding:18px 22px 20px}
+.topbar{display:flex;align-items:center;justify-content:space-between;background:linear-gradient(135deg,var(--purple),var(--purple2));border-radius:22px;padding:16px 22px;box-shadow:0 8px 32px rgba(0,0,0,.32)}
+.eyebrow{font-size:13px;font-weight:900;letter-spacing:1.8px;opacity:.78}
+h1{font-size:30px;margin:3px 0 0;font-weight:1000;letter-spacing:.2px}
+.topright{text-align:right}
+.clock{font-size:31px;font-weight:1000}
+.connection{font-size:12px;font-weight:800;opacity:.76;margin-top:2px}
+.summary{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:12px 0}
+.summary>div{display:flex;align-items:baseline;gap:8px;background:var(--panel);border:1px solid var(--line);padding:9px 13px;border-radius:14px}
+.summary strong{font-size:22px}.summary span{font-size:12px;color:var(--muted);font-weight:800}
+.board{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;flex:1;min-height:0}
+.column{display:flex;flex-direction:column;min-width:0;background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:10px;min-height:0}
+.column-title{display:flex;justify-content:space-between;align-items:center;font-size:15px;font-weight:1000;letter-spacing:.5px;padding:6px 4px 10px}
+.column-title b{min-width:28px;text-align:center;border-radius:20px;padding:4px 8px;background:#2d2d36;color:#fff}
+.column-title.new{color:var(--new)}.column-title.confirmed{color:var(--confirmed)}.column-title.preparing{color:var(--preparing)}.column-title.ready{color:var(--ready)}
+.cards{display:flex;flex-direction:column;gap:9px;overflow:hidden;min-height:0}
+.card{background:var(--card);border:1px solid #353541;border-radius:15px;padding:11px 12px;box-shadow:0 5px 18px rgba(0,0,0,.18)}
+.card.flash{animation:flash 1s ease-in-out 4}
+@keyframes flash{50%{transform:scale(1.025);box-shadow:0 0 0 4px #fff,0 0 38px rgba(255,200,87,.7)}}
+.card-head{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
+.order-no{font-size:22px;font-weight:1000}
+.minutes{font-size:13px;font-weight:1000;padding:5px 8px;border-radius:20px;background:#33333d}
+.minutes.warn{color:var(--new)}.minutes.late{color:#ff6b6b}
+.client{font-size:14px;font-weight:1000;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.meta{font-size:10px;font-weight:800;color:var(--muted);text-transform:uppercase;margin:2px 0 7px}
+.item{font-size:12px;font-weight:900;line-height:1.25;margin-top:4px}
+.detail{font-size:10px;line-height:1.25;color:#d5d5dc;padding-left:9px}
+.obs{margin-top:7px;color:#ffdc73;font-size:10px;font-weight:1000;line-height:1.25}
+.address{margin-top:7px;padding-top:7px;border-top:1px solid #393944;font-size:9px;color:#c8c8cf;line-height:1.25}
+.empty{display:none;flex:1;align-items:center;justify-content:center;flex-direction:column;color:var(--muted);text-align:center}
+.empty.show{display:flex}.empty-icon{width:66px;height:66px;border-radius:50%;display:grid;place-items:center;background:#1f3828;color:var(--ready);font-size:36px;font-weight:1000}
+.empty h2{color:#fff;font-size:26px;margin:15px 0 5px}.empty p{margin:0;font-size:13px}
+.attention{position:fixed;inset:0;background:rgba(10,4,14,.75);display:none;align-items:center;justify-content:center;z-index:50}
+.attention.show{display:flex;animation:attentionBg .5s ease-in-out infinite alternate}
+@keyframes attentionBg{from{background:rgba(10,4,14,.76)}to{background:rgba(100,17,139,.86)}}
+.attention-box{min-width:48vw;text-align:center;background:#fff;color:#181018;border-radius:28px;padding:32px 45px;box-shadow:0 20px 70px rgba(0,0,0,.5)}
+.attention-kicker{font-size:16px;font-weight:1000;color:var(--purple);letter-spacing:2px}.attention-order{font-size:64px;font-weight:1000;margin:8px 0}.attention-client{font-size:25px;font-weight:1000}
+@media(max-width:900px){h1{font-size:22px}.order-no{font-size:18px}.card{padding:9px}.summary{display:none}}
