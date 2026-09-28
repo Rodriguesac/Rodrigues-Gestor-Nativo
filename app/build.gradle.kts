@@ -50,21 +50,7 @@ kotlin {
 }
 
 dependencies {
-    implementation("androidx.core:core-ktx:1.17.0")
-    implementation("androidx.activity:activity-compose:1.12.4")
-
-    val composeBom = platform("androidx.compose:compose-bom:2026.06.01")
-    implementation(composeBom)
-    androidTestImplementation(composeBom)
-
-    implementation("androidx.compose.ui:ui")
-    implementation("androidx.compose.ui:ui-tooling-preview")
-    implementation("androidx.compose.foundation:foundation")
-    implementation("androidx.compose.material3:material3")
-    implementation("androidx.compose.material:material-icons-extended")
-    debugImplementation("androidx.compose.ui:ui-tooling")
-
-    implementation(platform("com.google.firebase:firebase-bom:34.17.0"))
+    implementation("androidx.core:core-ktx:1.17.0")\n    implementation("androidx.activity:activity-ktx:1.12.4")\n\n    implementation(platform("com.google.firebase:firebase-bom:34.17.0"))
     implementation("com.google.firebase:firebase-firestore")
     implementation("com.google.firebase:firebase-messaging")
     implementation("com.google.firebase:firebase-auth")
