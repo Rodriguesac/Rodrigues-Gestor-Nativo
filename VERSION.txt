@@ -1,3 +1,5 @@
-Rodrigues Gestor Nativo v2.0.0
-Operação premium • mapa ao vivo • distâncias e ETA • impressão térmica/A4
+Rodrigues Gestor Hybrid v3.0.0
+React compartilhado entre PWA e APK Android
+Nativo: FCM, toque prolongado, vibração, tela ativa e impressão
+Web/PWA: operação de pedidos pelo mesmo backend Supabase
 Build: GitHub Actions
