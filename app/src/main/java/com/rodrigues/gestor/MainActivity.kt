@@ -1,6 +1,8 @@
 package com.rodrigues.gestor
 
 import android.Manifest
+import android.media.RingtoneManager
+import com.rodrigues.gestor.notifications.AlertPreferences
 import android.app.AlertDialog
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -29,6 +31,22 @@ class MainActivity : ComponentActivity() {
     private var appStarted = false
     private var webView: WebView? = null
 
+    private val soundPicker = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        if(result.resultCode==RESULT_OK) {
+            @Suppress("DEPRECATION")
+            val uri=result.data?.getParcelableExtra<android.net.Uri>(RingtoneManager.EXTRA_RINGTONE_PICKED_URI)
+            if(uri!=null) AlertPreferences.setOrderSoundUri(this,uri)
+        }
+    }
+    fun chooseRingtone() {
+        soundPicker.launch(Intent(RingtoneManager.ACTION_RINGTONE_PICKER).apply {
+            putExtra(RingtoneManager.EXTRA_RINGTONE_TYPE,RingtoneManager.TYPE_ALL)
+            putExtra(RingtoneManager.EXTRA_RINGTONE_TITLE,"Toque de novo pedido")
+            putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_SILENT,false)
+            putExtra(RingtoneManager.EXTRA_RINGTONE_EXISTING_URI,AlertPreferences.orderSoundUri(this@MainActivity))
+        })
+    }
+
     private val notificationPermission =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) {
             GestorConnectionService.start(this)
@@ -41,11 +59,12 @@ class MainActivity : ComponentActivity() {
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
                 val view = webView
-                if (view?.canGoBack() == true) view.goBack() else finish()
+                view?.evaluateJavascript("window.dispatchEvent(new Event('native:back'));", null)
             }
         })
 
-        if (GestorCredentials.load(this).length == 6) startGestor() else requestOperatorPin()
+        GestorCredentials.load(this)
+        startGestor()
     }
 
     private fun requestOperatorPin() {
@@ -84,7 +103,7 @@ class MainActivity : ComponentActivity() {
         NotificationHelper.createChannels(this)
         requestNotificationsIfNeeded()
         FirebaseMessaging.getInstance().token.addOnSuccessListener(DeviceRegistrar::register)
-        GestorConnectionService.start(this)
+        if (GestorCredentials.session.isNotBlank()) GestorConnectionService.start(this)
 
         val view = WebView(this)
         webView = view
@@ -93,7 +112,7 @@ class MainActivity : ComponentActivity() {
             javaScriptEnabled = true
             domStorageEnabled = true
             databaseEnabled = true
-            allowFileAccess = true
+            allowFileAccess = false
             allowContentAccess = false
             setSupportZoom(false)
             builtInZoomControls = false
@@ -107,6 +126,14 @@ class MainActivity : ComponentActivity() {
         view.addJavascriptInterface(HybridBridge(this), "AndroidGestor")
         view.webChromeClient = WebChromeClient()
         view.webViewClient = object : WebViewClient() {
+            override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest): Boolean {
+                if (request.url.host == "appassets.androidplatform.net") return false
+                if (request.url.scheme in listOf("https", "tel", "mailto")) {
+                    runCatching { startActivity(Intent(Intent.ACTION_VIEW, request.url)) }
+                }
+                return true
+            }
+
             override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest): WebResourceResponse? {
                 return assetLoader.shouldInterceptRequest(request.url)
             }
@@ -118,6 +145,13 @@ class MainActivity : ComponentActivity() {
                 deliverRequestedOrder()
             }
         }
+        view.setOnApplyWindowInsetsListener { v, insets ->
+            if (Build.VERSION.SDK_INT >= 30) {
+                val bars=insets.getInsets(android.view.WindowInsets.Type.systemBars())
+                v.setPadding(bars.left,bars.top,bars.right,bars.bottom)
+            }
+            insets
+        }
         setContentView(view)
         view.loadUrl(HYBRID_URL)
     }
@@ -128,7 +162,7 @@ class MainActivity : ComponentActivity() {
         requestedOrderId = null
         val safe = id.replace("\\", "\\\\").replace("'", "\\'")
         webView?.evaluateJavascript(
-            "window.dispatchEvent(new CustomEvent('native:open-order',{detail:{id:'$safe'}}));",
+            "window.__requestedOrderId='$safe';window.dispatchEvent(new CustomEvent('native:open-order',{detail:{id:'$safe'}}));",
             null,
         )
     }
@@ -136,7 +170,7 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         if (appStarted) {
-            GestorConnectionService.start(this)
+            if (GestorCredentials.session.isNotBlank()) GestorConnectionService.start(this)
             webView?.onResume()
         }
     }
@@ -177,3 +211,4 @@ class MainActivity : ComponentActivity() {
         private const val HYBRID_URL = "https://appassets.androidplatform.net/assets/web/index.html"
     }
 }
+

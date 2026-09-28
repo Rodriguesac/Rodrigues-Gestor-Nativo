@@ -1,0 +1,7 @@
+.gradle/
+**/build/
+web/node_modules/
+web/dist/
+web/qa-*.png
+local.properties
+*.apk

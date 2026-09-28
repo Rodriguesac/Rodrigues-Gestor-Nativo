@@ -109,6 +109,9 @@ class OrderRingService : Service() {
         val selected = AlertPreferences.orderSoundUri(this)
         ringtone = RingtoneManager.getRingtone(this, selected)
             ?: RingtoneManager.getRingtone(this, RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION))
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            ringtone?.volume = AlertPreferences.volume(this)/100f
+        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
             ringtone?.audioAttributes = AudioAttributes.Builder()
                 .setUsage(AudioAttributes.USAGE_NOTIFICATION)
@@ -165,3 +168,4 @@ class OrderRingService : Service() {
         }
     }
 }
+

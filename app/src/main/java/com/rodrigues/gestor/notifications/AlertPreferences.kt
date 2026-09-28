@@ -8,6 +8,9 @@ object AlertPreferences {
     private const val PREFS = "rodrigues_gestor_alerts"
     private fun prefs(context: Context) = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
+    fun volume(context: Context): Int = prefs(context).getInt("volume",100).coerceIn(0,100)
+    fun setVolume(context: Context,value: Int) = prefs(context).edit().putInt("volume",value.coerceIn(0,100)).apply()
+
     fun enabled(context: Context): Boolean = prefs(context).getBoolean("enabled", true)
     fun setEnabled(context: Context, value: Boolean) {
         prefs(context).edit().putBoolean("enabled", value).apply()
@@ -81,3 +84,4 @@ object AlertPreferences {
     fun paperWidth(context: Context): Int = prefs(context).getInt("paper_width", 80).let { if (it == 58) 58 else 80 }
     fun setPaperWidth(context: Context, value: Int) = prefs(context).edit().putInt("paper_width", if (value == 58) 58 else 80).apply()
 }
+
