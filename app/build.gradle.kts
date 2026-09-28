@@ -50,6 +50,7 @@ kotlin {
 dependencies {
     implementation("androidx.core:core-ktx:1.17.0")
     implementation("androidx.activity:activity-ktx:1.12.4")
+    implementation("androidx.webkit:webkit:1.14.0")
 
     implementation(platform("com.google.firebase:firebase-bom:34.17.0"))
     implementation("com.google.firebase:firebase-firestore")
