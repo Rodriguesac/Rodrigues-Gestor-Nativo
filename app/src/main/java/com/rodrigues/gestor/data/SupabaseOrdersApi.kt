@@ -93,8 +93,52 @@ object SupabaseOrdersApi {
             for (index in 0 until rows.length()) {
                 val row = rows.optJSONObject(index) ?: continue
                 val id = row.optString("id").trim()
-                val raw = row.optJSONObject("raw") ?: JSONObject()
                 if (id.isBlank()) continue
+
+                // A tabela orders é a fonte canônica. raw_payload guarda a forma original
+                // do pedido, mas status/valores podem ter mudado depois.
+                val raw = (row.optJSONObject("raw_payload") ?: row.optJSONObject("raw") ?: JSONObject()).let { original ->
+                    JSONObject(original.toString())
+                }
+                raw.put("status", row.optString("status", raw.optString("status", "PENDENTE")))
+                raw.put("codigoPedido", row.optString("order_code", raw.optString("codigoPedido")))
+                raw.put("numeroPedido", row.optString("order_code", raw.optString("numeroPedido")))
+                raw.put("tipoPedido", row.optString("fulfillment_type", raw.optString("tipoPedido")))
+                raw.put("subtotal", row.optDouble("subtotal", raw.optDouble("subtotal", 0.0)))
+                raw.put("frete", row.optDouble("delivery_fee", raw.optDouble("frete", 0.0)))
+                raw.put("desconto", row.optDouble("discount", raw.optDouble("desconto", 0.0)))
+                raw.put("total", row.optDouble("total", raw.optDouble("total", 0.0)))
+                raw.put("createdAt", row.optString("created_at", raw.optString("createdAt")))
+
+                row.optJSONObject("delivery_address")?.let { raw.put("endereco", it) }
+                row.optJSONObject("customer")?.let { customer ->
+                    raw.put("cliente", JSONObject().apply {
+                        put("nome", customer.optString("name", customer.optString("nome")))
+                        put("telefone", customer.optString("phone", customer.optString("telefone")))
+                        put("email", customer.optString("email"))
+                        put("uid", customer.optString("auth_user_id", customer.optString("uid")))
+                    })
+                }
+                row.optJSONObject("payment_details")?.let { raw.put("pagamento", it) }
+
+                val enrichedItems = row.optJSONArray("items")
+                if (enrichedItems != null && enrichedItems.length() > 0) {
+                    val normalizedItems = JSONArray()
+                    for (itemIndex in 0 until enrichedItems.length()) {
+                        val item = enrichedItems.optJSONObject(itemIndex) ?: continue
+                        normalizedItems.put(JSONObject().apply {
+                            put("nome", item.optString("name", "Item"))
+                            put("quantidade", item.optDouble("quantity", 1.0))
+                            put("total", item.optDouble("total_price", item.optDouble("unit_price", 0.0)))
+                            put("detalhes", item.optJSONObject("modifiers") ?: JSONObject())
+                            put("linhasMontagem", (item.optJSONObject("modifiers") ?: JSONObject()).optJSONArray("linhasMontagem")
+                                ?: (item.optJSONObject("modifiers") ?: JSONObject()).optJSONArray("linhas")
+                                ?: JSONArray())
+                        })
+                    }
+                    raw.put("itens", normalizedItems)
+                }
+
                 add(normalizeOrder(id, jsonObjectToMap(raw)))
             }
         }.sortedByDescending { it.createdMillis }
