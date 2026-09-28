@@ -199,7 +199,17 @@ fun asLongTime(value: Any?): Long = when (value) {
     is Timestamp -> value.toDate().time
     is Date -> value.time
     is Number -> value.toLong()
-    is String -> value.toLongOrNull() ?: 0L
+    is String -> value.toLongOrNull() ?: run {
+        val patterns = listOf(
+            "yyyy-MM-dd'T'HH:mm:ss.SSSXXX",
+            "yyyy-MM-dd'T'HH:mm:ssXXX",
+            "yyyy-MM-dd HH:mm:ss.SSSSSSXXX",
+            "yyyy-MM-dd HH:mm:ssXXX"
+        )
+        patterns.asSequence().mapNotNull { pattern ->
+            try { SimpleDateFormat(pattern, Locale.US).parse(value)?.time } catch (_: Throwable) { null }
+        }.firstOrNull() ?: 0L
+    }
     else -> 0L
 }
 
