@@ -12,7 +12,7 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
 object SupabaseOrdersApi {
-    private const val ENDPOINT = "https://jgjmntezfjuyuxhcnvhd.supabase.co/functions/v1/gestor-orders"
+    private const val ENDPOINT = "https://jgjmntezfjuyuxhcnvhd.supabase.co/functions/v1/gestor-app-api"
     private val mainHandler = Handler(Looper.getMainLooper())
 
     fun listenOrders(
@@ -47,16 +47,16 @@ object SupabaseOrdersApi {
         onError: (Throwable) -> Unit,
     ) = runAction(
         JSONObject()
-            .put("action", "status")
-            .put("orderId", orderId)
-            .put("status", status),
+            .put("action", "update_order")
+            .put("order_id", orderId)
+            .put("patch", JSONObject().put("status", status)),
         onDone,
         onError,
     )
 
     fun finishPickup(orderId: String, onDone: () -> Unit, onError: (Throwable) -> Unit) =
         runAction(
-            JSONObject().put("action", "finish_pickup").put("orderId", orderId),
+            JSONObject().put("action", "update_order").put("order_id", orderId).put("patch", JSONObject().put("status", "CONCLUIDO")),
             onDone,
             onError,
         )
@@ -68,9 +68,9 @@ object SupabaseOrdersApi {
         onError: (Throwable) -> Unit,
     ) = runAction(
         JSONObject()
-            .put("action", "cancel")
-            .put("orderId", orderId)
-            .put("reason", reason),
+            .put("action", "update_order")
+            .put("order_id", orderId)
+            .put("patch", JSONObject().put("status", "CANCELADO").put("cancellation_reason", reason)),
         onDone,
         onError,
     )
@@ -87,7 +87,7 @@ object SupabaseOrdersApi {
     }
 
     private fun fetchOrders(): List<Order> {
-        val response = request(JSONObject().put("action", "list").put("limit", 120))
+        val response = request(JSONObject().put("action", "orders").put("include_recent", true))
         val rows = response.optJSONArray("orders") ?: JSONArray()
         return buildList {
             for (index in 0 until rows.length()) {
@@ -145,9 +145,9 @@ object SupabaseOrdersApi {
     }
 
     private fun request(payload: JSONObject): JSONObject {
-        val pin = GestorCredentials.pin.trim()
-        if (pin.length != 6) {
-            throw IllegalStateException("PIN do Gestor não configurado. Feche e abra o aplicativo.")
+        val token = GestorCredentials.session.trim()
+        if (token.isBlank()) {
+            throw IllegalStateException("Entre no Gestor para receber os pedidos.")
         }
 
         val connection = (URL(ENDPOINT).openConnection() as HttpURLConnection).apply {
@@ -158,9 +158,10 @@ object SupabaseOrdersApi {
             useCaches = false
             setRequestProperty("Content-Type", "application/json; charset=utf-8")
             setRequestProperty("Accept", "application/json")
-            setRequestProperty("x-gestor-pin", pin)
+            setRequestProperty("Origin", "https://appassets.androidplatform.net")
         }
 
+        payload.put("session_token", token)
         try {
             connection.outputStream.use { output ->
                 output.write(payload.toString().toByteArray(Charsets.UTF_8))
@@ -171,8 +172,8 @@ object SupabaseOrdersApi {
             val json = if (body.isBlank()) JSONObject() else JSONObject(body)
 
             if (code == 401) {
-                GestorCredentials.clear()
-                throw IllegalStateException("PIN do Gestor inválido. Feche e abra o aplicativo para digitar novamente.")
+                
+                throw IllegalStateException("Acesso expirou. Entre novamente no Gestor.")
             }
             if (code !in 200..299 || !json.optBoolean("ok", false)) {
                 val error = json.optString("error").ifBlank { "Falha ao acessar pedidos do Supabase ($code)." }
@@ -204,3 +205,4 @@ object SupabaseOrdersApi {
         else -> value
     }
 }
+

@@ -1,6 +1,9 @@
 package com.rodrigues.gestor
 
 import android.app.Activity
+import org.json.JSONObject
+import com.rodrigues.gestor.notifications.AlertPreferences
+import com.rodrigues.gestor.notifications.GestorConnectionService
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -21,6 +24,42 @@ import com.rodrigues.gestor.notifications.OrderRingService
 class HybridBridge(
     private val activity: Activity,
 ) {
+    @JavascriptInterface
+    fun savePin(pin: String) { GestorCredentials.save(activity,pin) }
+
+    @JavascriptInterface
+    fun setSession(token: String) {
+        GestorCredentials.saveSession(activity,token)
+        activity.runOnUiThread {
+            if(token.isNotBlank()) GestorConnectionService.start(activity)
+            else { OrderRingService.stop(activity); activity.stopService(Intent(activity,GestorConnectionService::class.java)) }
+        }
+    }
+
+    @JavascriptInterface
+    fun exit() { activity.runOnUiThread { activity.finish() } }
+
+    @JavascriptInterface
+    fun chooseSound() { activity.runOnUiThread { (activity as? MainActivity)?.chooseRingtone() } }
+
+    @JavascriptInterface
+    fun getPreferences(): String = JSONObject().apply {
+        put("enabled",AlertPreferences.enabled(activity))
+        put("vibration",AlertPreferences.vibration(activity))
+        put("volume",AlertPreferences.volume(activity))
+    }.toString()
+
+    @JavascriptInterface
+    fun setPreferences(value: String) {
+        runCatching {
+            val data=JSONObject(value)
+            if(data.has("enabled")) AlertPreferences.setEnabled(activity,data.getBoolean("enabled"))
+            if(data.has("vibration")) AlertPreferences.setVibration(activity,data.getBoolean("vibration"))
+            if(data.has("volume")) AlertPreferences.setVolume(activity,data.getInt("volume"))
+            AlertPreferences.setMaxRingMinutes(activity,5)
+        }
+    }
+
     @JavascriptInterface
     fun isNative(): Boolean = true
 
@@ -103,3 +142,4 @@ class HybridBridge(
         }
     }
 }
+

@@ -36,7 +36,7 @@ class GestorConnectionService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (GestorCredentials.pin.length != 6) GestorCredentials.load(this)
+        if (GestorCredentials.session.isBlank()) GestorCredentials.load(this)
         if (orderListener == null) listenOrders()
         return START_STICKY
     }
@@ -80,7 +80,7 @@ class GestorConnectionService : Service() {
             .filter {
                 it.status.uppercase(Locale.ROOT) in StatusGroups.NEW &&
                     it.createdMillis > 0L &&
-                    now - it.createdMillis <= 15 * 60_000L
+                    now - it.createdMillis <= 5 * 60_000L
             }
             .map {
                 PendingOrder(
@@ -155,6 +155,8 @@ class GestorConnectionService : Service() {
         private val CANCELED_STATUSES = setOf("CANCELADO", "CANCELADA", "CANCELED", "CANCELLED")
 
         fun start(context: Context) {
+            GestorCredentials.load(context)
+            if(GestorCredentials.session.isBlank()) return
             try {
                 ContextCompat.startForegroundService(
                     context,
@@ -165,3 +167,4 @@ class GestorConnectionService : Service() {
         }
     }
 }
+

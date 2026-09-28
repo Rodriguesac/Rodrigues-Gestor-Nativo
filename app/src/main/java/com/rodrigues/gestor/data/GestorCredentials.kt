@@ -10,10 +10,21 @@ object GestorCredentials {
     var pin: String = ""
         private set
 
+    @Volatile
+    var session: String = ""
+        private set
+
+    fun saveSession(context: Context, value: String) {
+        appContext = context.applicationContext
+        session = value
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString("app_session",value).apply()
+    }
+
     private var appContext: Context? = null
 
     fun load(context: Context): String {
         appContext = context.applicationContext
+        session = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString("app_session", "").orEmpty()
         pin = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .getString(KEY_PIN, "")
             .orEmpty()
@@ -39,3 +50,4 @@ object GestorCredentials {
         pin = ""
     }
 }
+
