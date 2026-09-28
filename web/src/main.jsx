@@ -3,7 +3,8 @@ import { createRoot } from 'react-dom/client'
 import App from './App.jsx'
 import './styles.css'
 
-if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
+const isNative = Boolean(globalThis.AndroidGestor)
+if (!isNative && 'serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
   addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(() => {}))
 }
 
