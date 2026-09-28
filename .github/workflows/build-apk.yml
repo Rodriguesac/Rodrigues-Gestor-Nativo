@@ -39,7 +39,17 @@ jobs:
           java-version: "17"
 
       - name: Instalar SDK necessário
-        run: sdkmanager "platforms;android-36" "build-tools;35.0.0"
+        run: |
+          SDKROOT="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          SDKMANAGER="$SDKROOT/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$SDKMANAGER" ]; then SDKMANAGER="$SDKROOT/cmdline-tools/16.0/bin/sdkmanager"; fi
+          if [ ! -x "$SDKMANAGER" ]; then
+            echo "sdkmanager não encontrado em $SDKROOT"
+            find "$SDKROOT" -name sdkmanager -type f -maxdepth 5 -print || true
+            exit 1
+          fi
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" "platforms;android-36" "build-tools;35.0.0"
 
       - name: Gradle 8.13
         uses: gradle/actions/setup-gradle@v4
