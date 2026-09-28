@@ -158,7 +158,17 @@ export default function App(){
     }finally{if(!silent)setLoading(false)}
   }
   useEffect(()=>{if(pin){load();const t=setInterval(()=>load(true),3500);return()=>clearInterval(t)}},[pin])
-  useEffect(()=>{hybrid.keepAwake(true);return()=>hybrid.keepAwake(false)},[])\n  useEffect(()=>{\n    const open=e=>setRequestedId(String(e?.detail?.id||''))\n    addEventListener('native:open-order',open)\n    return()=>removeEventListener('native:open-order',open)\n  },[])\n  useEffect(()=>{\n    if(!requestedId)return\n    const found=orders.find(o=>o.id===requestedId||o.number===requestedId)\n    if(found){setSelected(found);setRequestedId('')}\n  },[requestedId,orders])
+  useEffect(()=>{hybrid.keepAwake(true);return()=>hybrid.keepAwake(false)},[])
+  useEffect(()=>{
+    const open=e=>setRequestedId(String(e?.detail?.id||''))
+    addEventListener('native:open-order',open)
+    return()=>removeEventListener('native:open-order',open)
+  },[])
+  useEffect(()=>{
+    if(!requestedId)return
+    const found=orders.find(o=>o.id===requestedId||o.number===requestedId)
+    if(found){setSelected(found);setRequestedId('')}
+  },[requestedId,orders])
 
   const active=orders.filter(o=>!DONE.has(o.status))
   const counts={
