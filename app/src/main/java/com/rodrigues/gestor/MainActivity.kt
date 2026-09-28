@@ -10,6 +10,9 @@ import android.text.InputType
 import android.webkit.WebChromeClient
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
+import androidx.webkit.WebViewAssetLoader
 import android.widget.EditText
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
@@ -97,9 +100,20 @@ class MainActivity : ComponentActivity() {
             displayZoomControls = false
             mediaPlaybackRequiresUserGesture = false
         }
+        val assetLoader = WebViewAssetLoader.Builder()
+            .addPathHandler("/assets/", WebViewAssetLoader.AssetsPathHandler(this))
+            .build()
+
         view.addJavascriptInterface(HybridBridge(this), "AndroidGestor")
         view.webChromeClient = WebChromeClient()
         view.webViewClient = object : WebViewClient() {
+            override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest): WebResourceResponse? {
+                return assetLoader.shouldInterceptRequest(request.url)
+            }
+            @Suppress("DEPRECATION")
+            override fun shouldInterceptRequest(view: WebView?, url: String?): WebResourceResponse? {
+                return url?.let { assetLoader.shouldInterceptRequest(android.net.Uri.parse(it)) }
+            }
             override fun onPageFinished(view: WebView, url: String?) {
                 deliverRequestedOrder()
             }
@@ -160,6 +174,6 @@ class MainActivity : ComponentActivity() {
 
     companion object {
         const val EXTRA_ORDER_ID = "open_order_id"
-        private const val HYBRID_URL = "file:///android_asset/web/index.html"
+        private const val HYBRID_URL = "https://appassets.androidplatform.net/assets/web/index.html"
     }
 }
