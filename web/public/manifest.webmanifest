@@ -1,0 +1,13 @@
+{
+  "name": "Rodrigues Gestor",
+  "short_name": "Gestor",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f8f6fb",
+  "theme_color": "#59008c",
+  "description": "Central operacional Rodrigues Açaí e Cia",
+  "icons": [
+    {"src":"./icon.svg","sizes":"any","type":"image/svg+xml","purpose":"any maskable"}
+  ]
+}
