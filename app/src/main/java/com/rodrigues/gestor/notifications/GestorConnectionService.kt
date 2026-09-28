@@ -75,8 +75,13 @@ class GestorConnectionService : Service() {
             }
         }
 
+        val now = System.currentTimeMillis()
         val pending = orders
-            .filter { it.status.uppercase(Locale.ROOT) in StatusGroups.NEW }
+            .filter {
+                it.status.uppercase(Locale.ROOT) in StatusGroups.NEW &&
+                    it.createdMillis > 0L &&
+                    now - it.createdMillis <= 15 * 60_000L
+            }
             .map {
                 PendingOrder(
                     id = it.id,
