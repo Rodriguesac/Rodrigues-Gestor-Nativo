@@ -147,7 +147,7 @@ export default function App(){
       const current=new Set(rows.filter(o=>NEW.has(o.status)).map(o=>o.id))
       if(prevIds.current.size){
         const fresh=[...current].filter(id=>!prevIds.current.has(id))
-        if(fresh.length&&Notification.permission==='granted'&&!hybrid.isNative()){
+        if(fresh.length&&'Notification' in window&&Notification.permission==='granted'&&!hybrid.isNative()){
           new Notification('Novo pedido',{body:'Chegou '+fresh.length+' novo pedido no Rodrigues Gestor.'})
         }
       }
@@ -158,7 +158,7 @@ export default function App(){
     }finally{if(!silent)setLoading(false)}
   }
   useEffect(()=>{if(pin){load();const t=setInterval(()=>load(true),3500);return()=>clearInterval(t)}},[pin])
-  useEffect(()=>{hybrid.keepAwake(true);return()=>hybrid.keepAwake(false)},[])
+  useEffect(()=>{hybrid.keepAwake(true);return()=>hybrid.keepAwake(false)},[])\n  useEffect(()=>{\n    const open=e=>setRequestedId(String(e?.detail?.id||''))\n    addEventListener('native:open-order',open)\n    return()=>removeEventListener('native:open-order',open)\n  },[])\n  useEffect(()=>{\n    if(!requestedId)return\n    const found=orders.find(o=>o.id===requestedId||o.number===requestedId)\n    if(found){setSelected(found);setRequestedId('')}\n  },[requestedId,orders])
 
   const active=orders.filter(o=>!DONE.has(o.status))
   const counts={
@@ -193,7 +193,7 @@ export default function App(){
 
   return <div className="app">
     <header className="hero">
-      <div className="hero-line"><div><h1>Bom dia <span>👋</span></h1><p>Central de pedidos ao vivo</p></div><button className="bell" onClick={()=>{if(hybrid.isNative())hybrid.notificationSettings();else Notification.requestPermission?.()}}><Icon name="bell"/></button></div>
+      <div className="hero-line"><div><h1>Bom dia <span>👋</span></h1><p>Central de pedidos ao vivo</p></div><button className="bell" onClick={()=>{if(hybrid.isNative())hybrid.notificationSettings();else if('Notification' in window) Notification.requestPermission?.()}}><Icon name="bell"/></button></div>
       <div className="hero-pills"><span><i/> Loja aberta</span><span><em/> Preparo ~25 min</span></div>
       <div className="presence"><i/> {hybrid.isNative()?'Modo nativo ativo':'PWA ativo'} • {active.length} pedidos em andamento</div>
     </header>
