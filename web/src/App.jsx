@@ -12,38 +12,48 @@ const dig=v=>String(v||'').replace(/\D/g,'')
 const esc=v=>String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))
 
 function normalize(row){
-  const raw=row?.raw&&typeof row.raw==='object'?row.raw:row||{}
-  const client=raw.cliente||raw.customer||{}
+  const raw=row?.raw_payload&&typeof row.raw_payload==='object'
+    ? row.raw_payload
+    : row?.raw&&typeof row.raw==='object'
+      ? row.raw
+      : row||{}
+  const client=row?.customer||raw.cliente||raw.customer||{}
   const values=raw.valores||{}
-  const pay=raw.pagamento||{}
+  const pay=row?.payment_details||raw.pagamento||{}
   const status=upper(row.status||raw.status||raw.statusPedido||'PENDENTE')
   const created=row.created_at||raw.createdAt||raw.criadoEm||raw.created_at||new Date().toISOString()
-  const items=Array.isArray(raw.itens)?raw.itens:Array.isArray(raw.items)?raw.items:[]
-  const address=raw.endereco||{}
-  const type=upper(raw.tipoPedido||raw.tipo_pedido||raw.fulfillment||'ENTREGA')
+  const items=Array.isArray(row?.items)?row.items:Array.isArray(raw.itens)?raw.itens:Array.isArray(raw.items)?raw.items:[]
+  const address=row?.delivery_address||raw.endereco||{}
+  const type=upper(row?.fulfillment_type||raw.tipoPedido||raw.tipo_pedido||raw.fulfillment||'ENTREGA')
   return {
     id:String(row.id||raw.id||''),
     number:String(row.order_code||raw.codigoPedido||raw.numeroPedido||raw.numero||row.id||'').replace(/^#/,'').slice(-12),
     status,
     created,
-    clientName:String(client.nome||client.name||raw.nomeCliente||raw.clienteNome||'Cliente'),
-    phone:String(client.telefone||client.phone||raw.telefoneCliente||''),
+    clientName:String(client.name||client.nome||raw.nomeCliente||raw.clienteNome||'Cliente'),
+    phone:String(client.phone||client.telefone||raw.telefoneCliente||''),
     type,
     total:Number(row.total??raw.total??values.total??0),
-    subtotal:Number(raw.subtotal??values.subtotal??0),
-    freight:Number(raw.frete??values.taxa??0),
-    discount:Number(raw.desconto??values.desconto??0),
-    payment:String(pay.forma||pay.metodo||raw.formaPagamento||raw.pagamentoMetodo||''),
-    paymentStatus:upper(pay.status||raw.statusPagamento||''),
-    observation:String(raw.observacao||raw.observação||''),
+    subtotal:Number(row.subtotal??raw.subtotal??values.subtotal??0),
+    freight:Number(row.delivery_fee??raw.frete??values.taxa??0),
+    discount:Number(row.discount??raw.desconto??values.desconto??0),
+    payment:String(row.payment_method||pay.forma||pay.metodo||raw.formaPagamento||raw.pagamentoMetodo||''),
+    paymentStatus:upper(row.payment_status||pay.status||raw.statusPagamento||''),
+    observation:String(row.customer_note||raw.observacao||raw.observação||''),
     address:[address.rua||address.street,address.numero||address.number,address.bairro||address.district].filter(Boolean).join(', '),
-    items:items.map(i=>({
-      qty:Number(i.quantidade||i.qtd||i.quantity||1),
-      name:String(i.nome||i.titulo||i.produtoNome||i.baseNome||i.produto||'Item'),
-      price:Number(i.total||i.preco||i.valor||0),
-      details:Array.isArray(i.linhasMontagem)?i.linhasMontagem.map(x=>x?.nome||x).filter(Boolean):
-        Array.isArray(i.detalhes)?i.detalhes.map(x=>typeof x==='string'?x:x?.nome).filter(Boolean):[]
-    })),
+    items:items.map(i=>{
+      const modifiers=i.modifiers||i.detalhes||{}
+      const lines=Array.isArray(modifiers.linhasMontagem)?modifiers.linhasMontagem:
+        Array.isArray(modifiers.linhas)?modifiers.linhas:
+        Array.isArray(i.linhasMontagem)?i.linhasMontagem:
+        Array.isArray(i.detalhes)?i.detalhes:[]
+      return {
+        qty:Number(i.quantity||i.quantidade||i.qtd||1),
+        name:String(i.name||i.nome||i.titulo||i.produtoNome||i.baseNome||i.produto||'Item'),
+        price:Number(i.total_price||i.total||i.preco||i.valor||i.unit_price||0),
+        details:lines.map(x=>typeof x==='string'?x:x?.nome).filter(Boolean)
+      }
+    }),
     raw
   }
 }
