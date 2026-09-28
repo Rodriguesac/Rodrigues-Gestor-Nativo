@@ -6,6 +6,7 @@ const NEW=new Set(['PENDENTE','NOVO','RECEBIDO','ENVIADO'])
 const DONE=new Set(['CONCLUIDO','ENTREGUE','CANCELADO'])
 const PREP=new Set(['EM_PREPARO','PREPARANDO'])
 const DELIVERY=new Set(['EM_ENTREGA','SAIU_PARA_ENTREGA','SAIU_ENTREGA','A_CAMINHO_CLIENTE'])
+const STALE_NEW_MINUTES=15
 const money=v=>Number(v||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})
 const upper=v=>String(v||'').trim().toUpperCase()
 const dig=v=>String(v||'').replace(/\D/g,'')
@@ -180,7 +181,8 @@ export default function App(){
     if(found){setSelected(found);setRequestedId('')}
   },[requestedId,orders])
 
-  const active=orders.filter(o=>!DONE.has(o.status))
+  const isStaleNew=o=>NEW.has(o.status)&&ageMin(o)>STALE_NEW_MINUTES
+  const active=orders.filter(o=>!DONE.has(o.status)&&!isStaleNew(o))
   const counts={
     new:active.filter(o=>bucket(o)==='new').length,
     confirmed:active.filter(o=>bucket(o)==='confirmed').length,
@@ -188,7 +190,9 @@ export default function App(){
     ready:active.filter(o=>bucket(o)==='ready').length
   }
   const filtered=useMemo(()=>{
-    let rows=tab==='history'?orders.filter(o=>DONE.has(o.status)):orders.filter(o=>!DONE.has(o.status))
+    let rows=tab==='history'
+      ? orders.filter(o=>DONE.has(o.status)||isStaleNew(o))
+      : orders.filter(o=>!DONE.has(o.status)&&!isStaleNew(o))
     if(filter==='Atrasados')rows=rows.filter(o=>ageMin(o)>=20)
     if(filter==='Entrega')rows=rows.filter(o=>o.type!=='RETIRADA')
     if(filter==='Retirada')rows=rows.filter(o=>o.type==='RETIRADA')
