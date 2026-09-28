@@ -7,6 +7,7 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.text.InputType
+import android.webkit.WebChromeClient
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.EditText
@@ -25,9 +26,10 @@ class MainActivity : ComponentActivity() {
     private var appStarted = false
     private var webView: WebView? = null
 
-    private val notificationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) {
-        GestorConnectionService.start(this)
-    }
+    private val notificationPermission =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) {
+            GestorConnectionService.start(this)
+        }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -40,11 +42,7 @@ class MainActivity : ComponentActivity() {
             }
         })
 
-        if (GestorCredentials.load(this).length == 6) {
-            startGestor()
-        } else {
-            requestOperatorPin()
-        }
+        if (GestorCredentials.load(this).length == 6) startGestor() else requestOperatorPin()
     }
 
     private fun requestOperatorPin() {
@@ -63,7 +61,7 @@ class MainActivity : ComponentActivity() {
 
         dialog.setOnShowListener {
             dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
-                val pin = input.text?.toString().orEmpty().filter { it.isDigit() }
+                val pin = input.text?.toString().orEmpty().filter(Char::isDigit)
                 if (pin.length != 6) {
                     input.error = "Digite os 6 números do PIN"
                     return@setOnClickListener
@@ -100,6 +98,7 @@ class MainActivity : ComponentActivity() {
             mediaPlaybackRequiresUserGesture = false
         }
         view.addJavascriptInterface(HybridBridge(this), "AndroidGestor")
+        view.webChromeClient = WebChromeClient()
         view.webViewClient = object : WebViewClient() {
             override fun onPageFinished(view: WebView, url: String?) {
                 deliverRequestedOrder()
@@ -151,7 +150,8 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun requestNotificationsIfNeeded() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+        if (
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
         ) {
             notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
