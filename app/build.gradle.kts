@@ -12,8 +12,8 @@ android {
         applicationId = "com.rodrigues.gestor"
         minSdk = 23
         targetSdk = 36
-        versionCode = 12
-        versionName = "3.0.0-hybrid-react"
+        versionCode = 13
+        versionName = "3.1.0-voice"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
@@ -51,6 +51,7 @@ dependencies {
     implementation("androidx.core:core-ktx:1.17.0")
     implementation("androidx.activity:activity-ktx:1.12.4")
     implementation("androidx.webkit:webkit:1.14.0")
+    implementation("com.alphacephei:vosk-android:0.3.75")
 
     implementation(platform("com.google.firebase:firebase-bom:34.17.0"))
     implementation("com.google.firebase:firebase-firestore")
