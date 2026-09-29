@@ -1,251 +1,70 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react'
-import { hybrid } from './hybrid.js'
-
-const API='https://jgjmntezfjuyuxhcnvhd.supabase.co/functions/v1/gestor-orders'
-const NEW=new Set(['PENDENTE','NOVO','RECEBIDO','ENVIADO'])
-const DONE=new Set(['CONCLUIDO','ENTREGUE','CANCELADO'])
-const PREP=new Set(['EM_PREPARO','PREPARANDO'])
-const DELIVERY=new Set(['EM_ENTREGA','SAIU_PARA_ENTREGA','SAIU_ENTREGA','A_CAMINHO_CLIENTE'])
-const STALE_NEW_MINUTES=15
-const money=v=>Number(v||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})
-const upper=v=>String(v||'').trim().toUpperCase()
-const dig=v=>String(v||'').replace(/\D/g,'')
-const esc=v=>String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))
-
-function normalize(row){
-  const raw=row?.raw_payload&&typeof row.raw_payload==='object'
-    ? row.raw_payload
-    : row?.raw&&typeof row.raw==='object'
-      ? row.raw
-      : row||{}
-  const client=row?.customer||raw.cliente||raw.customer||{}
-  const values=raw.valores||{}
-  const pay=row?.payment_details||raw.pagamento||{}
-  const status=upper(row.status||raw.status||raw.statusPedido||'PENDENTE')
-  const created=row.created_at||raw.createdAt||raw.criadoEm||raw.created_at||new Date().toISOString()
-  const items=Array.isArray(row?.items)?row.items:Array.isArray(raw.itens)?raw.itens:Array.isArray(raw.items)?raw.items:[]
-  const address=row?.delivery_address||raw.endereco||{}
-  const type=upper(row?.fulfillment_type||raw.tipoPedido||raw.tipo_pedido||raw.fulfillment||'ENTREGA')
-  return {
-    id:String(row.id||raw.id||''),
-    number:String(row.order_code||raw.codigoPedido||raw.numeroPedido||raw.numero||row.id||'').replace(/^#/,'').slice(-12),
-    status,
-    created,
-    clientName:String(client.name||client.nome||raw.nomeCliente||raw.clienteNome||'Cliente'),
-    phone:String(client.phone||client.telefone||raw.telefoneCliente||''),
-    type,
-    total:Number(row.total??raw.total??values.total??0),
-    subtotal:Number(row.subtotal??raw.subtotal??values.subtotal??0),
-    freight:Number(row.delivery_fee??raw.frete??values.taxa??0),
-    discount:Number(row.discount??raw.desconto??values.desconto??0),
-    payment:String(row.payment_method||pay.forma||pay.metodo||raw.formaPagamento||raw.pagamentoMetodo||''),
-    paymentStatus:upper(row.payment_status||pay.status||raw.statusPagamento||''),
-    observation:String(row.customer_note||raw.observacao||raw.observação||''),
-    address:[address.rua||address.street,address.numero||address.number,address.bairro||address.district].filter(Boolean).join(', '),
-    items:items.map(i=>{
-      const modifiers=i.modifiers||i.detalhes||{}
-      const lines=Array.isArray(modifiers.linhasMontagem)?modifiers.linhasMontagem:
-        Array.isArray(modifiers.linhas)?modifiers.linhas:
-        Array.isArray(i.linhasMontagem)?i.linhasMontagem:
-        Array.isArray(i.detalhes)?i.detalhes:[]
-      return {
-        qty:Number(i.quantity||i.quantidade||i.qtd||1),
-        name:String(i.name||i.nome||i.titulo||i.produtoNome||i.baseNome||i.produto||'Item'),
-        price:Number(i.total_price||i.total||i.preco||i.valor||i.unit_price||0),
-        details:lines.map(x=>typeof x==='string'?x:x?.nome).filter(Boolean)
-      }
-    }),
-    raw
-  }
+import React,{useEffect,useMemo,useRef,useState} from 'react';
+import {hybrid} from './hybrid.js';
+import {request} from './api.js';
+import {NEW,DONE,money,normalize,ageMin,statusLabel,bucket,acceptanceRemaining,isLate,duplicateIds,timeLabel,receiptHtml} from './domain.js';
+const GROUPS={products:'Produtos',bases:'Bases',cardapio_acai:'Tamanhos',acompanhamentos_gratis:'Acompanhamentos',adicionais:'Adicionais',coberturas:'Coberturas',utensilios:'Utensílios'};
+const FLOW={new:['CONFIRMADO','Aceitar pedido'],confirmed:['EM_PREPARO','Iniciar preparo'],prep:['PRONTO','Pedido pronto'],ready:['EM_ENTREGA','Despachar'],delivery:['CONCLUIDO','Finalizar entrega']};
+const today=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'America/Campo_Grande',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+const newDraft=()=>({submission_id:crypto.randomUUID(),customer_name:'',phone:'',fulfillment:'RETIRADA',payment_method:'PIX',delivery_fee:0,address:{rua:'',numero:'',bairro:''},customer_note:'',items:[{name:'',quantity:1,unit_price:0,details:'',notes:''}]});
+function Icon({name}){const p={orders:'M5 4h14v16H5z M8 8h8 M8 12h8 M8 16h5',products:'M3 3h7v7H3z M14 3h7v7h-7z M3 14h7v7H3z M14 14h7v7h-7z',history:'M12 8v5l3 2 M4.9 4.9A10 10 0 1 1 2 12 M2 4v6h6',more:'M5 12h.01 M12 12h.01 M19 12h.01',bell:'M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9 M10 21h4',search:'M21 21l-4.3-4.3 M11 18a7 7 0 1 1 0-14 7 7 0 0 1 0 14',store:'M3 10l2-6h14l2 6 M5 10v10h14V10 M9 20v-6h6v6',settings:'M12 8a4 4 0 1 0 0 8 4 4 0 1 0 0-8 M12 2v3 M12 19v3 M2 12h3 M19 12h3',print:'M6 9V3h12v6 M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2 M6 14h12v7H6z',arrow:'M9 6l6 6-6 6',plus:'M12 4v16 M4 12h16',board:'M3 4h18v16H3z M9 4v16 M15 4v16',truck:'M3 5h11v12H3z M14 9h4l3 4v4h-7 M5 19h3 M16 19h3',chat:'M3 3h18v14H8l-5 4z M7 7h10 M7 11h7',report:'M4 20V10h4v10 M10 20V4h4v16 M16 20v-7h4v7',team:'M9 3a4 4 0 1 0 0 8 4 4 0 1 0 0-8 M2 21v-3a7 7 0 0 1 14 0v3 M17 5a4 4 0 0 1 0 8 M18 16a5 5 0 0 1 4 5'};return <svg viewBox="0 0 24 24" aria-hidden="true"><path d={p[name]||p.more}/></svg>}
+function Field({label,children,...props}){return <label className="field"><span>{label}</span>{children||<input {...props}/>}</label>}
+function Toggle({checked,onChange,label}){return <label className="toggle-row"><span>{label}</span><input type="checkbox" checked={checked} onChange={e=>onChange(e.target.checked)}/></label>}
+function Modal({title,children,onClose,wide=false}){const ref=useRef();const [modalError,setModalError]=useState('');useEffect(()=>{const handler=e=>setModalError(e.detail);addEventListener('app:error',handler);return()=>removeEventListener('app:error',handler)},[]);useEffect(()=>{const old=document.activeElement;ref.current?.showModal();const close=()=>onClose();ref.current?.addEventListener('cancel',close);return()=>{ref.current?.removeEventListener('cancel',close);old?.focus?.()}},[]);return <dialog ref={ref} className={wide?'dialog wide':'dialog'} onClick={e=>{if(e.target===e.currentTarget)onClose()}}><header><h2>{title}</h2><button aria-label="Fechar" className="icon-btn" onClick={onClose}>×</button></header>{modalError&&<p role="alert" className="error">{modalError}</p>}{children}</dialog>}
+function HoldButton({onAction,disabled,children}){const [holding,setHolding]=useState(false),timer=useRef();const stop=()=>{clearTimeout(timer.current);setHolding(false)};useEffect(()=>()=>clearTimeout(timer.current),[]);const start=()=>{if(disabled||timer.current)return;setHolding(true);timer.current=setTimeout(()=>{timer.current=null;setHolding(false);onAction()},3000)};const end=()=>{stop();timer.current=null};return <button disabled={disabled} className={'primary hold '+(holding?'holding':'')} onPointerDown={start} onPointerUp={end} onPointerLeave={end} onPointerCancel={end} onKeyDown={e=>{if((e.key===' '||e.key==='Enter')&&!e.repeat){e.preventDefault();start()}}} onKeyUp={end} onBlur={end}>{children}<small>{holding?'Continue segurando…':'Segure por 3 segundos'}</small></button>}
+function Login({onLogin}){const [pin,setPin]=useState(''),[code,setCode]=useState(''),[team,setTeam]=useState(false),[error,setError]=useState(''),[busy,setBusy]=useState(false);const submit=async e=>{e.preventDefault();setBusy(true);setError('');try{const d=await request('login',{pin,operator_id:team?code:undefined});onLogin(d);if(!team)hybrid.savePin?.(pin)}catch(e){setError(e.message)}finally{setBusy(false)}};return <div className="gate"><form className="login-card" onSubmit={submit}><img src="./logo.png" alt="Rodrigues Açaí e Cia"/><span className="eyebrow">RODRIGUES GESTOR</span><h1>Pronto para<br/>começar?</h1><p>Entre para cuidar dos pedidos da loja.</p>{team&&<Field label="Seu código de acesso" value={code} onChange={e=>setCode(e.target.value)} required/>}<Field label="PIN de acesso" type="password" inputMode="numeric" autoComplete="current-password" pattern="[0-9]{6}" maxLength="6" value={pin} onChange={e=>setPin(e.target.value.replace(/\D/g,''))} required/>{error&&<p className="error" role="alert">{error}</p>}<button className="primary" disabled={busy}>{busy?'Entrando…':'Entrar'}</button><button type="button" className="text-btn" onClick={()=>setTeam(!team)}>{team?'Acesso do dono':'Acesso da equipe'}</button><small>Versão 3.1.0</small></form></div>}
+function Empty({title='Nada por aqui',text='Os pedidos aparecerão nesta área.'}){return <div className="empty"><Icon name="orders"/><h3>{title}</h3><p>{text}</p></div>}
+function OrderCard({o,onOpen,duplicate,board=false}){const remaining=acceptanceRemaining(o);return <button className={'order-card '+(isLate(o)?'late':'')} onClick={()=>onOpen(o)}><div className="card-line"><strong>#{o.number||o.id.slice(-6)}</strong><span className={'status '+bucket(o)}>{statusLabel(o.status)}</span></div><h3>{o.clientName}</h3><div className="card-meta"><span>{o.type==='RETIRADA'?'Retirada':o.type==='BALCAO'?'Balcão':'Entrega'}</span><span>{timeLabel(o.created)}</span></div>{duplicate&&<span className="warning-tag">Possível pedido duplicado</span>}{board?<div className="board-items">{o.items.map((i,k)=><div key={k}><b>{i.qty}× {i.name}</b>{i.details.map((d,j)=><small key={j}>- {d}</small>)}{i.notes&&<small>Obs: {i.notes}</small>}</div>)}</div>:<p className="preview">{o.items.map(i=>`${i.qty}× ${i.name}`).join(' · ')||'Abrir detalhes'}</p>}<div className="card-footer"><span className={isLate(o)?'danger-text':''}>{NEW.has(o.status)?remaining>0?`${Math.floor(remaining/60)}:${String(remaining%60).padStart(2,'0')} para aceitar`:'ATRASO NO ACEITE':`${ageMin(o)} min`}</span><b>{money(o.total)}</b></div>{board&&o.address&&<small>{o.address}</small>}</button>}
+function OrderDetail({o,call,run,onClose,onChanged,owner,canAttend}){const [sub,setSub]=useState('items'),[reason,setReason]=useState(''),[cancel,setCancel]=useState(false),[events,setEvents]=useState([]),[couriers,setCouriers]=useState([]),[conversation,setConversation]=useState(null),[messages,setMessages]=useState([]),[message,setMessage]=useState(''),[working,setWorking]=useState(false),[error,setError]=useState('');
+ const perform=async fn=>{if(working)return;setWorking(true);setError('');try{await fn()}catch(e){setError(e.message)}finally{setWorking(false)}};
+ useEffect(()=>{let alive=true;let timer;const load=async()=>{try{if(sub==='events'){const d=await call('order_events',{order_id:o.id});if(alive)setEvents(d.events)}if(sub==='couriers'){const d=await call('couriers');if(alive)setCouriers(d.couriers)}if(sub==='chat'){const d=await call('conversation_for_order',{order_id:o.id,customer_id:o.sourceRow.customer_id});if(!alive)return;setConversation(d.conversation);const poll=async()=>{const m=await call('messages',{conversation_id:d.conversation.id});if(alive)setMessages(m.messages)};await poll();timer=setInterval(()=>poll().catch(e=>alive&&setError(e.message)),8000)}}catch(e){if(alive)setError(e.message)}};load();return()=>{alive=false;clearInterval(timer)}},[sub,o.id]);
+ const change=async status=>perform(async()=>{await call('update_order',{order_id:o.id,patch:{status,...(status==='CANCELADO'?{cancellation_reason:reason}:{})}});hybrid.stopRing();hybrid.vibrate(80);await onChanged();onClose()});
+ const flow=FLOW[bucket(o)];const next=flow?o.type!=='ENTREGA'&&bucket(o)==='ready'?['CONCLUIDO','Finalizar retirada']:flow:null;
+ return <Modal title={'Pedido #'+o.number} onClose={onClose}><div className="detail-head"><span className={'status '+bucket(o)}>{statusLabel(o.status)}</span><span>{timeLabel(o.created)}</span><h3>{o.clientName}</h3><p>{o.phone}</p><p>{o.type} {o.pickupCode&&`· Código ${o.pickupCode}`}</p>{o.address&&<p>{o.address}</p>}</div><div className="tabs">{[['items','Comanda'],['events','Registro'],...(canAttend?[['chat','Chat'],['couriers','Entregador']]:[])].map(([id,label])=><button key={id} className={sub===id?'on':''} onClick={()=>setSub(id)}>{label}</button>)}</div>{error&&<p role="alert" className="error">{error}</p>}
+ {sub==='items'&&<><div className="items">{o.items.map((i,k)=><div className="line-item" key={k}><div><b>{i.qty}× {i.name}</b>{i.details.map((d,j)=><span key={j}>- {d}</span>)}{i.notes&&<em>Obs: {i.notes}</em>}</div><strong>{money(i.price)}</strong></div>)}</div>{o.observation&&<p className="note"><b>Obs:</b> {o.observation}</p>}{o.cancellationReason&&<p className="error"><b>Motivo:</b> {o.cancellationReason}</p>}<div className="totals"><span>Subtotal <b>{money(o.subtotal)}</b></span><span>Entrega <b>{money(o.freight)}</b></span>{o.discount>0&&<span>Desconto <b>− {money(o.discount)}</b></span>}<strong>Total <b>{money(o.total)}</b></strong><span>{o.payment}</span></div><div className="action-stack">{next&&(canAttend||['EM_PREPARO','PRONTO'].includes(next[0]))&&(NEW.has(o.status)?<button className="primary" disabled={working||acceptanceRemaining(o)<=0} onClick={()=>change(next[0])}>{next[1]}</button>:<HoldButton disabled={working} onAction={()=>change(next[0])}>{next[1]}</HoldButton>)}{canAttend&&!DONE.has(o.status)&&<button className="danger-outline" disabled={working} onClick={()=>setCancel(true)}>{NEW.has(o.status)?'Rejeitar pedido':'Cancelar pedido'}</button>}<button className="secondary" onClick={()=>{if(!hybrid.printHtml(receiptHtml(o)))setError('Não foi possível abrir a impressão.')}}><Icon name="print"/>Imprimir comanda</button>{o.phone&&canAttend&&<a className="secondary" href={'https://wa.me/'+(o.phone.replace(/\D/g,'').startsWith('55')?o.phone.replace(/\D/g,''):'55'+o.phone.replace(/\D/g,''))} target="_blank" rel="noreferrer">Abrir WhatsApp</a>}</div></>}
+ {sub==='events'&&(events.length?<ol className="timeline">{events.map(e=><li key={e.id}><b>{statusLabel(e.status)}</b><span>{timeLabel(e.occurred_at)} · {e.raw_payload?.staff_name||e.actor_id||e.actor_type}</span>{e.note&&<p>{e.note}</p>}</li>)}</ol>:<Empty title="Sem registros" text="As alterações deste pedido aparecerão aqui."/>)}
+ {sub==='couriers'&&<div className="list">{couriers.map(d=><div className="list-row" key={d.id}><div><b>{d.name}</b><small>{d.online?'Online':'Offline'} · {d.status}</small>{d.current_lat&&d.current_lng&&<a target="_blank" rel="noreferrer" href={`https://www.google.com/maps?q=${Number(d.current_lat)},${Number(d.current_lng)}`}>Ver localização · {d.last_location_at?timeLabel(d.last_location_at):'sem horário'}</a>}</div><button disabled={working||DONE.has(o.status)} onClick={()=>perform(async()=>{await call('assign_courier',{order_id:o.id,courier_id:d.id});await onChanged();setSub('items')})}>{o.sourceRow.courier_id===d.id?'Vinculado':'Vincular'}</button></div>)}{!couriers.length&&<Empty title="Nenhum entregador" text="Nenhum entregador cadastrado foi encontrado."/>}<p className="muted">Vincular registra o responsável por esta entrega.</p></div>}
+ {sub==='chat'&&<><div className="messages">{messages.map(m=><div className={'bubble '+(m.sender_type==='staff'?'mine':'')} key={m.id}><p>{m.body}</p><small>{timeLabel(m.created_at)}</small></div>)}</div><form className="chat-form" onSubmit={e=>{e.preventDefault();perform(async()=>{const d=await call('send_message',{conversation_id:conversation.id,body:message});setMessages(m=>[...m,d.message]);setMessage('')})}}><input aria-label="Mensagem" value={message} maxLength={2000} onChange={e=>setMessage(e.target.value)} placeholder="Escreva sua mensagem" required/><button className="primary" disabled={working||!conversation}>Enviar</button></form></>}
+ {cancel&&<Modal title="Confirmar cancelamento" onClose={()=>setCancel(false)}><form onSubmit={e=>{e.preventDefault();change('CANCELADO')}}><p>Pedido #{o.number} · {o.clientName}</p><Field label="Motivo"><textarea required minLength={3} maxLength={1000} value={reason} onChange={e=>setReason(e.target.value)}/></Field><button className="danger" disabled={working}>Confirmar cancelamento</button></form></Modal>}</Modal>
 }
-function ageMin(o){return Math.max(0,Math.floor((Date.now()-new Date(o.created).getTime())/60000))}
-function statusLabel(s){
-  return ({PENDENTE:'Novo',NOVO:'Novo',RECEBIDO:'Novo',ENVIADO:'Novo',CONFIRMADO:'Confirmado',ACEITO:'Confirmado',EM_PREPARO:'Em preparo',PREPARANDO:'Em preparo',PRONTO:'Pronto',EM_ENTREGA:'Em entrega',SAIU_PARA_ENTREGA:'Em entrega',SAIU_ENTREGA:'Em entrega',CONCLUIDO:'Concluído',ENTREGUE:'Concluído',CANCELADO:'Cancelado'})[s]||s.replaceAll('_',' ')
-}
-function bucket(o){if(NEW.has(o.status))return'new';if(PREP.has(o.status))return'prep';if(o.status==='CONFIRMADO'||o.status==='ACEITO')return'confirmed';if(o.status==='PRONTO')return'ready';if(DELIVERY.has(o.status))return'delivery';return DONE.has(o.status)?'done':'other'}
-
-async function api(pin,payload){
-  const r=await fetch(API,{method:'POST',headers:{'Content-Type':'application/json','x-gestor-pin':pin},body:JSON.stringify(payload),cache:'no-store'})
-  const d=await r.json().catch(()=>({}))
-  if(r.status===401)throw Object.assign(new Error('PIN inválido.'),{code:401})
-  if(!r.ok||d.ok===false)throw new Error(d.error||'Falha ao acessar o Gestor.')
-  return d
-}
-
-function Icon({name}){
-  const paths={
-    orders:'M5 4h14v16H5z M8 8h8 M8 12h8 M8 16h5',
-    history:'M12 8v5l3 2 M4.9 4.9A10 10 0 1 1 2 12 M2 4v6h6',
-    products:'M4 7h16 M6 7l1 13h10l1-13 M9 7V4h6v3',
-    store:'M3 10l2-6h14l2 6 M5 10v10h14V10 M9 20v-6h6v6',
-    more:'M5 12h.01 M12 12h.01 M19 12h.01',
-    bell:'M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9 M10 21h4',
-    search:'M21 21l-4.3-4.3 M11 18a7 7 0 1 1 0-14 7 7 0 0 1 0 14',
-    chevron:'M9 6l6 6-6 6',
-    print:'M6 9V3h12v6 M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2 M6 14h12v7H6z'
-  }
-  return <svg viewBox="0 0 24 24" aria-hidden="true"><path d={paths[name]||paths.more}/></svg>
-}
-
-function PinGate({onReady}){
-  const [pin,setPin]=useState('')
-  const [error,setError]=useState('')
-  useEffect(()=>{
-    const n=hybrid.getNativePin()
-    const saved=n||localStorage.getItem('rodrigues_gestor_pin')||''
-    if(/^\d{6}$/.test(saved))onReady(saved)
-  },[onReady])
-  const submit=e=>{e.preventDefault();const p=dig(pin).slice(0,6);if(p.length!==6){setError('Digite os 6 números.');return}localStorage.setItem('rodrigues_gestor_pin',p);onReady(p)}
-  return <div className="gate"><form className="gate-card" onSubmit={submit}>
-    <div className="gate-logo">R</div><small>RODRIGUES GESTOR</small><h1>Acesso operacional</h1><p>Digite o PIN do Gestor para abrir os pedidos.</p>
-    <input autoFocus inputMode="numeric" maxLength={6} value={pin} onChange={e=>setPin(dig(e.target.value).slice(0,6))} placeholder="••••••"/>
-    {error&&<div className="error">{error}</div>}<button>Entrar</button>
-  </form></div>
-}
-
-function OrderCard({o,onOpen}){
-  const mins=ageMin(o),b=bucket(o),late=!DONE.has(o.status)&&mins>=20
-  return <button className={"order-card "+(late?'late ':'')+b} onClick={()=>onOpen(o)}>
-    <div className="order-top"><div><h3>PEDIDO #{o.number||o.id.slice(-6)}</h3><p>{o.clientName} {o.phone&&<>• {o.phone}</>}</p></div><span className="state">{statusLabel(o.status)}</span></div>
-    <div className="order-meta"><span className={late?'time late-time':'time'}>{mins<1?'agora':mins+' min'}</span><b>{o.type==='RETIRADA'?'RETIRADA':'ENTREGA'}</b>{o.payment&&<span>{o.payment}</span>}</div>
-    <div className="order-foot"><span>{o.items.length?o.items.slice(0,2).map(i=>i.qty+'× '+i.name).join(' • '):'Pedido sem itens detalhados'}</span><strong>{money(o.total)}</strong></div>
-  </button>
-}
-
-function receiptHtml(o){
-  const items=o.items.map(i=>`<div class="item"><b>${i.qty}x</b><span>${esc(i.name)}</span><b>${i.price?money(i.price):''}</b></div>${i.details.map(d=>`<div class="detail">• ${esc(d)}</div>`).join('')}`).join('')
-  return `<!doctype html><html><head><meta charset="utf-8"><style>@page{margin:2mm}body{font-family:monospace;color:#000;margin:0}.ticket{width:80mm;max-width:100%;padding:2mm;box-sizing:border-box}h1,h2{text-align:center;margin:4px}.rule{border-top:1px dashed #000;margin:9px 0}.item{display:grid;grid-template-columns:auto 1fr auto;gap:8px;margin:7px 0}.detail{padding-left:26px}.total{font-size:1.35em;display:flex;justify-content:space-between;margin:12px 0}</style></head><body><section class="ticket"><h1>RODRIGUES AÇAÍ E CIA</h1><h2>PEDIDO #${esc(o.number)}</h2><div class="rule"></div><p><b>Cliente:</b> ${esc(o.clientName)}</p><p><b>Tipo:</b> ${esc(o.type)}</p>${o.address?`<p><b>Endereço:</b> ${esc(o.address)}</p>`:''}<div class="rule"></div>${items}${o.observation?`<div class="rule"></div><p><b>OBS:</b> ${esc(o.observation)}</p>`:''}<div class="rule"></div><div class="total"><span>TOTAL</span><b>${money(o.total)}</b></div><p><b>Pagamento:</b> ${esc(o.payment)}</p></section></body></html>`
-}
-
-function OrderSheet({o,onClose,onAction,busy}){
-  const actions=bucket(o)==='new'?[['CONFIRMADO','Aceitar'],['CANCELADO','Rejeitar']]:
-    bucket(o)==='confirmed'?[['EM_PREPARO','Iniciar preparo'],['CANCELADO','Cancelar']]:
-    bucket(o)==='prep'?[['PRONTO','Pedido pronto'],['CANCELADO','Cancelar']]:
-    bucket(o)==='ready'?[['EM_ENTREGA',o.type==='RETIRADA'?'Finalizar retirada':'Despachar']]:
-    bucket(o)==='delivery'?[['CONCLUIDO','Finalizar entrega']]:[]
-  return <div className="sheet-backdrop" onClick={e=>e.target===e.currentTarget&&onClose()}>
-    <section className="sheet"><div className="handle"/><header><div><small>PEDIDO</small><h2>#{o.number}</h2></div><button className="close" onClick={onClose}>×</button></header>
-      <div className="sheet-chips"><span>{statusLabel(o.status)}</span><span>{o.type}</span><span>{ageMin(o)} min</span></div>
-      <div className="info"><b>{o.clientName}</b>{o.phone&&<small>{o.phone}</small>}{o.address&&<small>{o.address}</small>}</div>
-      <div className="items">{o.items.map((i,k)=><div className="sheet-item" key={k}><div><b>{i.qty}× {i.name}</b>{i.details.map((d,j)=><small key={j}>• {d}</small>)}</div><strong>{i.price?money(i.price):''}</strong></div>)}</div>
-      {o.observation&&<div className="obs"><b>Observação</b><p>{o.observation}</p></div>}
-      <div className="sheet-total"><span>Total</span><b>{money(o.total)}</b></div>
-      <div className="sheet-actions">{actions.map(([s,l])=><button disabled={busy} className={s==='CANCELADO'?'danger':''} key={s} onClick={()=>onAction(s)}>{l}</button>)}</div>
-      <button className="secondary" onClick={()=>hybrid.printHtml(receiptHtml(o))}><Icon name="print"/> Imprimir comanda</button>
-    </section>
-  </div>
-}
-
+function Catalog({call,run,owner}){const [items,setItems]=useState([]),[group,setGroup]=useState('products'),[q,setQ]=useState(''),[edit,setEdit]=useState(null),[loading,setLoading]=useState(true),[error,setError]=useState('');const load=async()=>{setLoading(true);try{const [p,b]=await Promise.all([call('products'),call('builder_catalog')]);setItems([...(p.products||[]).map(i=>({...i,collection:'products'})),...(b.items||[]).map(i=>({...i,description:i.data?.descricao,image_url:i.data?.imagem,sort_order:i.order,active:i.data?.ativo!==false}))]);setError('')}catch(e){setError(e.message)}finally{setLoading(false)}};useEffect(()=>{load()},[]);return <><div className="page-heading"><div><span className="eyebrow">CARDÁPIO</span><h1>O que vamos servir?</h1></div>{owner&&<button className="primary" onClick={()=>setEdit({collection:group,name:'',price:0,sort_order:0,active:true,available:true})}><Icon name="plus"/>Adicionar</button>}</div><div className="tabs scroll">{Object.entries(GROUPS).map(([id,label])=><button className={group===id?'on':''} key={id} onClick={()=>setGroup(id)}>{label}</button>)}</div><Field label="Buscar no cardápio"><input value={q} onChange={e=>setQ(e.target.value)} placeholder="Nome do produto ou ingrediente"/></Field>{error&&<p className="error">{error}</p>}<div className="catalog-list">{items.filter(i=>i.collection===group&&i.name.toLowerCase().includes(q.toLowerCase())).map(i=><article className="catalog-item" key={i.collection+i.id}>{i.image_url?<img src={i.image_url} alt="" loading="lazy" onError={e=>{e.currentTarget.style.display='none'}}/>:<div className="product-icon"><Icon name="products"/></div>}<div><b>{i.name}</b><small>{money(i.price)} · {i.available&&i.active!==false?'Disponível':'Pausado'}</small></div>{owner&&<div className="row-actions"><button className={i.available&&i.active!==false?'secondary':'primary'} onClick={()=>run(async()=>{await call(i.collection==='products'?'update_product':'update_builder_item',i.collection==='products'?{product_id:i.id,available:!i.available,active:true}:{collection:i.collection,document_id:i.id,available:!i.available});await load()})}>{i.available&&i.active!==false?'Pausar':'Ativar'}</button><button className="text-btn" onClick={()=>setEdit(i)}>Editar</button></div>}</article>)}</div>{loading&&<p>Carregando cardápio…</p>}{edit&&<Modal title={edit.id?'Editar item':'Adicionar item'} onClose={()=>setEdit(null)}><form onSubmit={e=>{e.preventDefault();run(async()=>{await call('catalog_save',{...edit,collection:edit.collection==='products'?undefined:edit.collection});await load();setEdit(null)})}}><Field label="Nome" required value={edit.name} onChange={e=>setEdit({...edit,name:e.target.value})}/><div className="form-grid"><Field label="Preço (R$)" type="number" min="0" max="10000" step="0.01" required value={edit.price} onChange={e=>setEdit({...edit,price:e.target.value})}/><Field label="Ordem" type="number" min="0" value={edit.sort_order||0} onChange={e=>setEdit({...edit,sort_order:e.target.value})}/></div>{edit.collection==='products'&&<Field label="Preço original, se houver promoção" type="number" min="0" step="0.01" value={edit.compare_at_price||''} onChange={e=>setEdit({...edit,compare_at_price:e.target.value})}/>}<Field label="Descrição"><textarea value={edit.description||''} onChange={e=>setEdit({...edit,description:e.target.value})}/></Field><Field label="Link da imagem" type="url" value={edit.image_url||''} onChange={e=>setEdit({...edit,image_url:e.target.value})}/><button className="primary">Salvar item</button></form></Modal>}</>}
+function Manual({call,run,onClose,onCreated}){const [draft,setDraft]=useState(()=>{try{return JSON.parse(localStorage.getItem('gestor-manual-draft'))||newDraft()}catch{return newDraft()}});useEffect(()=>{localStorage.setItem('gestor-manual-draft',JSON.stringify(draft))},[draft]);const set=(k,v)=>setDraft({...draft,[k]:v}),item=(index,k,v)=>setDraft({...draft,items:draft.items.map((i,j)=>j===index?{...i,[k]:v}:i)});const total=draft.items.reduce((s,i)=>s+Number(i.quantity)*Number(i.unit_price),0)+(draft.fulfillment==='ENTREGA'?Number(draft.delivery_fee):0);return <Modal title="Novo pedido manual" onClose={onClose} wide><form onSubmit={e=>{e.preventDefault();run(async()=>{await call('manual_order',{order:draft});localStorage.removeItem('gestor-manual-draft');await onCreated();onClose()})}}><div className="form-grid"><Field label="Nome do cliente" required minLength={2} value={draft.customer_name} onChange={e=>set('customer_name',e.target.value)}/><Field label="Telefone com DDD" required inputMode="tel" pattern="[0-9 ()+-]{10,18}" value={draft.phone} onChange={e=>set('phone',e.target.value)}/><Field label="Recebimento"><select value={draft.fulfillment} onChange={e=>set('fulfillment',e.target.value)}><option>RETIRADA</option><option>ENTREGA</option></select></Field><Field label="Pagamento"><select value={draft.payment_method} onChange={e=>set('payment_method',e.target.value)}>{['PIX','DINHEIRO','CREDITO','DEBITO'].map(x=><option key={x}>{x}</option>)}</select></Field></div>{draft.fulfillment==='ENTREGA'&&<div className="form-grid">{[['rua','Rua'],['numero','Número'],['bairro','Bairro']].map(([k,l])=><Field key={k} label={l} required value={draft.address[k]} onChange={e=>set('address',{...draft.address,[k]:e.target.value})}/>)}<Field label="Taxa de entrega" type="number" min="0" step="0.01" value={draft.delivery_fee} onChange={e=>set('delivery_fee',e.target.value)}/></div>}<h3>Itens do pedido</h3>{draft.items.map((i,k)=><fieldset key={k}><legend>Item {k+1}</legend><Field label="Produto, tamanho e base" required value={i.name} onChange={e=>item(k,'name',e.target.value)}/><div className="form-grid"><Field label="Quantidade" type="number" min="1" max="99" required value={i.quantity} onChange={e=>item(k,'quantity',e.target.value)}/><Field label="Valor unitário" type="number" min="0" max="10000" step="0.01" required value={i.unit_price} onChange={e=>item(k,'unit_price',e.target.value)}/></div><Field label="Acompanhamentos, um por linha"><textarea value={i.details} onChange={e=>item(k,'details',e.target.value)}/></Field><Field label="Observação do item" value={i.notes} onChange={e=>item(k,'notes',e.target.value)}/>{draft.items.length>1&&<button type="button" className="text-btn danger-text" onClick={()=>set('items',draft.items.filter((_,j)=>k!==j))}>Remover item</button>}</fieldset>)}<button type="button" className="secondary" disabled={draft.items.length>=20} onClick={()=>set('items',[...draft.items,{name:'',quantity:1,unit_price:0,details:'',notes:''}])}>+ Adicionar item</button><Field label="Observação do pedido"><textarea value={draft.customer_note} onChange={e=>set('customer_note',e.target.value)}/></Field><div className="sheet-total"><span>Total</span><b>{money(total)}</b></div><button className="primary">Registrar pedido</button></form></Modal>}
+function Reports({call,run}){const [from,setFrom]=useState(today()),[to,setTo]=useState(today()),[report,setReport]=useState(null);const load=()=>run(async()=>{const end=new Date(to+'T00:00:00-04:00');end.setUTCDate(end.getUTCDate()+1);const d=await call('report',{from:from+'T00:00:00-04:00',to:end.toISOString()});setReport(d.report)});useEffect(()=>{load()},[]);return <><h1>Fechamento e relatórios</h1><form className="form-grid" onSubmit={e=>{e.preventDefault();load()}}><Field label="De" type="date" required value={from} onChange={e=>setFrom(e.target.value)}/><Field label="Até" type="date" required value={to} onChange={e=>setTo(e.target.value)}/><button className="primary">Consultar</button></form>{report&&<><div className="report-total"><small>Vendas concluídas</small><strong>{money(report.total)}</strong><span>{report.completed} pedidos concluídos</span></div><div className="report-grid"><div><b>{report.cancelled}</b><span>Cancelados</span></div><div><b>{money(report.delivery)}</b><span>Taxas de entrega</span></div><div><b>{money(report.discount)}</b><span>Descontos</span></div></div><h3>Por forma de pagamento</h3>{Object.entries(report.byPayment).map(([key,value])=><div className="list-row" key={key}><span>{key}</span><b>{money(value)}</b></div>)}</>}</>}
+function Staff({call,run}){const [rows,setRows]=useState([]),[edit,setEdit]=useState(null);const load=async()=>setRows((await call('staff_list')).staff);useEffect(()=>{run(load)},[]);return <><div className="page-heading"><h1>Equipe e acessos</h1><button className="primary" onClick={()=>setEdit({id:'',name:'',role:'atendente',pin:'',active:true})}>Adicionar</button></div>{rows.map(s=><button className="menu-item" key={s.id} onClick={()=>setEdit({...s,pin:''})}><Icon name="team"/><span><b>{s.name}</b><small>{s.id} · {s.role} · {s.active?'Ativo':'Desativado'}</small></span><Icon name="arrow"/></button>)}{edit&&<Modal title="Acesso da equipe" onClose={()=>setEdit(null)}><form onSubmit={e=>{e.preventDefault();run(async()=>{await call('staff_save',edit);await load();setEdit(null)})}}><Field label="Nome" required value={edit.name} onChange={e=>setEdit({...edit,name:e.target.value})}/><Field label="Código de acesso" required pattern="[a-z0-9_-]{3,30}" value={edit.id} onChange={e=>setEdit({...edit,id:e.target.value.toLowerCase()})}/><Field label="PIN de 6 números (vazio mantém o atual)" type="password" pattern="[0-9]{6}" maxLength={6} value={edit.pin} onChange={e=>setEdit({...edit,pin:e.target.value})}/><Field label="Perfil"><select value={edit.role} onChange={e=>setEdit({...edit,role:e.target.value})}><option value="atendente">Atendente</option><option value="montador">Montador</option></select></Field><Toggle checked={edit.active} label="Acesso ativo" onChange={active=>setEdit({...edit,active})}/><button className="primary">Salvar acesso</button></form></Modal>}</>}
+function Marketing({kind,call,run}){const [rows,setRows]=useState([]),[edit,setEdit]=useState(null);const load=async()=>setRows((await call('marketing_list',{kind})).items);useEffect(()=>{run(load)},[kind]);return <><div className="page-heading"><h1>{kind==='coupons'?'Cupons':'Banners e avisos'}</h1><button className="primary" onClick={()=>setEdit({kind,active:true,discount_type:'fixed',discount_value:0,min_order_value:0,sort_order:0})}>Adicionar</button></div>{rows.map(r=><button className="menu-item" key={r.id} onClick={()=>setEdit({...r,kind})}><Icon name="products"/><span><b>{r.code||r.title||'Banner'}</b><small>{r.active?'Ativo':'Pausado'}</small></span><Icon name="arrow"/></button>)}{edit&&<Modal title={kind==='coupons'?'Editar cupom':'Editar banner'} onClose={()=>setEdit(null)}><form onSubmit={e=>{e.preventDefault();run(async()=>{await call('marketing_save',edit);await load();setEdit(null)})}}>{kind==='coupons'?<><Field label="Código" required value={edit.code||''} onChange={e=>setEdit({...edit,code:e.target.value})}/><Field label="Tipo"><select value={edit.discount_type} onChange={e=>setEdit({...edit,discount_type:e.target.value})}><option value="fixed">Valor em reais</option><option value="percent">Porcentagem</option><option value="free_delivery">Frete grátis</option></select></Field><Field label="Desconto" type="number" min="0" step="0.01" required value={edit.discount_value} onChange={e=>setEdit({...edit,discount_value:e.target.value})}/><Field label="Pedido mínimo" type="number" min="0" step="0.01" value={edit.min_order_value} onChange={e=>setEdit({...edit,min_order_value:e.target.value})}/><Field label="Descrição" value={edit.description||''} onChange={e=>setEdit({...edit,description:e.target.value})}/></>:<><Field label="Título" value={edit.title||''} onChange={e=>setEdit({...edit,title:e.target.value})}/><Field label="Link da imagem" type="url" required value={edit.image_url||''} onChange={e=>setEdit({...edit,image_url:e.target.value})}/><Field label="Link ao tocar (vazio para somente imagem)" type="url" value={edit.target_url||''} onChange={e=>setEdit({...edit,target_url:e.target.value})}/><Field label="Ordem" type="number" min="0" value={edit.sort_order} onChange={e=>setEdit({...edit,sort_order:e.target.value})}/></>}<Toggle checked={edit.active} label="Ativo" onChange={active=>setEdit({...edit,active})}/><button className="primary">Salvar</button></form></Modal>}</>}
+function Settings(){const [awake,setAwake]=useState(localStorage.getItem('gestor-awake')!=='0'),[sound,setSound]=useState(true),[vibration,setVibration]=useState(true),[volume,setVolume]=useState(100);const [feedback,setFeedback]=useState('');useEffect(()=>{const s=hybrid.preferences?.();if(s){setSound(s.enabled);setVibration(s.vibration);setVolume(s.volume??100)}},[]);return <><h1>Configurações</h1><div className="panel"><h3>Alertas de pedidos</h3><Toggle label="Som de novo pedido" checked={sound} onChange={v=>{setSound(v);hybrid.setPreferences?.({enabled:v})}}/><Toggle label="Vibração" checked={vibration} onChange={v=>{setVibration(v);hybrid.setPreferences?.({vibration:v})}}/><Field label={'Volume do alerta · '+volume+'%'}><input type="range" min="0" max="100" value={volume} onChange={e=>{const v=Number(e.target.value);setVolume(v);hybrid.setPreferences?.({volume:v})}}/></Field><div className="action-stack"><button className="primary" onClick={()=>{if(hybrid.isNative()){hybrid.ring({id:'gestor-test',number:'TESTE',clientName:'Teste de alerta'});setFeedback('Alerta de teste acionado.')}else{hybrid.testWebRing?.();setFeedback('Teste de som iniciado.')}}}>Testar alerta</button><button className="secondary" onClick={()=>{hybrid.stopRing();setFeedback('Teste encerrado.')}}>Parar teste</button>{hybrid.isNative()&&<><button className="secondary" onClick={()=>hybrid.chooseSound?.()}>Escolher toque</button><button className="secondary" onClick={()=>hybrid.notificationSettings()}>Permissões de notificação</button></>}</div><p className="muted">O toque repete por até 5 minutos. Silenciar o som não cancela o pedido.</p>{feedback&&<p role="status">{feedback}</p>}</div><div className="panel"><Toggle label="Manter a tela ligada" checked={awake} onChange={v=>{setAwake(v);localStorage.setItem('gestor-awake',v?'1':'0');hybrid.keepAwake(v)}}/><h3>Impressão</h3><p>Abra um pedido e toque em Imprimir comanda para escolher a impressora ou salvar em PDF.</p></div><p className="muted">Rodrigues Gestor · 3.1.0</p></>}
+function Store({operation,call,run,onChanged}){const [prep,setPrep]=useState(operation?.tempoEstimadoMin||25),[message,setMessage]=useState(operation?.mensagemOperacao||'');return <><h1>Minha loja</h1><div className="panel"><Toggle label={operation?.aberta?'Loja aberta':'Loja fechada'} checked={!!operation?.aberta} onChange={open=>run(async()=>{await call('set_operation',{open});await onChanged()})}/><form onSubmit={e=>{e.preventDefault();run(async()=>{await call('operation_save',{preparation_minutes:prep,message});await onChanged()})}}><Field label="Tempo estimado de preparo (minutos)" type="number" min="1" max="180" value={prep} onChange={e=>setPrep(e.target.value)}/><Field label="Aviso da operação"><textarea value={message} maxLength={500} onChange={e=>setMessage(e.target.value)}/></Field><button className="primary">Salvar configurações</button></form></div></>}
+function Couriers({call,run}){const [rows,setRows]=useState([]);useEffect(()=>{run(async()=>setRows((await call('couriers')).couriers))},[]);return <><h1>Entregadores</h1>{rows.map(r=><div className="list-row" key={r.id}><div><b>{r.name}</b><small>{r.online?'Online':'Offline'} · {r.status}</small><small>{r.phone}</small></div>{r.current_lat&&r.current_lng&&<a className="secondary" href={`https://www.google.com/maps?q=${Number(r.current_lat)},${Number(r.current_lng)}`} target="_blank" rel="noreferrer">Localização</a>}</div>)}{!rows.length&&<Empty title="Nenhum entregador" text="Nenhum entregador cadastrado foi encontrado."/>}</>}
 export default function App(){
-  const [pin,setPin]=useState('')
-  const [orders,setOrders]=useState([])
-  const [loading,setLoading]=useState(false)
-  const [error,setError]=useState('')
-  const [filter,setFilter]=useState('Todos')
-  const [query,setQuery]=useState('')
-  const [tab,setTab]=useState('orders')
-  const [selected,setSelected]=useState(null)
-  const [requestedId,setRequestedId]=useState('')
-  const [busy,setBusy]=useState(false)
-  const prevIds=useRef(new Set())
-
-  const load=async(silent=false)=>{
-    if(!pin)return
-    if(!silent)setLoading(true)
-    try{
-      const d=await api(pin,{action:'list',limit:120})
-      const rows=(d.orders||[]).map(normalize).sort((a,b)=>new Date(b.created)-new Date(a.created))
-      setOrders(rows);hybrid.syncVoiceOrders(rows);setError('')
-      const current=new Set(rows.filter(o=>NEW.has(o.status)).map(o=>o.id))
-      if(prevIds.current.size){
-        const fresh=[...current].filter(id=>!prevIds.current.has(id))
-        if(fresh.length&&'Notification' in window&&Notification.permission==='granted'&&!hybrid.isNative()){
-          new Notification('Novo pedido',{body:'Chegou '+fresh.length+' novo pedido no Rodrigues Gestor.'})
-        }
-      }
-      prevIds.current=current
-    }catch(e){
-      setError(e.message||'Falha ao atualizar.')
-      if(e.code===401){localStorage.removeItem('rodrigues_gestor_pin');setPin('')}
-    }finally{if(!silent)setLoading(false)}
-  }
-  useEffect(()=>{if(pin){load();const t=setInterval(()=>load(true),3500);return()=>clearInterval(t)}},[pin])
-  useEffect(()=>{hybrid.keepAwake(true);return()=>hybrid.keepAwake(false)},[])
-  useEffect(()=>{hybrid.setVoiceActiveOrder(selected?.id||'')},[selected])
-  useEffect(()=>{
-    const open=e=>setRequestedId(String(e?.detail?.id||''))
-    addEventListener('native:open-order',open)
-    return()=>removeEventListener('native:open-order',open)
-  },[])
-  useEffect(()=>{
-    if(!requestedId)return
-    const found=orders.find(o=>o.id===requestedId||o.number===requestedId)
-    if(found){setSelected(found);setRequestedId('')}
-  },[requestedId,orders])
-
-  const isStaleNew=o=>NEW.has(o.status)&&ageMin(o)>STALE_NEW_MINUTES
-  const active=orders.filter(o=>!DONE.has(o.status)&&!isStaleNew(o))
-  const counts={
-    new:active.filter(o=>bucket(o)==='new').length,
-    confirmed:active.filter(o=>bucket(o)==='confirmed').length,
-    prep:active.filter(o=>bucket(o)==='prep').length,
-    ready:active.filter(o=>bucket(o)==='ready').length
-  }
-  const filtered=useMemo(()=>{
-    let rows=tab==='history'
-      ? orders.filter(o=>DONE.has(o.status)||isStaleNew(o))
-      : orders.filter(o=>!DONE.has(o.status)&&!isStaleNew(o))
-    if(filter==='Atrasados')rows=rows.filter(o=>ageMin(o)>=20)
-    if(filter==='Entrega')rows=rows.filter(o=>o.type!=='RETIRADA')
-    if(filter==='Retirada')rows=rows.filter(o=>o.type==='RETIRADA')
-    if(filter==='Pagamento')rows=rows.filter(o=>o.paymentStatus&& !['PAGO','PAID','APROVADO'].includes(o.paymentStatus))
-    const q=query.trim().toLowerCase()
-    if(q)rows=rows.filter(o=>(o.number+' '+o.clientName+' '+o.items.map(i=>i.name).join(' ')).toLowerCase().includes(q))
-    return rows
-  },[orders,filter,query,tab])
-
-  const action=async status=>{
-    if(!selected)return
-    let reason=''
-    if(status==='CANCELADO'){reason=prompt('Motivo do cancelamento:','')||'';if(!reason.trim())return}
-    setBusy(true)
-    try{
-      await api(pin,status==='CANCELADO'?{action:'cancel',orderId:selected.id,reason}:{action:'status',orderId:selected.id,status})
-      hybrid.vibrate(70);hybrid.stopRing();await load(true);setSelected(null)
-    }catch(e){alert(e.message||'Não foi possível alterar o pedido.')}finally{setBusy(false)}
-  }
-
-  if(!pin)return <PinGate onReady={setPin}/>
-
-  return <div className="app">
-    <header className="hero">
-      <div className="hero-line"><div><h1>Bom dia <span>👋</span></h1><p>Central de pedidos ao vivo</p></div><button className="bell" onClick={()=>{if(hybrid.isNative())hybrid.notificationSettings();else if('Notification' in window) Notification.requestPermission?.()}}><Icon name="bell"/></button></div>
-      <div className="hero-pills"><span><i/> Loja aberta</span><span><em/> Preparo ~25 min</span></div>
-      <div className="presence"><i/> {hybrid.isNative()?'Modo nativo ativo':'PWA ativo'} • {active.length} pedidos em andamento</div>
-    </header>
-
-    {tab==='orders'||tab==='history'?<main>
-      <section className="stats">
-        <button className="stat red" onClick={()=>{setTab('orders');setFilter('Todos')}}><b>{counts.new}</b><span>Novos</span></button>
-        <button className="stat purple"><b>{counts.confirmed}</b><span>Confirmado</span></button>
-        <button className="stat amber"><b>{counts.prep}</b><span>Em preparo</span></button>
-        <button className="stat green"><b>{counts.ready}</b><span>Prontos</span></button>
-      </section>
-      <label className="search"><Icon name="search"/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Pedido, cliente ou item"/></label>
-      <div className="filters">{['Todos','Atrasados','Entrega','Retirada','Pagamento'].map(f=><button key={f} className={filter===f?'on':''} onClick={()=>setFilter(f)}>{f==='Pagamento'?'Pagamento pendente':f}</button>)}</div>
-      {error&&<div className="error-bar">{error}<button onClick={()=>load()}>Tentar novamente</button></div>}
-      <section className="orders">{loading&&!orders.length?<div className="loading">Carregando pedidos…</div>:filtered.length?filtered.map(o=><OrderCard key={o.id} o={o} onOpen={setSelected}/>):<div className="empty">Nenhum pedido neste filtro.</div>}</section>
-    </main>:<main className="module">
-      <div className="module-card"><div className="module-icon"><Icon name={tab==='products'?'products':tab==='store'?'store':'more'}/></div>
-      <h2>{tab==='products'?'Produtos':tab==='store'?'Loja':'Mais'}</h2>
-      <p>{tab==='products'?'O catálogo continua sendo lido do backend. Esta área será a próxima a receber os controles de pausar, reativar e editar.':tab==='store'?'Os controles operacionais da loja ficam disponíveis no mesmo React, com funções extras quando aberto no APK.':'Preferências híbridas do Gestor.'}</p>
-      {tab==='more'&&<div className="module-actions"><button onClick={()=>hybrid.startVoice()}>Ativar Rodrigues Voz</button><button onClick={()=>hybrid.stopVoice()}>Desativar Rodrigues Voz</button><button onClick={()=>hybrid.keepAwake(true)}>Manter tela ligada</button><button onClick={()=>hybrid.notificationSettings()}>Notificações do aparelho</button><button onClick={()=>{localStorage.removeItem('rodrigues_gestor_pin');setPin('')}}>Trocar PIN</button></div>}
-      </div>
-    </main>}
-
-    <nav className="bottom">
-      {[['orders','orders','Pedidos'],['history','history','Histórico'],['products','products','Produtos'],['store','store','Loja'],['more','more','Mais']].map(([id,ic,label])=><button key={id} className={tab===id?'on':''} onClick={()=>{setTab(id);setFilter('Todos')}}><Icon name={ic}/><span>{label}</span></button>)}
-    </nav>
-    {selected&&<OrderSheet o={selected} onClose={()=>setSelected(null)} onAction={action} busy={busy}/>}
-  </div>
+ const [auth,setAuth]=useState(()=>{try{return JSON.parse(localStorage.getItem('gestor-app-session'))}catch{return null}}),[tab,setTab]=useState('orders'),[page,setPage]=useState(''),[orders,setOrders]=useState([]),[history,setHistory]=useState([]),[operation,setOperation]=useState(null),[loading,setLoading]=useState(true),[error,setError]=useState(''),[notice,setNotice]=useState(''),[busy,setBusy]=useState(false),[filter,setFilter]=useState('all'),[query,setQuery]=useState(''),[selected,setSelected]=useState(null),[requestedId,setRequestedId]=useState(window.__requestedOrderId||''),[board,setBoard]=useState(false),[manual,setManual]=useState(false),[problems,setProblems]=useState(false),[connected,setConnected]=useState(false),[lastSync,setLastSync]=useState(null),[historyFrom,setHistoryFrom]=useState(today()),[historyTo,setHistoryTo]=useState(today());
+ const [,tick]=useState(0),polling=useRef(false),busyRef=useRef(false),prior=useRef(null),authRef=useRef(auth);authRef.current=auth;
+ const call=(action,data={})=>request(action,data,authRef.current?.session_token||'');
+ const logout=async()=>{try{await call('logout')}catch{}localStorage.removeItem('gestor-app-session');hybrid.setSession?.('');setAuth(null);setOrders([]);setHistory([]);setSelected(null);prior.current=null};
+ const run=async fn=>{if(busyRef.current)return;busyRef.current=true;setBusy(true);setError('');try{await fn();setNotice('Salvo com sucesso.');setTimeout(()=>setNotice(''),3500)}catch(e){setError(e.message);dispatchEvent(new CustomEvent('app:error',{detail:e.message}));if(e.code===401)logout()}finally{busyRef.current=false;setBusy(false)}};
+ const refreshStore=async()=>{const d=await call('store');setOperation(d.operation?.value||{})};
+ const load=async()=>{if(polling.current||!authRef.current)return;polling.current=true;try{const d=await call('orders');const map=new Map((d.customers||[]).map(c=>[c.id,c]));const rows=(d.orders||[]).map(o=>normalize({...o,customer:map.get(o.customer_id)}));setOrders(rows.filter(o=>!DONE.has(o.status)));setConnected(true);setLastSync(new Date());setError('');const pending=rows.filter(o=>NEW.has(o.status));const current=new Set(pending.map(o=>o.id));if(prior.current!==null&&!hybrid.isNative()){const fresh=pending.find(o=>!prior.current.has(o.id));if(fresh)hybrid.webNewOrder?.(fresh)}prior.current=current;
+ }catch(e){setConnected(false);setError(e.message);if(e.code===401)await logout()}finally{polling.current=false;setLoading(false)}};
+ const loadHistory=async(more=false)=>{const end=new Date(historyTo+'T00:00:00-04:00');end.setUTCDate(end.getUTCDate()+1);const d=await call('orders',{history:true,offset:more?history.length:0,from:historyFrom+'T00:00:00-04:00',to:end.toISOString()});const map=new Map((d.customers||[]).map(c=>[c.id,c]));const rows=d.orders.map(o=>normalize({...o,customer:map.get(o.customer_id)}));setHistory(h=>more?[...h,...rows]:rows)};
+ useEffect(()=>{if(!auth)return;let alive=true;call('me').then(d=>{if(alive)setAuth(a=>({...a,operator:d.operator}))}).catch(e=>{if(e.code===401)logout();else setError(e.message)});load();refreshStore().catch(e=>setError(e.message));const timer=setInterval(()=>{if(document.visibilityState==='visible')load()},8000);const online=()=>load();addEventListener('online',online);addEventListener('focus',online);return()=>{alive=false;clearInterval(timer);removeEventListener('online',online);removeEventListener('focus',online)}},[auth?.session_token]);
+ useEffect(()=>{const t=setInterval(()=>tick(x=>x+1),1000);hybrid.keepAwake(localStorage.getItem('gestor-awake')!=='0');const open=e=>setRequestedId(String(e?.detail?.id||''));addEventListener('native:open-order',open);return()=>{clearInterval(t);removeEventListener('native:open-order',open)}},[]);
+ useEffect(()=>{if(requestedId&&orders.some(o=>o.id===requestedId)){setSelected(requestedId);setRequestedId('')}},[requestedId,orders]);
+ useEffect(()=>{if(tab==='history'&&auth)run(()=>loadHistory())},[tab]);
+ useEffect(()=>{const back=()=>{if(selected)setSelected(null);else if(page)setPage('');else if(tab!=='orders')setTab('orders');else hybrid.exit?.()};addEventListener('native:back',back);return()=>removeEventListener('native:back',back)},[selected,page,tab]);
+ const owner=auth?.operator?.role==='owner',canAttend=auth?.operator?.role!=='montador';const duplicates=useMemo(()=>duplicateIds(orders),[orders]);const late=orders.filter(isLate),pending=orders.filter(o=>NEW.has(o.status));
+ const selectedOrder=[...orders,...history].find(o=>o.id===selected);const base=tab==='history'?history:orders;const visible=base.filter(o=>(filter==='all'||filter===bucket(o)||filter==='late'&&isLate(o)||filter==='cancelled'&&['CANCELADO','CANCELADA'].includes(o.status))&&`${o.number} ${o.clientName} ${o.phone} ${o.items.map(i=>i.name).join(' ')}`.toLowerCase().includes(query.toLowerCase()));
+ if(!auth)return <Login onLogin={d=>{localStorage.setItem('gestor-app-session',JSON.stringify(d));hybrid.setSession?.(d.session_token);setAuth(d);setLoading(true)}}/>;
+ return <div className={'app '+(board?'assembly':'')}><aside className="desktop-brand"><img src="./logo.png" alt="Rodrigues"/><strong>Rodrigues Gestor</strong><small>Sua loja, em boas mãos.</small></aside><header className="topbar"><div className="brand-mobile"><img src="./logo.png" alt="Rodrigues"/><div><b>Rodrigues Gestor</b><small><i className={connected?'online-dot':'offline-dot'}/>{connected?'Conectado':'Sem conexão'}{lastSync&&` · ${lastSync.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}`}</small></div></div><div className="top-actions"><button className={'store-pill '+(operation?.aberta?'open':'closed')} onClick={()=>{setTab('more');setPage('store')}}><i/>{operation===null?'Carregando loja':operation.aberta?'Loja aberta':'Loja fechada'}</button><button className="icon-btn bell" aria-label="Central de problemas" onClick={()=>setProblems(true)}><Icon name="bell"/>{pending.length+late.length>0&&<span>{new Set([...pending,...late].map(o=>o.id)).size}</span>}</button></div></header>
+ <main>{error&&<div className="error-bar" role="alert"><span>{error}</span><button onClick={()=>load()}>Atualizar</button></div>}{notice&&<div className="toast" role="status">{notice}</div>}{busy&&<div className="busy-indicator" role="status">Salvando…</div>}
+ {(tab==='orders'||tab==='history')&&<><div className="page-heading"><div><span className="eyebrow">{tab==='history'?'CONSULTA':'OPERAÇÃO'}</span><h1>{tab==='history'?'Histórico de pedidos':board?'Modo Montador':'Pedidos'}</h1><p>{tab==='history'?'Consulte pedidos e motivos de cancelamento.':`${orders.length} pedidos em andamento`}</p></div><div className="heading-actions">{tab==='orders'&&<><button className="secondary" onClick={()=>{setBoard(!board);if(!board&&innerWidth>900)document.documentElement.requestFullscreen?.().catch(()=>{});else if(document.fullscreenElement)document.exitFullscreen?.()}}><Icon name="board"/>{board?'Sair do montador':'Montador'}</button>{canAttend&&<button className="primary" onClick={()=>setManual(true)}><Icon name="plus"/>Novo pedido</button>}</>}</div></div>
+ {tab==='orders'&&<><div className="attention" hidden={!pending.length&&!late.length&&connected} onClick={()=>setProblems(true)} role="button" tabIndex={0} onKeyDown={e=>e.key==='Enter'&&setProblems(true)}><span><b>{pending.length}</b> aguardando aceite {late.length>0&&<>· <b>{late.length}</b> atrasados</>}{!connected&&' · Confira a conexão'}</span><Icon name="arrow"/></div><div className="stats">{[['new','Novos'],['confirmed','Aceitos'],['prep','Em preparo'],['ready','Prontos'],['delivery','Em entrega']].map(([b,label])=><button key={b} className={'stat '+b+' '+(filter===b?'on':'')} onClick={()=>setFilter(filter===b?'all':b)}><b>{orders.filter(o=>bucket(o)===b).length}</b><span>{label}</span></button>)}</div></>}
+ {tab==='history'&&<form className="date-filters" onSubmit={e=>{e.preventDefault();run(()=>loadHistory())}}><Field label="De" type="date" value={historyFrom} onChange={e=>setHistoryFrom(e.target.value)} required/><Field label="Até" type="date" value={historyTo} onChange={e=>setHistoryTo(e.target.value)} required/><button className="secondary">Consultar</button></form>}
+ <div className="search-row"><label className="search"><Icon name="search"/><input placeholder="Buscar pedido, cliente ou item" aria-label="Buscar pedidos" value={query} onChange={e=>setQuery(e.target.value)}/></label><select aria-label="Filtrar pedidos" value={filter} onChange={e=>setFilter(e.target.value)}><option value="all">Todos</option><option value="new">Novos</option><option value="confirmed">Aceitos</option><option value="prep">Em preparo</option><option value="ready">Prontos</option><option value="delivery">Em entrega</option><option value="late">Atrasados</option>{tab==='history'&&<option value="cancelled">Cancelados</option>}</select></div>
+ {loading?<div className="skeleton-grid">{[1,2,3].map(i=><div className="skeleton" key={i}/>)}</div>:board&&tab==='orders'?<div className="kanban">{[['new','Novos'],['confirmed','Aceitos'],['prep','Em preparo'],['ready','Prontos'],['delivery','Em entrega'],['other','Outros']].map(([b,label])=>{const rows=visible.filter(o=>bucket(o)===b);return (b!=='other'||rows.length>0)&&<section className="kanban-column" key={b}><h3>{label} <span>{rows.length}</span></h3>{rows.map(o=><OrderCard board key={o.id} o={o} duplicate={duplicates.has(o.id)} onOpen={o=>setSelected(o.id)}/>)}</section>})}</div>:visible.length?<div className="order-grid">{visible.map(o=><OrderCard key={o.id} o={o} duplicate={duplicates.has(o.id)} onOpen={o=>setSelected(o.id)}/>)}</div>:<Empty title={connected?'Nenhum pedido neste filtro':'Aguardando conexão'} text={connected?'Quando chegar um pedido, ele aparecerá aqui.':'A lista será atualizada quando a conexão voltar.'}/>}{tab==='history'&&history.length>=200&&<button className="secondary" onClick={()=>run(()=>loadHistory(true))}>Carregar mais pedidos</button>}
+ </>}
+ {tab==='products'&&<Catalog call={call} run={run} owner={owner}/>}
+ {tab==='more'&&<>{page&&<button className="back-button" onClick={()=>setPage('')}>← Voltar</button>}{!page?<><div className="page-heading"><div><span className="eyebrow">SUA CENTRAL</span><h1>Mais</h1><p>{auth.operator?.name} · {owner?'Dono':auth.operator?.role}</p></div></div><div className="menu-grid">{[['store','store','Minha loja','Abertura e preparo',owner],['reports','report','Relatórios','Vendas e fechamento',owner],['couriers','truck','Entregadores','Contatos e localização',canAttend],['coupons','products','Cupons','Descontos da loja',owner],['banners','products','Banners e avisos','Imagens e promoções',owner],['staff','team','Equipe','Pessoas e permissões',owner],['settings','settings','Configurações','Alertas e impressão',true]].filter(x=>x[4]).map(([id,icon,title,subtitle])=><button className="menu-item" key={id} onClick={()=>setPage(id)}><Icon name={icon}/><span><b>{title}</b><small>{subtitle}</small></span><Icon name="arrow"/></button>)}<button className="menu-item" onClick={()=>setProblems(true)}><Icon name="bell"/><span><b>Central de problemas</b><small>Pendências e conexão</small></span><Icon name="arrow"/></button></div><button className="text-btn danger-text" onClick={logout}>Sair da conta</button></>:page==='settings'?<Settings/>:page==='store'?owner?<Store operation={operation} call={call} run={run} onChanged={refreshStore}/>:<p>Acesso reservado ao dono.</p>:page==='reports'?<Reports call={call} run={run}/>:page==='couriers'?<Couriers call={call} run={run}/>:page==='staff'?<Staff call={call} run={run}/>:<Marketing kind={page} call={call} run={run}/>}</>}
+ </main><nav className="bottom" aria-label="Menu principal">{[['orders','orders','Pedidos'],['products','products','Cardápio'],['history','history','Histórico'],['more','more','Mais']].map(([id,icon,label])=><button key={id} className={tab===id?'on':''} onClick={()=>{setTab(id);setFilter('all');setPage('')}}><span><Icon name={icon}/>{id==='orders'&&pending.length>0&&<i>{pending.length}</i>}</span><b>{label}</b></button>)}</nav>
+ {selectedOrder&&<OrderDetail key={selectedOrder.id} o={selectedOrder} call={call} run={run} onClose={()=>setSelected(null)} onChanged={async()=>{await load();if(tab==='history')await loadHistory()}} owner={owner} canAttend={canAttend}/>}
+ {manual&&<Manual call={call} run={run} onClose={()=>setManual(false)} onCreated={load}/>}
+ {problems&&<Modal title="Central de problemas" onClose={()=>setProblems(false)}>{!connected&&<p className="error">Sem conexão com a central. Os pedidos exibidos podem estar desatualizados.</p>}<button className="secondary" onClick={()=>{setProblems(false);setTab('more');setPage('settings')}}>Testar notificações</button>{[...new Map([...pending,...late,...orders.filter(o=>duplicates.has(o.id))].map(o=>[o.id,o])).values()].map(o=><button className="issue-row" key={o.id} onClick={()=>{setProblems(false);setTab('orders');setSelected(o.id)}}><b>#{o.number} · {o.clientName}</b><small>{duplicates.has(o.id)?'Possível duplicidade':NEW.has(o.status)?'Aguardando aceite':'Pedido atrasado'} · {ageMin(o)} min</small></button>)}{!pending.length&&!late.length&&!duplicates.size&&connected&&<Empty title="Tudo em dia" text="Nenhuma pendência operacional identificada."/>}</Modal>}
+ </div>
 }
