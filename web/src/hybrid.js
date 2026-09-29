@@ -24,5 +24,19 @@ export const hybrid = {
     if(w){w.document.write(html);w.document.close();setTimeout(()=>w.print(),250);return true}
     return false
   },
-  notificationSettings: () => { try { bridge()?.openNotificationSettings?.() } catch {} }
+  notificationSettings: () => { try { bridge()?.openNotificationSettings?.() } catch {} },
+  syncVoiceOrders: orders => {
+    try { bridge()?.syncVoiceOrders?.(JSON.stringify(Array.isArray(orders)?orders:[])) } catch {}
+  },
+  setVoiceActiveOrder: id => {
+    try {
+      if(id) bridge()?.setVoiceActiveOrder?.(String(id))
+      else bridge()?.clearVoiceActiveOrder?.()
+    } catch {}
+  },
+  startVoice: () => { try { bridge()?.startVoiceAssistant?.() } catch {} },
+  stopVoice: () => { try { bridge()?.stopVoiceAssistant?.() } catch {} },
+  voiceRunning: () => {
+    try { return Boolean(bridge()?.isVoiceAssistantRunning?.()) } catch { return false }
+  }
 }
