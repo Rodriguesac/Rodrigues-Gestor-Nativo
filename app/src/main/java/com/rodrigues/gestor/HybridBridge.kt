@@ -17,6 +17,8 @@ import android.print.PrintAttributes
 import android.print.PrintManager
 import com.rodrigues.gestor.data.GestorCredentials
 import com.rodrigues.gestor.notifications.OrderRingService
+import com.rodrigues.gestor.voice.VoiceAssistantService
+import com.rodrigues.gestor.voice.VoiceStateStore
 
 class HybridBridge(
     private val activity: Activity,
@@ -77,6 +79,36 @@ class HybridBridge(
             activity.startActivity(intent)
         }
     }
+
+    @JavascriptInterface
+    fun syncVoiceOrders(json: String) {
+        VoiceStateStore.syncOrders(json)
+    }
+
+    @JavascriptInterface
+    fun setVoiceActiveOrder(id: String) {
+        VoiceStateStore.setActiveOrder(id)
+    }
+
+    @JavascriptInterface
+    fun clearVoiceActiveOrder() {
+        VoiceStateStore.setActiveOrder(null)
+    }
+
+    @JavascriptInterface
+    fun startVoiceAssistant() {
+        activity.runOnUiThread {
+            (activity as? MainActivity)?.ensureVoiceAssistant()
+        }
+    }
+
+    @JavascriptInterface
+    fun stopVoiceAssistant() {
+        VoiceAssistantService.stop(activity)
+    }
+
+    @JavascriptInterface
+    fun isVoiceAssistantRunning(): Boolean = VoiceAssistantService.isRunning
 
     @JavascriptInterface
     fun printHtml(html: String) {

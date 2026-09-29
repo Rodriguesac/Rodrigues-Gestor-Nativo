@@ -3,7 +3,7 @@ name: Gerar APK Rodrigues Gestor Hybrid
 on:
   workflow_dispatch:
   push:
-    branches: [ "main", "master" ]
+    branches: [ "main", "master", "feature/rodrigues-voz-v1" ]
 
 permissions:
   contents: read
@@ -31,6 +31,16 @@ jobs:
           rm -rf app/src/main/assets/web
           mkdir -p app/src/main/assets/web
           cp -R web/dist/. app/src/main/assets/web/
+
+      - name: Baixar modelo de voz PT-BR
+        run: |
+          rm -rf app/src/main/assets/model-pt
+          mkdir -p app/src/main/assets/model-pt
+          curl -L --fail --retry 3 -o /tmp/vosk-pt.zip https://alphacephei.com/vosk/models/vosk-model-small-pt-0.3.zip
+          rm -rf /tmp/vosk-pt
+          mkdir -p /tmp/vosk-pt
+          unzip -q /tmp/vosk-pt.zip -d /tmp/vosk-pt
+          cp -R /tmp/vosk-pt/vosk-model-small-pt-0.3/. app/src/main/assets/model-pt/
 
       - name: Java 17
         uses: actions/setup-java@v4
@@ -63,11 +73,11 @@ jobs:
         run: gradle :app:assembleDebug --stacktrace
 
       - name: Renomear APK
-        run: cp app/build/outputs/apk/debug/app-debug.apk Rodrigues-Gestor-v3.0.0-Hybrid-React-debug.apk
+        run: cp app/build/outputs/apk/debug/app-debug.apk Rodrigues-Gestor-v3.1.0-Rodrigues-Voz-debug.apk
 
       - name: Disponibilizar APK
         uses: actions/upload-artifact@v4
         with:
           name: Rodrigues-Gestor-Hybrid-APK
-          path: Rodrigues-Gestor-v3.0.0-Hybrid-React-debug.apk
+          path: Rodrigues-Gestor-v3.1.0-Rodrigues-Voz-debug.apk
           retention-days: 30
