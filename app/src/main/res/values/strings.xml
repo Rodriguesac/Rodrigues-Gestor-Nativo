@@ -1,6 +1,6 @@
 <resources>
     <string name="app_name">Rodrigues Comandos</string>
-    <string name="app_subtitle">Controle rápido do cardápio e da loja</string>
+    <string name="app_subtitle">Controle rápido do cardápio e da loja por voz</string>
     <string name="voice_shortcut_short">Comandos</string>
     <string name="voice_shortcut_long">Abrir comando de voz</string>
     <string name="voice_shortcut_disabled">Comando de voz indisponível</string>
