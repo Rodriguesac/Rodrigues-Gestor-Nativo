@@ -145,6 +145,7 @@ export default function App(){
   const [query,setQuery]=useState('')
   const [tab,setTab]=useState('orders')
   const [selected,setSelected]=useState(null)
+  const [requestedId,setRequestedId]=useState('')
   const [busy,setBusy]=useState(false)
   const prevIds=useRef(new Set())
 
@@ -154,7 +155,7 @@ export default function App(){
     try{
       const d=await api(pin,{action:'list',limit:120})
       const rows=(d.orders||[]).map(normalize).sort((a,b)=>new Date(b.created)-new Date(a.created))
-      setOrders(rows);setError('')
+      setOrders(rows);hybrid.syncVoiceOrders(rows);setError('')
       const current=new Set(rows.filter(o=>NEW.has(o.status)).map(o=>o.id))
       if(prevIds.current.size){
         const fresh=[...current].filter(id=>!prevIds.current.has(id))
@@ -170,6 +171,7 @@ export default function App(){
   }
   useEffect(()=>{if(pin){load();const t=setInterval(()=>load(true),3500);return()=>clearInterval(t)}},[pin])
   useEffect(()=>{hybrid.keepAwake(true);return()=>hybrid.keepAwake(false)},[])
+  useEffect(()=>{hybrid.setVoiceActiveOrder(selected?.id||'')},[selected])
   useEffect(()=>{
     const open=e=>setRequestedId(String(e?.detail?.id||''))
     addEventListener('native:open-order',open)
@@ -237,7 +239,7 @@ export default function App(){
       <div className="module-card"><div className="module-icon"><Icon name={tab==='products'?'products':tab==='store'?'store':'more'}/></div>
       <h2>{tab==='products'?'Produtos':tab==='store'?'Loja':'Mais'}</h2>
       <p>{tab==='products'?'O catálogo continua sendo lido do backend. Esta área será a próxima a receber os controles de pausar, reativar e editar.':tab==='store'?'Os controles operacionais da loja ficam disponíveis no mesmo React, com funções extras quando aberto no APK.':'Preferências híbridas do Gestor.'}</p>
-      {tab==='more'&&<div className="module-actions"><button onClick={()=>hybrid.keepAwake(true)}>Manter tela ligada</button><button onClick={()=>hybrid.notificationSettings()}>Notificações do aparelho</button><button onClick={()=>{localStorage.removeItem('rodrigues_gestor_pin');setPin('')}}>Trocar PIN</button></div>}
+      {tab==='more'&&<div className="module-actions"><button onClick={()=>hybrid.startVoice()}>Ativar Rodrigues Voz</button><button onClick={()=>hybrid.stopVoice()}>Desativar Rodrigues Voz</button><button onClick={()=>hybrid.keepAwake(true)}>Manter tela ligada</button><button onClick={()=>hybrid.notificationSettings()}>Notificações do aparelho</button><button onClick={()=>{localStorage.removeItem('rodrigues_gestor_pin');setPin('')}}>Trocar PIN</button></div>}
       </div>
     </main>}
 
