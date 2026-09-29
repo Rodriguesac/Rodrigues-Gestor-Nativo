@@ -23,15 +23,22 @@ import com.rodrigues.gestor.data.GestorCredentials
 import com.rodrigues.gestor.notifications.DeviceRegistrar
 import com.rodrigues.gestor.notifications.GestorConnectionService
 import com.rodrigues.gestor.notifications.NotificationHelper
+import com.rodrigues.gestor.voice.VoiceAssistantService
 
 class MainActivity : ComponentActivity() {
     private var requestedOrderId: String? = null
     private var appStarted = false
     private var webView: WebView? = null
 
+    private val audioPermission =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            if (granted) VoiceAssistantService.start(this)
+        }
+
     private val notificationPermission =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) {
             GestorConnectionService.start(this)
+            ensureVoiceAssistant()
         }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -169,6 +176,16 @@ class MainActivity : ComponentActivity() {
             ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
         ) {
             notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+        } else {
+            ensureVoiceAssistant()
+        }
+    }
+
+    fun ensureVoiceAssistant() {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+            VoiceAssistantService.start(this)
+        } else {
+            audioPermission.launch(Manifest.permission.RECORD_AUDIO)
         }
     }
 
