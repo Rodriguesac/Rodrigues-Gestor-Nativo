@@ -3,6 +3,7 @@ package com.rodrigues.gestor.notifications
 import android.content.Context
 import android.media.RingtoneManager
 import android.net.Uri
+import com.rodrigues.gestor.R
 
 object AlertPreferences {
     private const val PREFS = "rodrigues_gestor_alerts"
@@ -17,21 +18,39 @@ object AlertPreferences {
     fun vibration(context: Context): Boolean = prefs(context).getBoolean("vibration", true)
     fun setVibration(context: Context, value: Boolean) = prefs(context).edit().putBoolean("vibration", value).apply()
 
-    fun orderSoundUri(context: Context): Uri = prefs(context).getString("order_sound_uri", null)
-        ?.takeIf { it.isNotBlank() }
-        ?.let(Uri::parse)
-        ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+    fun soundPreset(context: Context): String = prefs(context).getString("sound_preset", "old_phone").orEmpty().ifBlank { "old_phone" }
 
-    fun setOrderSoundUri(context: Context, uri: Uri) = prefs(context).edit()
-        .putString("order_sound_uri", uri.toString())
-        .apply()
+    fun setSoundPreset(context: Context, value: String) {
+        val safe = value.takeIf { it in setOf("old_phone", "chime", "beep_short", "alert_strong", "system") } ?: "old_phone"
+        prefs(context).edit().putString("sound_preset", safe).apply()
+    }
 
-    fun orderSoundTitle(context: Context): String = try {
-        RingtoneManager.getRingtone(context, orderSoundUri(context))?.getTitle(context)
-            ?.takeIf { it.isNotBlank() }
-            ?: "Som padrão de notificação"
-    } catch (_: Throwable) {
-        "Som padrão de notificação"
+    fun orderSoundUri(context: Context): Uri {
+        val rawId = when (soundPreset(context)) {
+            "chime" -> R.raw.chime
+            "beep_short" -> R.raw.beep_short
+            "alert_strong" -> R.raw.alert_strong
+            "system" -> 0
+            else -> R.raw.old_phone
+        }
+        return if (rawId != 0) Uri.parse("android.resource://" + context.packageName + "/" + rawId)
+        else prefs(context).getString("order_sound_uri", null)?.takeIf { it.isNotBlank() }?.let(Uri::parse)
+            ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+    }
+
+    fun setOrderSoundUri(context: Context, uri: Uri) {
+        prefs(context).edit().putString("order_sound_uri", uri.toString()).putString("sound_preset", "system").apply()
+    }
+
+    fun orderSoundTitle(context: Context): String = when (soundPreset(context)) {
+        "old_phone" -> "Telefone antigo"
+        "chime" -> "Campainha"
+        "beep_short" -> "Bipe curto"
+        "alert_strong" -> "Alerta forte"
+        else -> try {
+            RingtoneManager.getRingtone(context, orderSoundUri(context))?.getTitle(context)?.takeIf { it.isNotBlank() }
+                ?: "Som do sistema"
+        } catch (_: Throwable) { "Som do sistema" }
     }
 
     fun cancellationAlerts(context: Context): Boolean = prefs(context).getBoolean("cancellation_alerts", true)

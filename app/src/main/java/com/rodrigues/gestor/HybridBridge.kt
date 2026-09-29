@@ -5,6 +5,8 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
@@ -16,9 +18,11 @@ import android.webkit.WebViewClient
 import android.print.PrintAttributes
 import android.print.PrintManager
 import com.rodrigues.gestor.data.GestorCredentials
+import com.rodrigues.gestor.notifications.AlertPreferences
 import com.rodrigues.gestor.notifications.OrderRingService
 import com.rodrigues.gestor.voice.VoiceAssistantService
 import com.rodrigues.gestor.voice.VoiceStateStore
+import org.json.JSONObject
 
 class HybridBridge(
     private val activity: Activity,
@@ -28,6 +32,56 @@ class HybridBridge(
 
     @JavascriptInterface
     fun getPin(): String = GestorCredentials.pin
+
+    @JavascriptInterface
+    fun savePin(pin: String) {
+        GestorCredentials.save(activity, pin)
+    }
+
+    @JavascriptInterface
+    fun setSession(token: String) {
+        activity.getSharedPreferences("rodrigues_gestor_secure", Context.MODE_PRIVATE)
+            .edit().putString("app_session_token", token).apply()
+    }
+
+    @JavascriptInterface
+    fun getPreferences(): String = JSONObject().apply {
+        put("enabled", AlertPreferences.enabled(activity))
+        put("vibration", AlertPreferences.vibration(activity))
+        put("volume", 100)
+    }.toString()
+
+    @JavascriptInterface
+    fun setPreferences(json: String) {
+        try {
+            val value = JSONObject(json)
+            if (value.has("enabled")) AlertPreferences.setEnabled(activity, value.optBoolean("enabled", true))
+            if (value.has("vibration")) AlertPreferences.setVibration(activity, value.optBoolean("vibration", true))
+        } catch (_: Throwable) { }
+    }
+
+    @JavascriptInterface
+    fun getSoundPreset(): String = AlertPreferences.soundPreset(activity)
+
+    @JavascriptInterface
+    fun setSoundPreset(preset: String) {
+        AlertPreferences.setSoundPreset(activity, preset)
+    }
+
+    @JavascriptInterface
+    fun testSoundPreset(preset: String) {
+        AlertPreferences.setSoundPreset(activity, preset)
+        activity.runOnUiThread {
+            OrderRingService.stop(activity)
+            OrderRingService.start(activity, "sound-test", "TESTE", "Teste de alerta")
+            Handler(Looper.getMainLooper()).postDelayed({ OrderRingService.stop(activity) }, 4_200L)
+        }
+    }
+
+    @JavascriptInterface
+    fun exit() {
+        activity.runOnUiThread { activity.finish() }
+    }
 
     @JavascriptInterface
     fun vibrate(durationMs: Int) {
