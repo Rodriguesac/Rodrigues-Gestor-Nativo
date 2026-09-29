@@ -79,5 +79,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Rodrigues-Gestor-Hybrid-APK
-          path: Rodrigues-Gestor-v3.0.0-Hybrid-React-debug.apk
+          path: Rodrigues-Gestor-v3.1.0-Rodrigues-Voz-debug.apk
           retention-days: 30
