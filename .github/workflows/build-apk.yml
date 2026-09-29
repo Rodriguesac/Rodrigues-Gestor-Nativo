@@ -3,7 +3,7 @@ name: Gerar APK Rodrigues Gestor Hybrid
 on:
   workflow_dispatch:
   push:
-    branches: [ "main", "master", "feature/rodrigues-voz-v1" ]
+    branches: [ "main", "master", "feature/rodrigues-voz-v1", "work/gestor-mobile-refino-2026-09-29" ]
 
 permissions:
   contents: read
@@ -73,11 +73,11 @@ jobs:
         run: gradle :app:assembleDebug --stacktrace
 
       - name: Renomear APK
-        run: cp app/build/outputs/apk/debug/app-debug.apk Rodrigues-Gestor-v3.1.0-Rodrigues-Voz-debug.apk
+        run: cp app/build/outputs/apk/debug/app-debug.apk Rodrigues-Gestor-v3.3.0-Mobile-debug.apk
 
       - name: Disponibilizar APK
         uses: actions/upload-artifact@v4
         with:
-          name: Rodrigues-Gestor-Hybrid-APK
-          path: Rodrigues-Gestor-v3.1.0-Rodrigues-Voz-debug.apk
+          name: Rodrigues-Gestor-3.3-Mobile-APK
+          path: Rodrigues-Gestor-v3.3.0-Mobile-debug.apk
           retention-days: 30
