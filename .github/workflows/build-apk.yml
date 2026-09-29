@@ -5,6 +5,9 @@ on:
   push:
     branches:
       - "work/rodrigues-comandos-v1"
+  pull_request:
+    branches:
+      - "main"
 
 permissions:
   contents: write
@@ -47,6 +50,7 @@ jobs:
           retention-days: 30
 
       - name: Publicar APK para download direto
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
         env:
           GH_TOKEN: ${{ github.token }}
           APK_PATH: Rodrigues-Comandos-v1.0.0-debug.apk
