@@ -1,5 +1,8 @@
-Rodrigues Gestor Hybrid v3.0.0
-React compartilhado entre PWA e APK Android
-Nativo: FCM, toque prolongado, vibração, tela ativa e impressão
-Web/PWA: operação de pedidos pelo mesmo backend Supabase
+Rodrigues Gestor Hybrid v3.3.0 Mobile
+Interface React mobile operacional refinada
+Lista compacta + detalhe completo em tela inteira
+Supabase Realtime como atualização primária no React e no serviço nativo
+Pull-to-refresh manual
+Sons incluídos: Telefone antigo, Campainha, Bipe curto e Alerta forte
+Nativo: FCM, vibração, tela ativa, impressão e Rodrigues Voz
 Build: GitHub Actions
