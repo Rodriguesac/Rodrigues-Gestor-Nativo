@@ -1,5 +1,34 @@
 <?xml version="1.0" encoding="utf-8"?>
-<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+<shortcuts
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <!-- Compatível com pt-BR: abre diretamente o recurso de comando por voz. -->
+    <capability android:name="actions.intent.OPEN_APP_FEATURE">
+        <intent
+            android:targetPackage="com.rodrigues.comandos"
+            android:targetClass="com.rodrigues.gestor.MainActivity">
+            <parameter
+                android:name="feature"
+                android:key="featureParam" />
+        </intent>
+        <intent
+            android:targetPackage="com.rodrigues.comandos"
+            android:targetClass="com.rodrigues.gestor.MainActivity" />
+    </capability>
+
+    <!-- Compatível com pt-BR: permite que o Assistente entregue texto ao app.
+         Ex.: "Procure pausar morango no Rodrigues Comandos". -->
+    <capability android:name="actions.intent.GET_THING">
+        <intent
+            android:targetPackage="com.rodrigues.comandos"
+            android:targetClass="com.rodrigues.gestor.MainActivity">
+            <parameter
+                android:name="thing.name"
+                android:key="command" />
+        </intent>
+    </capability>
+
     <shortcut
         android:shortcutId="voice_command"
         android:enabled="true"
@@ -7,10 +36,17 @@
         android:shortcutShortLabel="@string/voice_shortcut_short"
         android:shortcutLongLabel="@string/voice_shortcut_long"
         android:shortcutDisabledMessage="@string/voice_shortcut_disabled">
+
         <intent
             android:action="android.intent.action.VIEW"
-            android:data="rodriguesgestor://voice"
+            android:data="rodriguescomandos://voice"
             android:targetClass="com.rodrigues.gestor.MainActivity"
-            android:targetPackage="com.rodrigues.gestor" />
+            android:targetPackage="com.rodrigues.comandos" />
+
+        <capability-binding android:key="actions.intent.OPEN_APP_FEATURE">
+            <parameter-binding
+                android:key="feature"
+                android:value="@array/voice_feature_names" />
+        </capability-binding>
     </shortcut>
 </shortcuts>
