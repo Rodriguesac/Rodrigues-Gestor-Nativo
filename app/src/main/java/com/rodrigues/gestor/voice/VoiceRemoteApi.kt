@@ -10,7 +10,7 @@ import kotlin.concurrent.thread
 import kotlin.math.max
 
 object VoiceRemoteApi {
-    private const val APP_ENDPOINT = "https://jgjmntezfjuyuxhcnvhd.supabase.co/functions/v1/gestor-app-api"
+    private const val APP_ENDPOINT = "https://fdqqwdplprzpqufpgdrm.supabase.co/functions/v1/gestor-app-api"
     private const val ORIGIN = "https://appassets.androidplatform.net"
     private const val PREFS = "rodrigues_voice"
     private const val KEY_SESSION = "gestor_app_session"
