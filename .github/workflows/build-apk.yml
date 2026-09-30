@@ -73,11 +73,11 @@ jobs:
         run: gradle :app:assembleDebug --stacktrace
 
       - name: Renomear APK
-        run: cp app/build/outputs/apk/debug/app-debug.apk Rodrigues-Gestor-v3.3.0-Mobile-debug.apk
+        run: cp app/build/outputs/apk/debug/app-debug.apk Rodrigues-Gestor-v3.3.1-Mobile-debug.apk
 
       - name: Disponibilizar APK
         uses: actions/upload-artifact@v4
         with:
-          name: Rodrigues-Gestor-3.3-Mobile-APK
-          path: Rodrigues-Gestor-v3.3.0-Mobile-debug.apk
+          name: Rodrigues-Gestor-3.3.1-Mobile-APK
+          path: Rodrigues-Gestor-v3.3.1-Mobile-debug.apk
           retention-days: 30
