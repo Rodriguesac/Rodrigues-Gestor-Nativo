@@ -25,16 +25,15 @@ jobs:
           node-version: "22"
 
       - name: Java 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "17"
 
-      - name: Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Install Android 36
+      - name: Prepare Android SDK 36
         run: |
+          set -euo pipefail
+          echo "ANDROID_HOME=$ANDROID_HOME"
           yes | sdkmanager --licenses >/dev/null || true
           sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
 
@@ -55,10 +54,8 @@ jobs:
           python3 - <<'PY'
           import math, struct, wave
           from pathlib import Path
-
           out = Path("public/sounds")
           rate = 44100
-
           def write(name, segments):
               samples = []
               for freq, duration, volume in segments:
@@ -77,19 +74,9 @@ jobs:
                   wav.setsampwidth(2)
                   wav.setframerate(rate)
                   wav.writeframes(b"".join(struct.pack("<h", s) for s in samples))
-
-          write("old-phone.wav", [
-              (440, .35, .65), (480, .35, .65), (0, .16, 0),
-              (440, .35, .65), (480, .35, .65), (0, .16, 0),
-              (440, .35, .65), (480, .35, .65),
-          ])
-          write("chime.wav", [
-              (880, .28, .55), (0, .05, 0), (660, .42, .50), (990, .35, .42),
-          ])
-          write("alert.wav", [
-              (900, .22, .62), (0, .11, 0), (900, .22, .62), (0, .11, 0),
-              (900, .22, .62), (0, .11, 0), (1050, .34, .62),
-          ])
+          write("old-phone.wav", [(440,.35,.65),(480,.35,.65),(0,.16,0),(440,.35,.65),(480,.35,.65),(0,.16,0),(440,.35,.65),(480,.35,.65)])
+          write("chime.wav", [(880,.28,.55),(0,.05,0),(660,.42,.50),(990,.35,.42)])
+          write("alert.wav", [(900,.22,.62),(0,.11,0),(900,.22,.62),(0,.11,0),(900,.22,.62),(0,.11,0),(1050,.34,.62)])
           PY
 
       - name: Install web dependencies
