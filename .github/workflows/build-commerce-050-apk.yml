@@ -53,6 +53,20 @@ jobs:
           unzip -q /tmp/commerce050/source.zip -d /tmp/commerce050
           mv /tmp/commerce050/rodrigues-commerce-gestor-base commerce-app
 
+      - name: Fix Android import file picker
+        working-directory: commerce-app
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("src/screens/SetupScreen.jsx")
+          s = p.read_text()
+          old = 'accept=".racstore,application/json"'
+          new = 'accept="*/*"'
+          if old not in s:
+              raise SystemExit("SetupScreen import filter not found")
+          p.write_text(s.replace(old, new))
+          PY
+
       - name: Generate bundled notification sounds
         working-directory: commerce-app
         run: |
