@@ -47,7 +47,33 @@ jobs:
           set -euo pipefail
           rm -rf commerce-app /tmp/commerce050
           mkdir -p /tmp/commerce050
-          cat commerce-0.5.0/source.part*.b64 | tr -d '\r\n' | base64 --decode > /tmp/commerce050/source.zip
+          python3 - <<'PY'
+          import base64
+          from pathlib import Path
+
+          files = sorted(Path("commerce-0.5.0").glob("source.part*.b64"))
+          parts = ["".join(p.read_text().split()) for p in files]
+          if len(parts) != 8:
+              raise SystemExit(f"Expected 8 source parts, found {len(parts)}")
+
+          a, b = parts[2], parts[3]
+          overlap = 0
+          limit = min(len(a), len(b))
+          while overlap < limit and a[-1-overlap] == b[-1-overlap]:
+              overlap += 1
+
+          if overlap >= 1000:
+              print(f"Repairing duplicated suffix in part04: {overlap} chars")
+              parts[3] = b[:-overlap]
+
+          payload = "".join(parts)
+          if len(payload) % 4:
+              raise SystemExit(f"Invalid base64 length after repair: {len(payload)} (mod 4 = {len(payload) % 4})")
+
+          data = base64.b64decode(payload, validate=True)
+          Path("/tmp/commerce050/source.zip").write_bytes(data)
+          print(f"Decoded ZIP: {len(data)} bytes")
+          PY
           echo "6aaf2a4fbe55d069a8c4170ff501c30dd9ca2a3872df5f4acd3fec5244d12212  /tmp/commerce050/source.zip" | sha256sum -c -
           unzip -q /tmp/commerce050/source.zip -d /tmp/commerce050
           mv /tmp/commerce050/rodrigues-commerce-gestor-base commerce-app
