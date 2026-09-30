@@ -18,9 +18,9 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
 object SupabaseOrdersApi {
-    private const val ENDPOINT = "https://jgjmntezfjuyuxhcnvhd.supabase.co/functions/v1/gestor-orders"
-    private const val ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Impnam1udGV6Zmp1eXV4aGNudmhkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc1MzgyOTksImV4cCI6MjEwMzExNDI5OX0.n3yg9IdC6j8OB-vwi-yuXRKJZE3jdlL_wj3qVr-JBBc"
-    private const val REALTIME_URL = "wss://jgjmntezfjuyuxhcnvhd.supabase.co/realtime/v1/websocket?apikey=" + ANON_KEY + "&vsn=1.0.0"
+    private const val ENDPOINT = "https://fdqqwdplprzpqufpgdrm.supabase.co/functions/v1/gestor-orders"
+    private const val ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZkcXF3ZHBscHJ6cHF1ZnBnZHJtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTA3NjkwNzcsImV4cCI6MjEwNjM0NTA3N30.4eKobxZb_ULIykZBbV4xQHb9tCG8YochcC17MurqBY0"
+    private const val REALTIME_URL = "wss://fdqqwdplprzpqufpgdrm.supabase.co/realtime/v1/websocket?apikey=" + ANON_KEY + "&vsn=1.0.0"
     private val mainHandler = Handler(Looper.getMainLooper())
     private val realtimeClient = OkHttpClient.Builder().readTimeout(0, TimeUnit.MILLISECONDS).build()
 
