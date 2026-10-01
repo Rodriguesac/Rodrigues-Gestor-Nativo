@@ -79,5 +79,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Rodrigues-Gestor-3.3.2-Mobile-APK
-          path: Rodrigues-Gestor-v3.3.1-Mobile-debug.apk
+          path: Rodrigues-Gestor-v3.3.2-Mobile-debug.apk
           retention-days: 30
