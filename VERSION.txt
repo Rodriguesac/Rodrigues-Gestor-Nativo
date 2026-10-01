@@ -1,7 +1,9 @@
-Rodrigues Gestor Hybrid v3.3.0 Mobile
-Interface React mobile operacional refinada
+Rodrigues Gestor Hybrid v3.3.2 Mobile
+Correção crítica de novos pedidos e alertas
+Supabase Realtime com chave válida e reconexão
+Watchdog de segurança: fallback curto quando Realtime não confirma assinatura
+FCM: registro do dispositivo corrigido para o projeto Supabase atual
 Lista compacta + detalhe completo em tela inteira
-Supabase Realtime como atualização primária no React e no serviço nativo
 Pull-to-refresh manual
 Sons incluídos: Telefone antigo, Campainha, Bipe curto e Alerta forte
 Nativo: FCM, vibração, tela ativa, impressão e Rodrigues Voz
