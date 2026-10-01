@@ -16,10 +16,11 @@ import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicLong
 
 object SupabaseOrdersApi {
     private const val ENDPOINT = "https://fdqqwdplprzpqufpgdrm.supabase.co/functions/v1/gestor-orders"
-    private const val ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZkcXF3ZHBscHJ6cHF1ZnBnZHJtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTA3NjkwNzcsImV4cCI6MjEwNjM0NTA3N30.4eKobxZb_ULIykZBbV4xQHb9tCG8YochcC17MurqBY0"
+    private const val ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZkcXF3ZHBscHJ6cHF1ZnBnZHJtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTA3NjkwNzcsImV4cCI6MjEwNjM0NTA3N30.4eKobxZb_ULIykZBbV4xQHb9tCG8YochcC13MurqBY0"
     private const val REALTIME_URL = "wss://fdqqwdplprzpqufpgdrm.supabase.co/realtime/v1/websocket?apikey=" + ANON_KEY + "&vsn=1.0.0"
     private val mainHandler = Handler(Looper.getMainLooper())
     private val realtimeClient = OkHttpClient.Builder().readTimeout(0, TimeUnit.MILLISECONDS).build()
@@ -31,7 +32,10 @@ object SupabaseOrdersApi {
     ): ListenerRegistration {
         val stopped = AtomicBoolean(false)
         val fetching = AtomicBoolean(false)
+        val realtimeReady = AtomicBoolean(false)
         val reference = AtomicInteger(0)
+        val lastRefreshAt = AtomicLong(0L)
+        var joinRef = ""
         var socket: WebSocket? = null
 
         fun refresh() {
@@ -39,6 +43,7 @@ object SupabaseOrdersApi {
             Thread {
                 try {
                     val rows = fetchOrders()
+                    lastRefreshAt.set(System.currentTimeMillis())
                     mainHandler.post { if (!stopped.get()) onData(rows) }
                 } catch (error: Throwable) {
                     mainHandler.post { if (!stopped.get()) onError(error) }
@@ -49,6 +54,18 @@ object SupabaseOrdersApi {
         }
 
         val refreshSignal = Runnable { refresh() }
+        val watchdogDelayMs = intervalMs.coerceIn(3_000L, 15_000L)
+        val watchdog = object : Runnable {
+            override fun run() {
+                if (stopped.get()) return
+                val staleForMs = System.currentTimeMillis() - lastRefreshAt.get()
+                // Realtime é o caminho principal. Se a assinatura cair ou ficar sem
+                // confirmação, o polling curto mantém o alerta funcionando.
+                // Com Realtime saudável, fazemos apenas uma conferência por minuto.
+                if (!realtimeReady.get() || staleForMs >= 60_000L) refresh()
+                mainHandler.postDelayed(this, watchdogDelayMs)
+            }
+        }
         val heartbeat = object : Runnable {
             override fun run() {
                 if (stopped.get()) return
@@ -69,6 +86,8 @@ object SupabaseOrdersApi {
             socket = realtimeClient.newWebSocket(request, object : WebSocketListener() {
                 override fun onOpen(webSocket: WebSocket, response: Response) {
                     val ref = reference.incrementAndGet().toString()
+                    joinRef = ref
+                    realtimeReady.set(false)
                     val payload = JSONObject().apply {
                         put("config", JSONObject().apply {
                             put("broadcast", JSONObject().apply { put("ack", false); put("self", false) })
@@ -95,7 +114,15 @@ object SupabaseOrdersApi {
                 override fun onMessage(webSocket: WebSocket, text: String) {
                     try {
                         val message = JSONObject(text)
-                        if (message.optString("event") != "postgres_changes") return
+                        val event = message.optString("event")
+                        if (event == "phx_reply" && message.optString("ref") == joinRef) {
+                            val status = message.optJSONObject("payload")?.optString("status").orEmpty()
+                            realtimeReady.set(status == "ok")
+                            if (status == "ok") refresh()
+                            return
+                        }
+                        if (event != "postgres_changes") return
+                        realtimeReady.set(true)
                         val payload = message.optJSONObject("payload")
                         val data = payload?.optJSONObject("data")
                         val record = data?.optJSONObject("record")
@@ -111,6 +138,7 @@ object SupabaseOrdersApi {
 
                 override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
                     if (stopped.get()) return
+                    realtimeReady.set(false)
                     mainHandler.post { onError(t) }
                     mainHandler.removeCallbacks(heartbeat)
                     mainHandler.postDelayed({ if (!stopped.get()) connect() }, 3_500L)
@@ -118,6 +146,7 @@ object SupabaseOrdersApi {
 
                 override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
                     if (stopped.get()) return
+                    realtimeReady.set(false)
                     mainHandler.removeCallbacks(heartbeat)
                     mainHandler.postDelayed({ if (!stopped.get()) connect() }, 3_500L)
                 }
@@ -125,11 +154,13 @@ object SupabaseOrdersApi {
         }
 
         connect()
+        mainHandler.post(watchdog)
 
         return object : ListenerRegistration {
             override fun remove() {
                 stopped.set(true)
                 mainHandler.removeCallbacks(refreshSignal)
+                mainHandler.removeCallbacks(watchdog)
                 mainHandler.removeCallbacks(heartbeat)
                 try { socket?.close(1000, "stop") } catch (_: Throwable) { }
                 socket = null
