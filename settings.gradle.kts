@@ -16,3 +16,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "RodriguesGestor"
 include(":app")
+include(":commands")
