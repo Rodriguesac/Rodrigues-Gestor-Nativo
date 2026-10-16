@@ -1,7 +1,7 @@
-Rodrigues Gestor Hybrid v3.3.2 Mobile
+Rodrigues Gestor Hybrid v3.3.3 Mobile
 Correção crítica de novos pedidos e alertas
 Supabase Realtime com chave válida e reconexão
-Watchdog de segurança: fallback curto quando Realtime não confirma assinatura
+Fallback visual a cada 30 s somente quando Realtime estiver desconectado
 FCM: registro do dispositivo corrigido para o projeto Supabase atual
 Lista compacta + detalhe completo em tela inteira
 Pull-to-refresh manual

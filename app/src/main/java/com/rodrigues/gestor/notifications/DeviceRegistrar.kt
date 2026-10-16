@@ -22,7 +22,7 @@ object DeviceRegistrar {
                     ",\"package\":\"com.rodrigues.gestor\"" +
                     ",\"model\":" + json(Build.MANUFACTURER + " " + Build.MODEL) +
                     ",\"sdk\":" + Build.VERSION.SDK_INT +
-                    ",\"app_version\":\"3.3.1-mobile\"}"
+                    ",\"app_version\":\"3.3.3-mobile\"}"
 
                 val connection = (URL(ENDPOINT).openConnection() as HttpURLConnection).apply {
                     requestMethod = "POST"
