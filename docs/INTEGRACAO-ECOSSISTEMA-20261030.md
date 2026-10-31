@@ -53,3 +53,7 @@ A versão instalada atualmente permanece intocada. A branch deve ser compilada, 
 - Contratos do backend: `supabase/functions/_shared/gestor-dispatch.test.mjs` no repositório Cliente.
 - Integração cruzada: `scripts/test-gestor-up-bridge.mjs` no repositório Cliente, com checkout das branches dos dois apps.
 - Android: GitHub Actions **Gerar APK Rodrigues Gestor Hybrid** (APK de desenvolvimento, não produção).
+
+## Correção adicional — ação ACEITAR nas notificações nativas
+
+O serviço de notificações recebe pedidos com UUID da tabela `public.orders`. O receiver antigo tentava aceitar qualquer ID na coleção Firestore `pedidos`, podendo falhar silenciosamente para pedidos novos. Agora, ao identificar UUID, chama `SupabaseOrdersApi.updateStatus(orderId, "CONFIRMADO")` após carregar o PIN do operador, mantendo a validação e o controle de concorrência no backend `gestor-orders`. IDs legados continuam usando o fluxo existente do Firestore. O teste `web/tests/native-accept.test.mjs` impede regressão.
