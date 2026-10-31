@@ -34,7 +34,7 @@ function HoldButton({onAction,disabled,children}){const [holding,setHolding]=use
 function Login({onLogin}){const [pin,setPin]=useState(''),[code,setCode]=useState(''),[team,setTeam]=useState(false),[error,setError]=useState(''),[busy,setBusy]=useState(false);const submit=async e=>{e.preventDefault();setBusy(true);setError('');try{const d=await request('login',{pin,operator_id:team?code:undefined});onLogin(d);if(!team)hybrid.savePin?.(pin)}catch(e){setError(e.message)}finally{setBusy(false)}};return <div className="gate"><form className="login-card" onSubmit={submit}><img src="./logo.png" alt="Rodrigues Açaí e Cia"/><span className="eyebrow">RODRIGUES GESTOR</span><h1>Pronto para<br/>começar?</h1><p>Entre para cuidar dos pedidos da loja.</p>{team&&<Field label="Seu código de acesso" value={code} onChange={e=>setCode(e.target.value)} required/>}<Field label="PIN de acesso" type="password" inputMode="numeric" autoComplete="current-password" pattern="[0-9]{6}" maxLength="6" value={pin} onChange={e=>setPin(e.target.value.replace(/\D/g,''))} required/>{error&&<p className="error" role="alert">{error}</p>}<button className="primary" disabled={busy}>{busy?'Entrando…':'Entrar'}</button><button type="button" className="text-btn" onClick={()=>setTeam(!team)}>{team?'Acesso do dono':'Acesso da equipe'}</button><small>Versão 3.3.1</small></form></div>}
 function Empty({title='Nada por aqui',text='Os pedidos aparecerão nesta área.'}){return <div className="empty"><Icon name="orders"/><h3>{title}</h3><p>{text}</p></div>}
 function OrderCard({o,onOpen,duplicate,board=false,onQuick}){const remaining=acceptanceRemaining(o),b=bucket(o);const preview=o.items[0]?o.items[0].qty+'× '+o.items[0].name:(o.items.length+' itens');const quick=['ready','delivery'].includes(b)&&o.type==='ENTREGA'?null:FLOW[b]?((o.type!=='ENTREGA'&&b==='ready')?['CONCLUIDO','Finalizar']:FLOW[b]):null;return <article className={'order-card compact '+b+(isLate(o)?' late':'')} onClick={()=>onOpen(o)} role="button" tabIndex={0} onKeyDown={e=>e.key==='Enter'&&onOpen(o)}><div className="card-line"><div className="order-id"><strong>#{o.number||o.id.slice(-6)}</strong><span className={'status '+b}>{statusLabel(o.status)}</span></div><span className={isLate(o)?'order-age danger-text':'order-age'}>{NEW.has(o.status)?remaining>0?`${Math.floor(remaining/60)}:${String(remaining%60).padStart(2,'0')}`:'ATRASO':ageMin(o)+' min'}</span></div><h3>{o.clientName}</h3><p className="preview one-line">{preview}</p><div className="compact-meta"><span>{o.type==='RETIRADA'?'Retirada':o.type==='BALCAO'?'Balcão':'Entrega'}</span>{o.payment&&<span>{o.payment}</span>}<b>{money(o.total)}</b></div>{duplicate&&<span className="warning-tag">Possível duplicidade</span>}{board&&<div className="board-items">{o.items.map((i,k)=><div key={k}><b>{i.qty}× {i.name}</b>{i.details.map((d,j)=><small key={j}>- {d}</small>)}</div>)}</div>}{quick&&<button className="card-primary" onClick={e=>{e.stopPropagation();onQuick?.(o,quick[0])}}>{quick[1]}</button>}</article>}
-function OrderDetail({o,call,run,onClose,onChanged,owner,canAttend}){const [view,setView]=useState('details'),[reason,setReason]=useState(''),[cancel,setCancel]=useState(false),[events,setEvents]=useState([]),[couriers,setCouriers]=useState([]),[conversation,setConversation]=useState(null),[messages,setMessages]=useState([]),[message,setMessage]=useState(''),[working,setWorking]=useState(false),[error,setError]=useState(''),[dispatchNotice,setDispatchNotice]=useState('');
+function OrderDetail({o,call,run,onClose,onChanged,owner,canAttend}){const [reviewNote,setReviewNote]=useState(''),[itemsReturned,setItemsReturned]=useState(false),const [view,setView]=useState('details'),[reason,setReason]=useState(''),[cancel,setCancel]=useState(false),[events,setEvents]=useState([]),[couriers,setCouriers]=useState([]),[conversation,setConversation]=useState(null),[messages,setMessages]=useState([]),[message,setMessage]=useState(''),[working,setWorking]=useState(false),[error,setError]=useState(''),[dispatchNotice,setDispatchNotice]=useState('');
  const perform=async fn=>{if(working)return;setWorking(true);setError('');try{await fn()}catch(e){setError(e.message)}finally{setWorking(false)}};
  useEffect(()=>{let alive=true,timer;const loadExtra=async()=>{try{if(view==='events'){const d=await call('order_events',{order_id:o.id});if(alive)setEvents(d.events||[])}if(view==='couriers'){const d=await call('couriers');if(alive)setCouriers(d.couriers||[])}if(view==='chat'){const d=await call('conversation_for_order',{order_id:o.id,customer_id:o.sourceRow.customer_id});if(!alive)return;setConversation(d.conversation);const poll=async()=>{const m=await call('messages',{conversation_id:d.conversation.id});if(alive)setMessages(m.messages||[])};await poll();timer=setInterval(()=>poll().catch(e=>alive&&setError(e.message)),8000)}}catch(e){if(alive)setError(e.message)}};loadExtra();return()=>{alive=false;clearInterval(timer)}},[view,o.id]);
  const change=async status=>perform(async()=>{
@@ -71,6 +71,16 @@ function OrderDetail({o,call,run,onClose,onChanged,owner,canAttend}){const [view
     await call('up_set_tracking',{order_id:o.id,enabled:desired});
     await onChanged();setDispatchNotice(desired?'Mapa autorizado para esta entrega.':'Mapa do cliente desativado.');
   });
+ const resolveReturned=()=>perform(async()=>{
+   const note=reviewNote.trim();
+   if(!owner||!itemsReturned||note.length<12||note.length>500)return;
+   if(!window.confirm('Confirma que os produtos foram devolvidos e não há pagamento a conciliar? O servidor verificará.'))return;
+   const result=await call('up_resolve_cancel_review',{
+     order_id:o.id,items_returned:true,note
+   });
+   await onChanged();setView('details');setItemsReturned(false);setReviewNote('');
+   setDispatchNotice(result.ok?'Devolução registrada. Cancelamento encerrado sem estorno.':'A análise ainda não pode ser encerrada.');
+ });
  const phone=o.phone?.replace(/\D/g,'')||'',wa=phone?(phone.startsWith('55')?phone:'55'+phone):'';
  const copyAddress=()=>navigator.clipboard?.writeText(o.address||'').catch(()=>{});
  const shareAddress=()=>{if(navigator.share)navigator.share({title:'Endereço do pedido #'+o.number,text:o.address}).catch(()=>{});else copyAddress()};
@@ -92,6 +102,19 @@ function OrderDetail({o,call,run,onClose,onChanged,owner,canAttend}){const [view
    {view==='events'&&<section className="detail-section subview"><button className="back-inline" onClick={()=>setView('details')}>← Detalhes</button><h2>Linha do tempo</h2>{events.length?<ol className="timeline">{events.map(e=><li key={e.id}><b>{statusLabel(e.status)}</b><span>{timeLabel(e.occurred_at)}</span>{e.note&&<p>{e.note}</p>}</li>)}</ol>:<Empty title="Sem registros" text="As alterações aparecerão aqui."/>}</section>}
    {view==='couriers'&&<section className="detail-section subview"><button className="back-inline" onClick={()=>setView('details')}>← Detalhes</button><h2>UP Entregas</h2>
      <p className="muted">{cancellationInReview?'Cancelamento em análise: rastreamento desligado e suporte necessário.':o.courierId?'Motoboy aceitou esta entrega.':pendingOffer?'Oferta enviada, aguardando resposta do motoboy.':offerable?'Escolha um motoboy disponível para oferecer a entrega.':'Despacho disponível depois que o pedido estiver pronto.'}</p>
+     {cancellationInReview&&<div className="panel"><strong>Conciliação de cancelamento</strong>
+       <p className="muted">Se houve pagamento ou checkout, confirme o estorno na InfinitePay. O sistema não o considera realizado automaticamente.</p>
+       {owner&&<form onSubmit={e=>{e.preventDefault();resolveReturned()}}>
+         <label className="toggle-row"><span>Confirmo que os produtos retornaram à loja</span>
+           <input type="checkbox" checked={itemsReturned} onChange={e=>setItemsReturned(e.target.checked)}/></label>
+         <Field label="Registro da devolução"><textarea required minLength={12} maxLength={500}
+           value={reviewNote} onChange={e=>setReviewNote(e.target.value)}
+           placeholder="Descreva a devolução e quem recebeu os produtos"/></Field>
+         <button className="danger" type="submit" disabled={working||!itemsReturned||reviewNote.trim().length<12}>
+           Encerrar análise sem estorno</button>
+       </form>}
+       {!owner&&<p className="muted">Somente o proprietário pode encerrar essa análise.</p>}
+     </div>}
      {o.courierId&&<p>Entregador vinculado ao pedido. Reatribuições exigem suporte.</p>}
      {pendingOffer&&!o.courierId&&<button className="secondary" type="button" disabled={working} onClick={recallOffer}>Recolher oferta pendente</button>}
      {!pendingOffer&&offerable&&couriers.map(d=><div className="list-row" key={d.id}><div><b>{d.name}</b><small>{d.online?'Online':'Offline'} · {d.status}</small></div><button type="button" disabled={working||!d.online||String(d.status).toLowerCase()!=='available'} onClick={()=>offerTo(d)}>Enviar oferta</button></div>)}
