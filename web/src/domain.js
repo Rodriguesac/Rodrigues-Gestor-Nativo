@@ -63,7 +63,7 @@ function normalize(row){
 }
 function ageMin(o){const ms=Date.parse(o.created);return Number.isFinite(ms)?Math.max(0,Math.floor((Date.now()-ms)/60000)):0}
 function statusLabel(s){
-  return ({PENDENTE:'Novo',NOVO:'Novo',RECEBIDO:'Novo',ENVIADO:'Novo',CONFIRMADO:'Confirmado',ACEITO:'Confirmado',EM_PREPARO:'Em preparo',PREPARANDO:'Em preparo',PRONTO:'Pronto',AGUARDANDO_ENTREGADOR:'Aguardando motoboy',BUSCANDO_ENTREGADOR:'Buscando motoboy',AGUARDANDO_DECISAO_GESTOR:'Aguardando gestor',EM_ENTREGA:'Em entrega',SAIU_PARA_ENTREGA:'Em entrega',SAIU_ENTREGA:'Em entrega',CONCLUIDO:'Concluído',ENTREGUE:'Concluído',CANCELADO:'Cancelado'})[s]||s.replaceAll('_',' ')
+  return ({PENDENTE:'Novo',NOVO:'Novo',RECEBIDO:'Novo',ENVIADO:'Novo',CONFIRMADO:'Confirmado',ACEITO:'Confirmado',EM_PREPARO:'Em preparo',PREPARANDO:'Em preparo',PRONTO:'Pronto',AGUARDANDO_ENTREGADOR:'Aguardando motoboy',BUSCANDO_ENTREGADOR:'Buscando motoboy',AGUARDANDO_DECISAO_GESTOR:'Aguardando gestor',CANCELAMENTO_EM_ANALISE:'Cancelamento em análise',EM_ENTREGA:'Em entrega',SAIU_PARA_ENTREGA:'Em entrega',SAIU_ENTREGA:'Em entrega',CONCLUIDO:'Concluído',ENTREGUE:'Concluído',CANCELADO:'Cancelado'})[s]||s.replaceAll('_',' ')
 }
 function bucket(o){if(NEW.has(o.status))return'new';if(PREP.has(o.status))return'prep';if(['CONFIRMADO','ACEITO','FILA'].includes(o.status))return'confirmed';if(['PRONTO','AGUARDANDO_ENTREGADOR','BUSCANDO_ENTREGADOR','AGUARDANDO_DECISAO_GESTOR'].includes(o.status))return'ready';if(DELIVERY.has(o.status))return'delivery';return DONE.has(o.status)?'done':'other'}
 
