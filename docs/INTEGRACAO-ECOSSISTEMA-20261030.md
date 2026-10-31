@@ -83,3 +83,11 @@ A área de cancelamento em análise do Rodrigues Gestor permite ao proprietário
 - A segunda conferência é feita no Gadministra com outra credencial autorizada. A mesma identidade não pode informar e conferir.
 - O pedido permanece em análise e o mapa permanece desligado; a ação não presume estorno automático nem altera `payment_status`.
 - A versão está em branch de homologação, com testes React/Android. Nenhum APK operacional foi substituído.
+
+## Fechamento de entrega paga após conferência manual independente
+
+Se a InfinitePay já marcou o pagamento como aprovado, o proprietário pode **informar** a referência de estorno executado no App ou Conta Web. Outro administrador deve conferir esse estorno pelo Gadministra, com identidade diferente. Quando o registro atingir `VERIFIED_MANUALLY`, o Rodrigues Gestor apresenta ao proprietário o formulário de **devolução física dos produtos + encerramento logístico**.
+
+A API `up_resolve_cancel_review` confirma no banco o estado de revisão, o valor integral, a dupla identidade, a ligação do motoboy e a devolução informada. Somente então o pedido passa a `CANCELADO` e o motoboy fica disponível. `payment_status=PAGO` permanece como histórico da cobrança; a auditoria indica que o estorno foi **conferido manualmente**, não confirmado automaticamente pelo provedor. O GPS não volta a aparecer.
+
+Sem o comprovante revisado, sem retorno dos itens, com checkout pendente ou estorno parcial, o pedido não deve ser concluído. Testado em PostgreSQL 17 descartável e regressão React. **Ainda não publicado no Supabase operacional.**
