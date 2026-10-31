@@ -97,12 +97,18 @@ function OrderDetail({o,call,run,onClose,onChanged,owner,canAttend}){const [revi
  const resolveReturned=()=>perform(async()=>{
    const note=reviewNote.trim();
    if(!owner||!itemsReturned||note.length<12||note.length>500)return;
-   if(!window.confirm('Confirma que os produtos foram devolvidos e não há pagamento a conciliar? O servidor verificará.'))return;
+   const manualRefundReady=paymentIsInfinitepay&&refundCase?.verification_status==='VERIFIED_MANUALLY';
+   if(!window.confirm(manualRefundReady
+     ?'Confirma devolução física e conferência manual independente do estorno integral? O sistema NÃO executou o estorno.'
+     :'Confirma que os produtos foram devolvidos e não há pagamento a conciliar? O servidor verificará.'))return;
    const result=await call('up_resolve_cancel_review',{
      order_id:o.id,items_returned:true,note
    });
    await onChanged();setView('details');setItemsReturned(false);setReviewNote('');
-   setDispatchNotice(result.ok?'Devolução registrada. Cancelamento encerrado sem estorno.':'A análise ainda não pode ser encerrada.');
+   setDispatchNotice(result.ok?(result.refund_verified_manually
+     ?'Devolução registrada e cancelamento encerrado após estorno conferido manualmente. O pagamento original permanece no histórico.'
+     :'Devolução registrada. Cancelamento encerrado sem estorno.')
+     :'A análise ainda não pode ser encerrada.');
  });
  const phone=o.phone?.replace(/\D/g,'')||'',wa=phone?(phone.startsWith('55')?phone:'55'+phone):'';
  const copyAddress=()=>navigator.clipboard?.writeText(o.address||'').catch(()=>{});
@@ -146,14 +152,14 @@ function OrderDetail({o,call,run,onClose,onChanged,owner,canAttend}){const [revi
            </form>}
          </div>}
        {paymentIsInfinitepay&&!paymentIsPaid&&<p className="muted">Pagamento ainda não confirmado pela InfinitePay. Não é possível registrar estorno ou encerrar este caso antes de conferir o checkout.</p>}
-       {owner&&!financialReview&&<form onSubmit={e=>{e.preventDefault();resolveReturned()}}>
+       {owner&&(!financialReview||(paymentIsInfinitepay&&paymentIsPaid&&refundCase?.verification_status==='VERIFIED_MANUALLY'))&&<form onSubmit={e=>{e.preventDefault();resolveReturned()}}>
          <label className="toggle-row"><span>Confirmo que os produtos retornaram à loja</span>
            <input type="checkbox" checked={itemsReturned} onChange={e=>setItemsReturned(e.target.checked)}/></label>
          <Field label="Registro da devolução"><textarea required minLength={12} maxLength={500}
            value={reviewNote} onChange={e=>setReviewNote(e.target.value)}
            placeholder="Descreva a devolução e quem recebeu os produtos"/></Field>
          <button className="danger" type="submit" disabled={working||!itemsReturned||reviewNote.trim().length<12}>
-           Encerrar análise sem estorno</button>
+           {financialReview?'Encerrar após conferência manual do estorno':'Encerrar análise sem estorno'}</button>
        </form>}
        {!owner&&<p className="muted">Somente o proprietário pode encerrar essa análise.</p>}
      </div>}
