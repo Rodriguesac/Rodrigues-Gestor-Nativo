@@ -52,6 +52,9 @@ function OrderDetail({o,call,run,onClose,onChanged,owner,canAttend}){const [revi
  });
  const b=bucket(o),flow=FLOW[b],next=['ready','delivery'].includes(b)&&o.type==='ENTREGA'?null:flow?(o.type!=='ENTREGA'&&b==='ready'?['CONCLUIDO','Finalizar retirada']:flow):null;
   const cancellationInReview=o.status==='CANCELAMENTO_EM_ANALISE';
+  const details=o.sourceRow?.payment_details||{};
+  const financialReview=['PAGO','PAID','APROVADO'].includes(o.paymentStatus)||
+    details.refund_required===true||Boolean(details.checkout_url||details.transaction_nsu||details.invoice_slug);
   const offerable=canAttend&&o.type==='ENTREGA'&&['PRONTO','AGUARDANDO_ENTREGADOR','BUSCANDO_ENTREGADOR','AGUARDANDO_DECISAO_GESTOR'].includes(o.status)&&!o.courierId;
   const pendingOffer=Boolean(o.pendingCourierId);
   const offerTo=d=>perform(async()=>{
@@ -104,7 +107,8 @@ function OrderDetail({o,call,run,onClose,onChanged,owner,canAttend}){const [revi
      <p className="muted">{cancellationInReview?'Cancelamento em análise: rastreamento desligado e suporte necessário.':o.courierId?'Motoboy aceitou esta entrega.':pendingOffer?'Oferta enviada, aguardando resposta do motoboy.':offerable?'Escolha um motoboy disponível para oferecer a entrega.':'Despacho disponível depois que o pedido estiver pronto.'}</p>
      {cancellationInReview&&<div className="panel"><strong>Conciliação de cancelamento</strong>
        <p className="muted">Se houve pagamento ou checkout, confirme o estorno na InfinitePay. O sistema não o considera realizado automaticamente.</p>
-       {owner&&<form onSubmit={e=>{e.preventDefault();resolveReturned()}}>
+       {financialReview&&<p role="alert" className="muted">Há pagamento ou checkout a conciliar. Esta análise exige confirmação financeira externa e não pode ser encerrada por este formulário.</p>}
+       {owner&&!financialReview&&<form onSubmit={e=>{e.preventDefault();resolveReturned()}}>
          <label className="toggle-row"><span>Confirmo que os produtos retornaram à loja</span>
            <input type="checkbox" checked={itemsReturned} onChange={e=>setItemsReturned(e.target.checked)}/></label>
          <Field label="Registro da devolução"><textarea required minLength={12} maxLength={500}
