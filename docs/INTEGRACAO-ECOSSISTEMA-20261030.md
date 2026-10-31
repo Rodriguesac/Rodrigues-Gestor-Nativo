@@ -57,3 +57,11 @@ A versão instalada atualmente permanece intocada. A branch deve ser compilada, 
 ## Correção adicional — ação ACEITAR nas notificações nativas
 
 O serviço de notificações recebe pedidos com UUID da tabela `public.orders`. O receiver antigo tentava aceitar qualquer ID na coleção Firestore `pedidos`, podendo falhar silenciosamente para pedidos novos. Agora, ao identificar UUID, chama `SupabaseOrdersApi.updateStatus(orderId, "CONFIRMADO")` após carregar o PIN do operador, mantendo a validação e o controle de concorrência no backend `gestor-orders`. IDs legados continuam usando o fluxo existente do Firestore. O teste `web/tests/native-accept.test.mjs` impede regressão.
+
+## Cancelamento de corrida por Rodrigues Gestor
+
+O botão `Cancelar` de um pedido com motoboy designado ou oferta pendente agora usa `up_cancel_delivery` e encaminha o motivo ao `gestor-app-api`. A API valida sessão/operador e chama a RPC de cancelamento. Sem a RPC instalada, a operação retorna 503 e não altera o pedido por um caminho antigo.
+
+Antes da retirada, o pedido pode ser cancelado e a missão é liberada. Depois da retirada ou de pagamento confirmado, mostra **Cancelamento em análise**, sem exibir um estorno fictício nem liberar o motoboy sem ação do suporte. A interface deixa de mostrar `Cancelar` enquanto existe análise pendente; pagamentos precisam de conciliação separada.
+
+Teste web `web/tests/up-cancel.test.mjs`; teste cruzado no repositório Cliente `scripts/test-up-cancellation.mjs`. O APK Android de homologação não deve substituir o app instalado antes dos testes reais.
