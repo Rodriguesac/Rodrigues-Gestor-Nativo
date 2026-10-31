@@ -19,6 +19,15 @@ test("formulário explicita que a API não devolve dinheiro",()=>{
 test("pedido InfinitePay com checkout pendente não oferece devolver sem conciliação",()=>{
  assert.match(app,/const paymentIsInfinitepay=String\(o\.payment\|\|''\)\.toUpperCase\(\)==='INFINITEPAY'/);
  assert.match(app,/const financialReview=paymentIsInfinitepay\|\|paymentIsPaid/);
- assert.match(app,/owner&&!financialReview&&<form/);
+ assert.match(app,/owner&&\(!financialReview\|\|\(paymentIsInfinitepay&&paymentIsPaid&&refundCase\?\.verification_status==='VERIFIED_MANUALLY'\)\)&&<form/);
  assert.match(app,/paymentIsInfinitepay&&!paymentIsPaid&&<p/);
+});
+
+test("cancelamento pago só encerra com comprovante revisado por outra conta e devolução",()=>{
+ assert.match(app,/refundCase\?\.verification_status==='VERIFIED_MANUALLY'/);
+ assert.match(app,/const manualRefundReady=paymentIsInfinitepay&&refundCase\?\.verification_status==='VERIFIED_MANUALLY'/);
+ assert.match(app,/call\('up_resolve_cancel_review',\{/);
+ assert.match(app,/result\.refund_verified_manually/);
+ assert.match(app,/O pagamento original permanece no histórico/);
+ assert.match(app,/Encerrar após conferência manual do estorno/);
 });
