@@ -34,9 +34,14 @@ function HoldButton({onAction,disabled,children}){const [holding,setHolding]=use
 function Login({onLogin}){const [pin,setPin]=useState(''),[code,setCode]=useState(''),[team,setTeam]=useState(false),[error,setError]=useState(''),[busy,setBusy]=useState(false);const submit=async e=>{e.preventDefault();setBusy(true);setError('');try{const d=await request('login',{pin,operator_id:team?code:undefined});onLogin(d);if(!team)hybrid.savePin?.(pin)}catch(e){setError(e.message)}finally{setBusy(false)}};return <div className="gate"><form className="login-card" onSubmit={submit}><img src="./logo.png" alt="Rodrigues Açaí e Cia"/><span className="eyebrow">RODRIGUES GESTOR</span><h1>Pronto para<br/>começar?</h1><p>Entre para cuidar dos pedidos da loja.</p>{team&&<Field label="Seu código de acesso" value={code} onChange={e=>setCode(e.target.value)} required/>}<Field label="PIN de acesso" type="password" inputMode="numeric" autoComplete="current-password" pattern="[0-9]{6}" maxLength="6" value={pin} onChange={e=>setPin(e.target.value.replace(/\D/g,''))} required/>{error&&<p className="error" role="alert">{error}</p>}<button className="primary" disabled={busy}>{busy?'Entrando…':'Entrar'}</button><button type="button" className="text-btn" onClick={()=>setTeam(!team)}>{team?'Acesso do dono':'Acesso da equipe'}</button><small>Versão 3.3.1</small></form></div>}
 function Empty({title='Nada por aqui',text='Os pedidos aparecerão nesta área.'}){return <div className="empty"><Icon name="orders"/><h3>{title}</h3><p>{text}</p></div>}
 function OrderCard({o,onOpen,duplicate,board=false,onQuick}){const remaining=acceptanceRemaining(o),b=bucket(o);const preview=o.items[0]?o.items[0].qty+'× '+o.items[0].name:(o.items.length+' itens');const quick=['ready','delivery'].includes(b)&&o.type==='ENTREGA'?null:FLOW[b]?((o.type!=='ENTREGA'&&b==='ready')?['CONCLUIDO','Finalizar']:FLOW[b]):null;return <article className={'order-card compact '+b+(isLate(o)?' late':'')} onClick={()=>onOpen(o)} role="button" tabIndex={0} onKeyDown={e=>e.key==='Enter'&&onOpen(o)}><div className="card-line"><div className="order-id"><strong>#{o.number||o.id.slice(-6)}</strong><span className={'status '+b}>{statusLabel(o.status)}</span></div><span className={isLate(o)?'order-age danger-text':'order-age'}>{NEW.has(o.status)?remaining>0?`${Math.floor(remaining/60)}:${String(remaining%60).padStart(2,'0')}`:'ATRASO':ageMin(o)+' min'}</span></div><h3>{o.clientName}</h3><p className="preview one-line">{preview}</p><div className="compact-meta"><span>{o.type==='RETIRADA'?'Retirada':o.type==='BALCAO'?'Balcão':'Entrega'}</span>{o.payment&&<span>{o.payment}</span>}<b>{money(o.total)}</b></div>{duplicate&&<span className="warning-tag">Possível duplicidade</span>}{board&&<div className="board-items">{o.items.map((i,k)=><div key={k}><b>{i.qty}× {i.name}</b>{i.details.map((d,j)=><small key={j}>- {d}</small>)}</div>)}</div>}{quick&&<button className="card-primary" onClick={e=>{e.stopPropagation();onQuick?.(o,quick[0])}}>{quick[1]}</button>}</article>}
-function OrderDetail({o,call,run,onClose,onChanged,owner,canAttend}){const [reviewNote,setReviewNote]=useState(''),[itemsReturned,setItemsReturned]=useState(false),[view,setView]=useState('details'),[reason,setReason]=useState(''),[cancel,setCancel]=useState(false),[events,setEvents]=useState([]),[couriers,setCouriers]=useState([]),[conversation,setConversation]=useState(null),[messages,setMessages]=useState([]),[message,setMessage]=useState(''),[working,setWorking]=useState(false),[error,setError]=useState(''),[dispatchNotice,setDispatchNotice]=useState('');
+function OrderDetail({o,call,run,onClose,onChanged,owner,canAttend}){const [reviewNote,setReviewNote]=useState(''),[itemsReturned,setItemsReturned]=useState(false),[refundReference,setRefundReference]=useState(''),[refundNote,setRefundNote]=useState(''),[refundCase,setRefundCase]=useState(null),[view,setView]=useState('details'),[reason,setReason]=useState(''),[cancel,setCancel]=useState(false),[events,setEvents]=useState([]),[couriers,setCouriers]=useState([]),[conversation,setConversation]=useState(null),[messages,setMessages]=useState([]),[message,setMessage]=useState(''),[working,setWorking]=useState(false),[error,setError]=useState(''),[dispatchNotice,setDispatchNotice]=useState('');
  const perform=async fn=>{if(working)return;setWorking(true);setError('');try{await fn()}catch(e){setError(e.message)}finally{setWorking(false)}};
- useEffect(()=>{let alive=true,timer;const loadExtra=async()=>{try{if(view==='events'){const d=await call('order_events',{order_id:o.id});if(alive)setEvents(d.events||[])}if(view==='couriers'){const d=await call('couriers');if(alive)setCouriers(d.couriers||[])}if(view==='chat'){const d=await call('conversation_for_order',{order_id:o.id,customer_id:o.sourceRow.customer_id});if(!alive)return;setConversation(d.conversation);const poll=async()=>{const m=await call('messages',{conversation_id:d.conversation.id});if(alive)setMessages(m.messages||[])};await poll();timer=setInterval(()=>poll().catch(e=>alive&&setError(e.message)),8000)}}catch(e){if(alive)setError(e.message)}};loadExtra();return()=>{alive=false;clearInterval(timer)}},[view,o.id]);
+ useEffect(()=>{let alive=true,timer;const loadExtra=async()=>{try{if(view==='events'){const d=await call('order_events',{order_id:o.id});if(alive)setEvents(d.events||[])}if(view==='couriers'){const d=await call('couriers');if(alive)setCouriers(d.couriers||[]);
+        if(owner&&o.status==='CANCELAMENTO_EM_ANALISE'&&o.payment==='INFINITEPAY'){
+          try{const audit=await call('up_refund_status',{order_id:o.id});
+            if(alive)setRefundCase(audit.case||null);
+          }catch{ /* versão da API em homologação pode não estar publicada */ }
+        }}if(view==='chat'){const d=await call('conversation_for_order',{order_id:o.id,customer_id:o.sourceRow.customer_id});if(!alive)return;setConversation(d.conversation);const poll=async()=>{const m=await call('messages',{conversation_id:d.conversation.id});if(alive)setMessages(m.messages||[])};await poll();timer=setInterval(()=>poll().catch(e=>alive&&setError(e.message)),8000)}}catch(e){if(alive)setError(e.message)}};loadExtra();return()=>{alive=false;clearInterval(timer)}},[view,o.id]);
  const change=async status=>perform(async()=>{
   if(status==='CANCELADO'&&o.type==='ENTREGA'&&(o.courierId||o.pendingCourierId)){
     const result=await call('up_cancel_delivery',{order_id:o.id,reason:reason.trim()});
@@ -74,6 +79,19 @@ function OrderDetail({o,call,run,onClose,onChanged,owner,canAttend}){const [revi
     await call('up_set_tracking',{order_id:o.id,enabled:desired});
     await onChanged();setDispatchNotice(desired?'Mapa autorizado para esta entrega.':'Mapa do cliente desativado.');
   });
+ const reportManualRefund=()=>perform(async()=>{
+   const note=refundNote.trim(),reference=refundReference.trim();
+   if(!owner||note.length<12||reference.length<6||reference.length>120)return;
+   if(!window.confirm('Confirma que o estorno INTEGRAL foi realizado manualmente no App/Conta Web InfinitePay?'))return;
+   const result=await call('up_refund_report',{
+     order_id:o.id,reference,amount_cents:Math.round(Number(o.total||0)*100),note
+   });
+   const q=await call('up_refund_status',{order_id:o.id});
+   setRefundCase(q.case||null);setRefundNote('');
+   setDispatchNotice(result.verification_status==='REPORTED'
+     ?'Estorno informado; outra credencial deverá conferir na Conta Web, pelo Gadministra. Pedido permanece em análise.'
+     :'Conferência em andamento. Pedido permanece em análise.');
+ });
  const resolveReturned=()=>perform(async()=>{
    const note=reviewNote.trim();
    if(!owner||!itemsReturned||note.length<12||note.length>500)return;
@@ -108,6 +126,23 @@ function OrderDetail({o,call,run,onClose,onChanged,owner,canAttend}){const [revi
      {cancellationInReview&&<div className="panel"><strong>Conciliação de cancelamento</strong>
        <p className="muted">Se houve pagamento ou checkout, confirme o estorno na InfinitePay. O sistema não o considera realizado automaticamente.</p>
        {financialReview&&<p role="alert" className="muted">Há pagamento ou checkout a conciliar. Esta análise exige confirmação financeira externa e não pode ser encerrada por este formulário.</p>}
+       {owner&&o.payment==='INFINITEPAY'&&o.paymentStatus==='PAGO'&&
+         <div className="panel">
+           <strong>Conferência manual da InfinitePay</strong>
+           <p className="muted">Estornos são feitos no App ou na Conta Web InfinitePay. Este sistema somente registra a referência; uma segunda credencial deve conferir no Gadministra.</p>
+           {refundCase?<p className="muted">Comprovante: {refundCase.verification_status==='VERIFIED_MANUALLY'
+             ?'Conferido manualmente por outro operador':refundCase.verification_status==='REJECTED'
+               ?'Rejeitado pela conferência':'Aguardando segunda conferência'}. O pedido continua em análise.</p>
+           :<form onSubmit={e=>{e.preventDefault();reportManualRefund()}}>
+             <Field label="Referência do estorno"><input required minLength={6} maxLength={120}
+               value={refundReference} onChange={e=>setRefundReference(e.target.value)}
+               placeholder="Número no App/Conta Web InfinitePay"/></Field>
+             <Field label="Registro de operação (mínimo 12 caracteres)"><textarea required minLength={12}
+               maxLength={500} value={refundNote} onChange={e=>setRefundNote(e.target.value)}
+               placeholder="Confirme a data e a origem da operação, sem dados de cartão"/></Field>
+             <button type="submit" disabled={working||refundReference.trim().length<6||refundNote.trim().length<12}>Informar estorno realizado</button>
+           </form>}
+         </div>}
        {owner&&!financialReview&&<form onSubmit={e=>{e.preventDefault();resolveReturned()}}>
          <label className="toggle-row"><span>Confirmo que os produtos retornaram à loja</span>
            <input type="checkbox" checked={itemsReturned} onChange={e=>setItemsReturned(e.target.checked)}/></label>
