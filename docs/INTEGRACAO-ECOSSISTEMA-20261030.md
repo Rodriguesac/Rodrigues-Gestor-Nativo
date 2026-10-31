@@ -73,3 +73,13 @@ No detalhe de pedido → UP Entregas, o proprietário pode confirmar a **devolu�
 Se houver pagamento InfinitePay, transação, checkout ou indicação de estorno, a interface avisa que precisa de conciliação financeira, e o backend rejeita conclusão operacional. Nenhuma promessa de estorno é exibida.
 
 Os testes da UI verificam o fluxo e a compilação React; a versão Android de homologação continua separada da instalada na loja.
+
+## Referência de estorno InfinitePay informado (31/10/2026)
+
+A área de cancelamento em análise do Rodrigues Gestor permite ao proprietário **informar** um estorno integral já executado manualmente no App ou na Conta Web InfinitePay. O formulário pede referência e relato; não cria nem confirma pagamento.
+
+- `up_refund_report`: somente proprietário com sessão vigente; passa pelo backend e pela RPC PostgreSQL de auditoria preparada no PR #33 do repositório Cliente.
+- `up_refund_status`: mostra se a referência aguarda revisão, foi rejeitada ou foi conferida manualmente.
+- A segunda conferência é feita no Gadministra com outra credencial autorizada. A mesma identidade não pode informar e conferir.
+- O pedido permanece em análise e o mapa permanece desligado; a ação não presume estorno automático nem altera `payment_status`.
+- A versão está em branch de homologação, com testes React/Android. Nenhum APK operacional foi substituído.
