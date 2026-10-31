@@ -58,7 +58,9 @@ function OrderDetail({o,call,run,onClose,onChanged,owner,canAttend}){const [revi
  const b=bucket(o),flow=FLOW[b],next=['ready','delivery'].includes(b)&&o.type==='ENTREGA'?null:flow?(o.type!=='ENTREGA'&&b==='ready'?['CONCLUIDO','Finalizar retirada']:flow):null;
   const cancellationInReview=o.status==='CANCELAMENTO_EM_ANALISE';
   const details=o.sourceRow?.payment_details||{};
-  const financialReview=['PAGO','PAID','APROVADO'].includes(o.paymentStatus)||
+  const paymentIsInfinitepay=String(o.payment||'').toUpperCase()==='INFINITEPAY';
+  const paymentIsPaid=['PAGO','PAID','APROVADO'].includes(o.paymentStatus);
+  const financialReview=paymentIsInfinitepay||paymentIsPaid||
     details.refund_required===true||Boolean(details.checkout_url||details.transaction_nsu||details.invoice_slug);
   const offerable=canAttend&&o.type==='ENTREGA'&&['PRONTO','AGUARDANDO_ENTREGADOR','BUSCANDO_ENTREGADOR','AGUARDANDO_DECISAO_GESTOR'].includes(o.status)&&!o.courierId;
   const pendingOffer=Boolean(o.pendingCourierId);
@@ -126,7 +128,7 @@ function OrderDetail({o,call,run,onClose,onChanged,owner,canAttend}){const [revi
      {cancellationInReview&&<div className="panel"><strong>Conciliação de cancelamento</strong>
        <p className="muted">Se houve pagamento ou checkout, confirme o estorno na InfinitePay. O sistema não o considera realizado automaticamente.</p>
        {financialReview&&<p role="alert" className="muted">Há pagamento ou checkout a conciliar. Esta análise exige confirmação financeira externa e não pode ser encerrada por este formulário.</p>}
-       {owner&&o.payment==='INFINITEPAY'&&o.paymentStatus==='PAGO'&&
+       {owner&&paymentIsInfinitepay&&paymentIsPaid&&
          <div className="panel">
            <strong>Conferência manual da InfinitePay</strong>
            <p className="muted">Estornos são feitos no App ou na Conta Web InfinitePay. Este sistema somente registra a referência; uma segunda credencial deve conferir no Gadministra.</p>
@@ -143,6 +145,7 @@ function OrderDetail({o,call,run,onClose,onChanged,owner,canAttend}){const [revi
              <button type="submit" disabled={working||refundReference.trim().length<6||refundNote.trim().length<12}>Informar estorno realizado</button>
            </form>}
          </div>}
+       {paymentIsInfinitepay&&!paymentIsPaid&&<p className="muted">Pagamento ainda não confirmado pela InfinitePay. Não é possível registrar estorno ou encerrar este caso antes de conferir o checkout.</p>}
        {owner&&!financialReview&&<form onSubmit={e=>{e.preventDefault();resolveReturned()}}>
          <label className="toggle-row"><span>Confirmo que os produtos retornaram à loja</span>
            <input type="checkbox" checked={itemsReturned} onChange={e=>setItemsReturned(e.target.checked)}/></label>
