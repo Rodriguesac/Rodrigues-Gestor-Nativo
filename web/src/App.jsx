@@ -37,8 +37,21 @@ function OrderCard({o,onOpen,duplicate,board=false,onQuick}){const remaining=acc
 function OrderDetail({o,call,run,onClose,onChanged,owner,canAttend}){const [view,setView]=useState('details'),[reason,setReason]=useState(''),[cancel,setCancel]=useState(false),[events,setEvents]=useState([]),[couriers,setCouriers]=useState([]),[conversation,setConversation]=useState(null),[messages,setMessages]=useState([]),[message,setMessage]=useState(''),[working,setWorking]=useState(false),[error,setError]=useState(''),[dispatchNotice,setDispatchNotice]=useState('');
  const perform=async fn=>{if(working)return;setWorking(true);setError('');try{await fn()}catch(e){setError(e.message)}finally{setWorking(false)}};
  useEffect(()=>{let alive=true,timer;const loadExtra=async()=>{try{if(view==='events'){const d=await call('order_events',{order_id:o.id});if(alive)setEvents(d.events||[])}if(view==='couriers'){const d=await call('couriers');if(alive)setCouriers(d.couriers||[])}if(view==='chat'){const d=await call('conversation_for_order',{order_id:o.id,customer_id:o.sourceRow.customer_id});if(!alive)return;setConversation(d.conversation);const poll=async()=>{const m=await call('messages',{conversation_id:d.conversation.id});if(alive)setMessages(m.messages||[])};await poll();timer=setInterval(()=>poll().catch(e=>alive&&setError(e.message)),8000)}}catch(e){if(alive)setError(e.message)}};loadExtra();return()=>{alive=false;clearInterval(timer)}},[view,o.id]);
- const change=async status=>perform(async()=>{await call('update_order',{order_id:o.id,patch:{status,...(status==='CANCELADO'?{cancellation_reason:reason}:{})}});hybrid.stopRing();hybrid.vibrate(80);await onChanged();if(status==='CANCELADO'||DONE.has(status))onClose()});
+ const change=async status=>perform(async()=>{
+  if(status==='CANCELADO'&&o.type==='ENTREGA'&&(o.courierId||o.pendingCourierId)){
+    const result=await call('up_cancel_delivery',{order_id:o.id,reason:reason.trim()});
+    await onChanged();setCancel(false);setView('details');
+    setDispatchNotice(result.requires_support
+      ?'Cancelamento em análise. Mapa desligado. Acione o suporte para concluir a ocorrência e conciliar o pagamento.'
+      :'Entrega cancelada e rastreamento desligado. Motoboy liberado quando aplicável.');
+    return;
+  }
+  await call('update_order',{order_id:o.id,patch:{status,...(status==='CANCELADO'?{cancellation_reason:reason}:{})}});
+  hybrid.stopRing();hybrid.vibrate(80);await onChanged();
+  if(status==='CANCELADO'||DONE.has(status))onClose()
+ });
  const b=bucket(o),flow=FLOW[b],next=['ready','delivery'].includes(b)&&o.type==='ENTREGA'?null:flow?(o.type!=='ENTREGA'&&b==='ready'?['CONCLUIDO','Finalizar retirada']:flow):null;
+  const cancellationInReview=o.status==='CANCELAMENTO_EM_ANALISE';
   const offerable=canAttend&&o.type==='ENTREGA'&&['PRONTO','AGUARDANDO_ENTREGADOR','BUSCANDO_ENTREGADOR','AGUARDANDO_DECISAO_GESTOR'].includes(o.status)&&!o.courierId;
   const pendingOffer=Boolean(o.pendingCourierId);
   const offerTo=d=>perform(async()=>{
@@ -78,19 +91,19 @@ function OrderDetail({o,call,run,onClose,onChanged,owner,canAttend}){const [view
    </>}
    {view==='events'&&<section className="detail-section subview"><button className="back-inline" onClick={()=>setView('details')}>← Detalhes</button><h2>Linha do tempo</h2>{events.length?<ol className="timeline">{events.map(e=><li key={e.id}><b>{statusLabel(e.status)}</b><span>{timeLabel(e.occurred_at)}</span>{e.note&&<p>{e.note}</p>}</li>)}</ol>:<Empty title="Sem registros" text="As alterações aparecerão aqui."/>}</section>}
    {view==='couriers'&&<section className="detail-section subview"><button className="back-inline" onClick={()=>setView('details')}>← Detalhes</button><h2>UP Entregas</h2>
-     <p className="muted">{o.courierId?'Motoboy aceitou esta entrega.':pendingOffer?'Oferta enviada, aguardando resposta do motoboy.':offerable?'Escolha um motoboy disponível para oferecer a entrega.':'Despacho disponível depois que o pedido estiver pronto.'}</p>
+     <p className="muted">{cancellationInReview?'Cancelamento em análise: rastreamento desligado e suporte necessário.':o.courierId?'Motoboy aceitou esta entrega.':pendingOffer?'Oferta enviada, aguardando resposta do motoboy.':offerable?'Escolha um motoboy disponível para oferecer a entrega.':'Despacho disponível depois que o pedido estiver pronto.'}</p>
      {o.courierId&&<p>Entregador vinculado ao pedido. Reatribuições exigem suporte.</p>}
      {pendingOffer&&!o.courierId&&<button className="secondary" type="button" disabled={working} onClick={recallOffer}>Recolher oferta pendente</button>}
      {!pendingOffer&&offerable&&couriers.map(d=><div className="list-row" key={d.id}><div><b>{d.name}</b><small>{d.online?'Online':'Offline'} · {d.status}</small></div><button type="button" disabled={working||!d.online||String(d.status).toLowerCase()!=='available'} onClick={()=>offerTo(d)}>Enviar oferta</button></div>)}
      {!couriers.length&&<Empty title="Nenhum motoboy encontrado"/>}
      {!pendingOffer&&offerable&&couriers.length>0&&!couriers.some(d=>d.online&&String(d.status).toLowerCase()==='available')&&<p className="muted">Nenhum motoboy disponível para receber ofertas.</p>}
-     {!DONE.has(o.status)&&o.type==='ENTREGA'&&<div className="panel"><Toggle label="Mostrar motoboy no mapa do cliente" checked={o.trackingEnabled} onChange={toggleTracking} /></div>}
+     {!DONE.has(o.status)&&!cancellationInReview&&o.type==='ENTREGA'&&<div className="panel"><Toggle label="Mostrar motoboy no mapa do cliente" checked={o.trackingEnabled} onChange={toggleTracking} /></div>}
      <p className="muted">O mapa só aparece depois da retirada autorizada. A oferta não confirma automaticamente a entrega.</p>
     </section>}
    {view==='chat'&&<section className="detail-section subview"><button className="back-inline" onClick={()=>setView('details')}>← Detalhes</button><h2>Chat cliente</h2><div className="messages">{messages.map(m=><div className={'bubble '+(m.sender_type==='staff'?'mine':'')} key={m.id}><p>{m.body}</p><small>{timeLabel(m.created_at)}</small></div>)}</div><form className="chat-form" onSubmit={e=>{e.preventDefault();perform(async()=>{const d=await call('send_message',{conversation_id:conversation.id,body:message});setMessages(m=>[...m,d.message]);setMessage('')})}}><input value={message} maxLength={2000} onChange={e=>setMessage(e.target.value)} placeholder="Mensagem" required/><button className="primary" disabled={working||!conversation}>Enviar</button></form></section>}
   </main>
-  <footer className="detail-dock">{next&&(canAttend||['EM_PREPARO','PRONTO'].includes(next[0]))&&<button className="detail-primary" disabled={working||NEW.has(o.status)&&acceptanceRemaining(o)<=0} onClick={()=>change(next[0])}>{next[1]}</button>}{canAttend&&!DONE.has(o.status)&&<button className="detail-more-action" onClick={()=>setCancel(true)}>Cancelar</button>}</footer>
-  {cancel&&<Modal title="Confirmar cancelamento" onClose={()=>setCancel(false)}><form onSubmit={e=>{e.preventDefault();change('CANCELADO')}}><Field label="Motivo"><textarea required minLength={3} maxLength={1000} value={reason} onChange={e=>setReason(e.target.value)}/></Field><button className="danger">Confirmar cancelamento</button></form></Modal>}
+  <footer className="detail-dock">{next&&(canAttend||['EM_PREPARO','PRONTO'].includes(next[0]))&&<button className="detail-primary" disabled={working||NEW.has(o.status)&&acceptanceRemaining(o)<=0} onClick={()=>change(next[0])}>{next[1]}</button>}{canAttend&&!DONE.has(o.status)&&!cancellationInReview&&<button className="detail-more-action" onClick={()=>setCancel(true)}>Cancelar</button>}</footer>
+  {cancel&&<Modal title={o.type==='ENTREGA'&&(o.courierId||o.pendingCourierId)?"Cancelar entrega UP":"Confirmar cancelamento"} onClose={()=>setCancel(false)}><form onSubmit={e=>{e.preventDefault();change('CANCELADO')}}><Field label="Motivo"><textarea required minLength={3} maxLength={1000} value={reason} onChange={e=>setReason(e.target.value)}/></Field><button className="danger">Confirmar cancelamento</button></form></Modal>}
  </section>
 }
 
