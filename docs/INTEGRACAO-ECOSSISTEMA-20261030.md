@@ -65,3 +65,11 @@ O botão `Cancelar` de um pedido com motoboy designado ou oferta pendente agora 
 Antes da retirada, o pedido pode ser cancelado e a missão é liberada. Depois da retirada ou de pagamento confirmado, mostra **Cancelamento em análise**, sem exibir um estorno fictício nem liberar o motoboy sem ação do suporte. A interface deixa de mostrar `Cancelar` enquanto existe análise pendente; pagamentos precisam de conciliação separada.
 
 Teste web `web/tests/up-cancel.test.mjs`; teste cruzado no repositório Cliente `scripts/test-up-cancellation.mjs`. O APK Android de homologação não deve substituir o app instalado antes dos testes reais.
+
+## Resolução de revisão sem estorno
+
+No detalhe de pedido → UP Entregas, o proprietário pode confirmar a **devolução física dos produtos**, escrever o registro e solicitar a conclusão da análise. A API `up_resolve_cancel_review` exige sessão de proprietário e delega a decisão financeira à RPC transacional `up_resolve_cancel_review`.
+
+Se houver pagamento InfinitePay, transação, checkout ou indicação de estorno, a interface avisa que precisa de conciliação financeira, e o backend rejeita conclusão operacional. Nenhuma promessa de estorno é exibida.
+
+Os testes da UI verificam o fluxo e a compilação React; a versão Android de homologação continua separada da instalada na loja.
