@@ -1,0 +1,33 @@
+name: Validar interface Rodrigues Gestor
+on:
+  push:
+    branches:
+      - rebuild/gestor-integrado-20261030
+    paths:
+      - "web/**"
+      - ".github/workflows/rebuild-gestor-ui.yml"
+  pull_request:
+    paths:
+      - "web/**"
+      - ".github/workflows/rebuild-gestor-ui.yml"
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - working-directory: web
+        run: npm ci --no-audit --no-fund
+      - working-directory: web
+        run: npm test
+      - working-directory: web
+        run: npm run build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rodrigues-gestor-ui-homologacao
+          path: web/dist/
+          retention-days: 7

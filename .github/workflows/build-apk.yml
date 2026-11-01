@@ -3,7 +3,7 @@ name: Gerar APK Rodrigues Gestor Hybrid
 on:
   workflow_dispatch:
   push:
-    branches: [ "main", "master", "feature/rodrigues-voz-v1", "work/gestor-mobile-refino-2026-09-29" ]
+    branches: [ "main", "master", "feature/rodrigues-voz-v1", "work/gestor-mobile-refino-2026-09-29", "rebuild/gestor-integrado-20261030" ]
 
 permissions:
   contents: read
@@ -23,7 +23,8 @@ jobs:
       - name: Compilar React compartilhado
         working-directory: web
         run: |
-          npm install --no-audit --no-fund
+          npm ci --no-audit --no-fund
+          npm test
           npm run build
 
       - name: Embutir React no APK

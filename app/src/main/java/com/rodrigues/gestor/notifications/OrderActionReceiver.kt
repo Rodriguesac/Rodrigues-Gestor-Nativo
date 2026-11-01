@@ -3,6 +3,8 @@ package com.rodrigues.gestor.notifications
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import com.rodrigues.gestor.data.GestorCredentials
+import com.rodrigues.gestor.data.SupabaseOrdersApi
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
@@ -17,6 +19,32 @@ class OrderActionReceiver : BroadcastReceiver() {
             ACTION_SILENCE -> OrderRingService.stop(context)
             ACTION_ACCEPT -> {
                 if (orderId.isBlank()) return
+                // Pedidos novos do checkout são UUIDs da tabela public.orders.
+                // Não tentar escrever esses IDs na coleção antiga do Firestore.
+                if (orderId.matches(Regex("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"))) {
+                    val pending = goAsync()
+                    GestorCredentials.load(context)
+                    SupabaseOrdersApi.updateStatus(
+                        orderId = orderId,
+                        status = "CONFIRMADO",
+                        onDone = {
+                            OrderRingService.stop(context)
+                            NotificationHelper.cancelOrder(context, orderId)
+                            pending.finish()
+                        },
+                        onError = { error ->
+                            NotificationHelper.showMessage(
+                                context,
+                                "Pedido não confirmado",
+                                error.message ?: "Abra o Rodrigues Gestor e confira o pedido.",
+                                orderId
+                            )
+                            pending.finish()
+                        }
+                    )
+                    return
+                }
+                // Compatibilidade de pedidos legados ainda identificados pelo Firestore.
                 val pending = goAsync()
                 val patch = mapOf<String, Any>(
                     "status" to "CONFIRMADO",

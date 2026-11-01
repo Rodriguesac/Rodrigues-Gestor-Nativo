@@ -33,12 +33,83 @@ function Modal({title,children,onClose,wide=false}){const ref=useRef();const [mo
 function HoldButton({onAction,disabled,children}){const [holding,setHolding]=useState(false),timer=useRef();const stop=()=>{clearTimeout(timer.current);setHolding(false)};useEffect(()=>()=>clearTimeout(timer.current),[]);const start=()=>{if(disabled||timer.current)return;setHolding(true);timer.current=setTimeout(()=>{timer.current=null;setHolding(false);onAction()},3000)};const end=()=>{stop();timer.current=null};return <button disabled={disabled} className={'primary hold '+(holding?'holding':'')} onPointerDown={start} onPointerUp={end} onPointerLeave={end} onPointerCancel={end} onKeyDown={e=>{if((e.key===' '||e.key==='Enter')&&!e.repeat){e.preventDefault();start()}}} onKeyUp={end} onBlur={end}>{children}<small>{holding?'Continue segurando…':'Segure por 3 segundos'}</small></button>}
 function Login({onLogin}){const [pin,setPin]=useState(''),[code,setCode]=useState(''),[team,setTeam]=useState(false),[error,setError]=useState(''),[busy,setBusy]=useState(false);const submit=async e=>{e.preventDefault();setBusy(true);setError('');try{const d=await request('login',{pin,operator_id:team?code:undefined});onLogin(d);if(!team)hybrid.savePin?.(pin)}catch(e){setError(e.message)}finally{setBusy(false)}};return <div className="gate"><form className="login-card" onSubmit={submit}><img src="./logo.png" alt="Rodrigues Açaí e Cia"/><span className="eyebrow">RODRIGUES GESTOR</span><h1>Pronto para<br/>começar?</h1><p>Entre para cuidar dos pedidos da loja.</p>{team&&<Field label="Seu código de acesso" value={code} onChange={e=>setCode(e.target.value)} required/>}<Field label="PIN de acesso" type="password" inputMode="numeric" autoComplete="current-password" pattern="[0-9]{6}" maxLength="6" value={pin} onChange={e=>setPin(e.target.value.replace(/\D/g,''))} required/>{error&&<p className="error" role="alert">{error}</p>}<button className="primary" disabled={busy}>{busy?'Entrando…':'Entrar'}</button><button type="button" className="text-btn" onClick={()=>setTeam(!team)}>{team?'Acesso do dono':'Acesso da equipe'}</button><small>Versão 3.3.1</small></form></div>}
 function Empty({title='Nada por aqui',text='Os pedidos aparecerão nesta área.'}){return <div className="empty"><Icon name="orders"/><h3>{title}</h3><p>{text}</p></div>}
-function OrderCard({o,onOpen,duplicate,board=false,onQuick}){const remaining=acceptanceRemaining(o),b=bucket(o);const preview=o.items[0]?o.items[0].qty+'× '+o.items[0].name:(o.items.length+' itens');const quick=FLOW[b]?((o.type!=='ENTREGA'&&b==='ready')?['CONCLUIDO','Finalizar']:FLOW[b]):null;return <article className={'order-card compact '+b+(isLate(o)?' late':'')} onClick={()=>onOpen(o)} role="button" tabIndex={0} onKeyDown={e=>e.key==='Enter'&&onOpen(o)}><div className="card-line"><div className="order-id"><strong>#{o.number||o.id.slice(-6)}</strong><span className={'status '+b}>{statusLabel(o.status)}</span></div><span className={isLate(o)?'order-age danger-text':'order-age'}>{NEW.has(o.status)?remaining>0?`${Math.floor(remaining/60)}:${String(remaining%60).padStart(2,'0')}`:'ATRASO':ageMin(o)+' min'}</span></div><h3>{o.clientName}</h3><p className="preview one-line">{preview}</p><div className="compact-meta"><span>{o.type==='RETIRADA'?'Retirada':o.type==='BALCAO'?'Balcão':'Entrega'}</span>{o.payment&&<span>{o.payment}</span>}<b>{money(o.total)}</b></div>{duplicate&&<span className="warning-tag">Possível duplicidade</span>}{board&&<div className="board-items">{o.items.map((i,k)=><div key={k}><b>{i.qty}× {i.name}</b>{i.details.map((d,j)=><small key={j}>- {d}</small>)}</div>)}</div>}{quick&&<button className="card-primary" onClick={e=>{e.stopPropagation();onQuick?.(o,quick[0])}}>{quick[1]}</button>}</article>}
-function OrderDetail({o,call,run,onClose,onChanged,owner,canAttend}){const [view,setView]=useState('details'),[reason,setReason]=useState(''),[cancel,setCancel]=useState(false),[events,setEvents]=useState([]),[couriers,setCouriers]=useState([]),[conversation,setConversation]=useState(null),[messages,setMessages]=useState([]),[message,setMessage]=useState(''),[working,setWorking]=useState(false),[error,setError]=useState('');
+function OrderCard({o,onOpen,duplicate,board=false,onQuick}){const remaining=acceptanceRemaining(o),b=bucket(o);const preview=o.items[0]?o.items[0].qty+'× '+o.items[0].name:(o.items.length+' itens');const quick=['ready','delivery'].includes(b)&&o.type==='ENTREGA'?null:FLOW[b]?((o.type!=='ENTREGA'&&b==='ready')?['CONCLUIDO','Finalizar']:FLOW[b]):null;return <article className={'order-card compact '+b+(isLate(o)?' late':'')} onClick={()=>onOpen(o)} role="button" tabIndex={0} onKeyDown={e=>e.key==='Enter'&&onOpen(o)}><div className="card-line"><div className="order-id"><strong>#{o.number||o.id.slice(-6)}</strong><span className={'status '+b}>{statusLabel(o.status)}</span></div><span className={isLate(o)?'order-age danger-text':'order-age'}>{NEW.has(o.status)?remaining>0?`${Math.floor(remaining/60)}:${String(remaining%60).padStart(2,'0')}`:'ATRASO':ageMin(o)+' min'}</span></div><h3>{o.clientName}</h3><p className="preview one-line">{preview}</p><div className="compact-meta"><span>{o.type==='RETIRADA'?'Retirada':o.type==='BALCAO'?'Balcão':'Entrega'}</span>{o.payment&&<span>{o.payment}</span>}<b>{money(o.total)}</b></div>{duplicate&&<span className="warning-tag">Possível duplicidade</span>}{board&&<div className="board-items">{o.items.map((i,k)=><div key={k}><b>{i.qty}× {i.name}</b>{i.details.map((d,j)=><small key={j}>- {d}</small>)}</div>)}</div>}{quick&&<button className="card-primary" onClick={e=>{e.stopPropagation();onQuick?.(o,quick[0])}}>{quick[1]}</button>}</article>}
+function OrderDetail({o,call,run,onClose,onChanged,owner,canAttend}){const [reviewNote,setReviewNote]=useState(''),[itemsReturned,setItemsReturned]=useState(false),[refundReference,setRefundReference]=useState(''),[refundNote,setRefundNote]=useState(''),[refundCase,setRefundCase]=useState(null),[view,setView]=useState('details'),[reason,setReason]=useState(''),[cancel,setCancel]=useState(false),[events,setEvents]=useState([]),[couriers,setCouriers]=useState([]),[conversation,setConversation]=useState(null),[messages,setMessages]=useState([]),[message,setMessage]=useState(''),[working,setWorking]=useState(false),[error,setError]=useState(''),[dispatchNotice,setDispatchNotice]=useState('');
  const perform=async fn=>{if(working)return;setWorking(true);setError('');try{await fn()}catch(e){setError(e.message)}finally{setWorking(false)}};
- useEffect(()=>{let alive=true,timer;const loadExtra=async()=>{try{if(view==='events'){const d=await call('order_events',{order_id:o.id});if(alive)setEvents(d.events||[])}if(view==='couriers'){const d=await call('couriers');if(alive)setCouriers(d.couriers||[])}if(view==='chat'){const d=await call('conversation_for_order',{order_id:o.id,customer_id:o.sourceRow.customer_id});if(!alive)return;setConversation(d.conversation);const poll=async()=>{const m=await call('messages',{conversation_id:d.conversation.id});if(alive)setMessages(m.messages||[])};await poll();timer=setInterval(()=>poll().catch(e=>alive&&setError(e.message)),8000)}}catch(e){if(alive)setError(e.message)}};loadExtra();return()=>{alive=false;clearInterval(timer)}},[view,o.id]);
- const change=async status=>perform(async()=>{await call('update_order',{order_id:o.id,patch:{status,...(status==='CANCELADO'?{cancellation_reason:reason}:{})}});hybrid.stopRing();hybrid.vibrate(80);await onChanged();if(status==='CANCELADO'||DONE.has(status))onClose()});
- const b=bucket(o),flow=FLOW[b],next=flow?(o.type!=='ENTREGA'&&b==='ready'?['CONCLUIDO','Finalizar retirada']:flow):null;
+ useEffect(()=>{let alive=true,timer;const loadExtra=async()=>{try{if(view==='events'){const d=await call('order_events',{order_id:o.id});if(alive)setEvents(d.events||[])}if(view==='couriers'){const d=await call('couriers');if(alive)setCouriers(d.couriers||[]);
+        if(owner&&o.status==='CANCELAMENTO_EM_ANALISE'&&o.payment==='INFINITEPAY'){
+          try{const audit=await call('up_refund_status',{order_id:o.id});
+            if(alive)setRefundCase(audit.case||null);
+          }catch{ /* versão da API em homologação pode não estar publicada */ }
+        }}if(view==='chat'){const d=await call('conversation_for_order',{order_id:o.id,customer_id:o.sourceRow.customer_id});if(!alive)return;setConversation(d.conversation);const poll=async()=>{const m=await call('messages',{conversation_id:d.conversation.id});if(alive)setMessages(m.messages||[])};await poll();timer=setInterval(()=>poll().catch(e=>alive&&setError(e.message)),8000)}}catch(e){if(alive)setError(e.message)}};loadExtra();return()=>{alive=false;clearInterval(timer)}},[view,o.id]);
+ const change=async status=>perform(async()=>{
+  if(status==='CANCELADO'&&o.type==='ENTREGA'&&(o.courierId||o.pendingCourierId)){
+    const result=await call('up_cancel_delivery',{order_id:o.id,reason:reason.trim()});
+    await onChanged();setCancel(false);setView('details');
+    setDispatchNotice(result.requires_support
+      ?'Cancelamento em análise. Mapa desligado. Acione o suporte para concluir a ocorrência e conciliar o pagamento.'
+      :'Entrega cancelada e rastreamento desligado. Motoboy liberado quando aplicável.');
+    return;
+  }
+  await call('update_order',{order_id:o.id,patch:{status,...(status==='CANCELADO'?{cancellation_reason:reason}:{})}});
+  hybrid.stopRing();hybrid.vibrate(80);await onChanged();
+  if(status==='CANCELADO'||DONE.has(status))onClose()
+ });
+ const b=bucket(o),flow=FLOW[b],next=['ready','delivery'].includes(b)&&o.type==='ENTREGA'?null:flow?(o.type!=='ENTREGA'&&b==='ready'?['CONCLUIDO','Finalizar retirada']:flow):null;
+  const cancellationInReview=o.status==='CANCELAMENTO_EM_ANALISE';
+  const details=o.sourceRow?.payment_details||{};
+  const paymentIsInfinitepay=String(o.payment||'').toUpperCase()==='INFINITEPAY';
+  const paymentIsPaid=['PAGO','PAID','APROVADO'].includes(o.paymentStatus);
+  const financialReview=paymentIsInfinitepay||paymentIsPaid||
+    details.refund_required===true||Boolean(details.checkout_url||details.transaction_nsu||details.invoice_slug);
+  const offerable=canAttend&&o.type==='ENTREGA'&&['PRONTO','AGUARDANDO_ENTREGADOR','BUSCANDO_ENTREGADOR','AGUARDANDO_DECISAO_GESTOR'].includes(o.status)&&!o.courierId;
+  const pendingOffer=Boolean(o.pendingCourierId);
+  const offerTo=d=>perform(async()=>{
+    if(!window.confirm('Enviar o pedido #'+o.number+' para '+d.name+'?'))return;
+    const result=await call('up_offer_to_courier',{order_id:o.id,courier_id:d.id});
+    await onChanged();setView('details');
+    setDispatchNotice(result.notification==='sent'?'Oferta enviada e aviso encaminhado ao motoboy.':'Oferta registrada. O UP verificará a fila mesmo sem push.');
+  });
+  const recallOffer=()=>perform(async()=>{
+    if(!window.confirm('Recolher oferta pendente? O pedido continuará aberto.'))return;
+    await call('up_recall_offer',{order_id:o.id});await onChanged();
+    setDispatchNotice('Oferta recolhida. Você pode escolher outro motoboy.');
+  });
+  const toggleTracking=()=>perform(async()=>{
+    const desired=!o.trackingEnabled;
+    if(!window.confirm(desired?'Autorizar o mapa desta entrega para o cliente?':'Desativar o mapa do cliente para esta entrega?'))return;
+    await call('up_set_tracking',{order_id:o.id,enabled:desired});
+    await onChanged();setDispatchNotice(desired?'Mapa autorizado para esta entrega.':'Mapa do cliente desativado.');
+  });
+ const reportManualRefund=()=>perform(async()=>{
+   const note=refundNote.trim(),reference=refundReference.trim();
+   if(!owner||note.length<12||reference.length<6||reference.length>120)return;
+   if(!window.confirm('Confirma que o estorno INTEGRAL foi realizado manualmente no App/Conta Web InfinitePay?'))return;
+   const result=await call('up_refund_report',{
+     order_id:o.id,reference,amount_cents:Math.round(Number(o.total||0)*100),note
+   });
+   const q=await call('up_refund_status',{order_id:o.id});
+   setRefundCase(q.case||null);setRefundNote('');
+   setDispatchNotice(result.verification_status==='REPORTED'
+     ?'Estorno informado; outra credencial deverá conferir na Conta Web, pelo Gadministra. Pedido permanece em análise.'
+     :'Conferência em andamento. Pedido permanece em análise.');
+ });
+ const resolveReturned=()=>perform(async()=>{
+   const note=reviewNote.trim();
+   if(!owner||!itemsReturned||note.length<12||note.length>500)return;
+   const manualRefundReady=paymentIsInfinitepay&&refundCase?.verification_status==='VERIFIED_MANUALLY';
+   if(!window.confirm(manualRefundReady
+     ?'Confirma devolução física e conferência manual independente do estorno integral? O sistema NÃO executou o estorno.'
+     :'Confirma que os produtos foram devolvidos e não há pagamento a conciliar? O servidor verificará.'))return;
+   const result=await call('up_resolve_cancel_review',{
+     order_id:o.id,items_returned:true,note
+   });
+   await onChanged();setView('details');setItemsReturned(false);setReviewNote('');
+   setDispatchNotice(result.ok?(result.refund_verified_manually
+     ?'Devolução registrada e cancelamento encerrado após estorno conferido manualmente. O pagamento original permanece no histórico.'
+     :'Devolução registrada. Cancelamento encerrado sem estorno.')
+     :'A análise ainda não pode ser encerrada.');
+ });
  const phone=o.phone?.replace(/\D/g,'')||'',wa=phone?(phone.startsWith('55')?phone:'55'+phone):'';
  const copyAddress=()=>navigator.clipboard?.writeText(o.address||'').catch(()=>{});
  const shareAddress=()=>{if(navigator.share)navigator.share({title:'Endereço do pedido #'+o.number,text:o.address}).catch(()=>{});else copyAddress()};
@@ -47,7 +118,7 @@ function OrderDetail({o,call,run,onClose,onChanged,owner,canAttend}){const [view
   <header className="detail-appbar"><button className="detail-back" onClick={onClose} aria-label="Voltar">‹</button><div><b>{o.clientName} · Pedido {o.number}</b><small>{timeLabel(o.created)}</small></div><button className="icon-btn" onClick={()=>setView(view==='details'?'events':'details')} aria-label="Mais opções"><Icon name="more"/></button></header>
   <main className="detail-scroll">
    <div className="detail-status"><div><span>Status do pedido</span><b>{statusLabel(o.status)}</b></div><div className="status-track">{steps.map(([id,label],i)=><div key={id} className={i<=stepIndex?'done':''}><i/><small>{label}</small></div>)}</div></div>
-   {error&&<p role="alert" className="error">{error}</p>}
+   {error&&<p role="alert" className="error">{error}</p>}{dispatchNotice&&<p role="status" className="detail-note">{dispatchNotice}</p>}
    {view==='details'&&<>
     <section className="detail-section client-section"><h2>{o.clientName}</h2>{o.phone&&<p>{o.phone}</p>}<div className="detail-actions">{canAttend&&<button onClick={()=>setView('chat')}><Icon name="chat"/>Chat</button>}{o.phone&&<a href={'tel:'+phone}>Ligar</a>}{wa&&<a href={'https://wa.me/'+wa} target="_blank" rel="noreferrer">WhatsApp</a>}</div></section>
     <section className="detail-section"><h2>Itens do pedido <span>· {o.items.length}</span></h2><div className="clean-items">{o.items.map((i,k)=><div className="clean-item" key={k}><div><b>{i.qty}× {i.name}</b>{i.details.map((d,j)=><span key={j}>{d}</span>)}{i.notes&&<em>Obs: {i.notes}</em>}</div>{i.price>0&&<strong>{money(i.price)}</strong>}</div>)}</div>{o.observation&&<div className="detail-note"><Icon name="chat"/><span>{o.observation}</span></div>}</section>
@@ -55,14 +126,55 @@ function OrderDetail({o,call,run,onClose,onChanged,owner,canAttend}){const [view
     <section className="detail-section"><h2>{o.type==='RETIRADA'?'Retirada':'Entrega'}</h2>{o.address?<><h3>Endereço do cliente</h3><p className="address-text">{o.address}</p><div className="address-actions"><button onClick={copyAddress}>Copiar</button><button onClick={shareAddress}>Compartilhar</button><a href={'https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(o.address)} target="_blank" rel="noreferrer">Abrir mapa</a></div></>:<p className="muted">{o.type==='RETIRADA'?'Retirada na loja':'Endereço não informado'}</p>}</section>
     <section className="detail-section"><h2>Pagamento</h2><div className="payment-main"><b>{o.payment||'Não informado'}</b>{o.paymentStatus&&<span>{o.paymentStatus}</span>}</div></section>
     {o.cancellationReason&&<section className="detail-section cancellation"><h2>Motivo do cancelamento</h2><p>{o.cancellationReason}</p></section>}
-    <section className="detail-links"><button onClick={()=>hybrid.printHtml(receiptHtml(o))}><Icon name="print"/><span><b>Impressora</b><small>Imprimir comanda</small></span><Icon name="arrow"/></button><button onClick={()=>setView('events')}><Icon name="history"/><span><b>Registro do pedido</b><small>Ver linha do tempo</small></span><Icon name="arrow"/></button>{canAttend&&<button onClick={()=>setView('couriers')}><Icon name="truck"/><span><b>Entregador</b><small>Vincular ou consultar</small></span><Icon name="arrow"/></button>}</section>
+    <section className="detail-links"><button onClick={()=>hybrid.printHtml(receiptHtml(o))}><Icon name="print"/><span><b>Impressora</b><small>Imprimir comanda</small></span><Icon name="arrow"/></button><button onClick={()=>setView('events')}><Icon name="history"/><span><b>Registro do pedido</b><small>Ver linha do tempo</small></span><Icon name="arrow"/></button>{canAttend&&o.type==='ENTREGA'&&<button onClick={()=>setView('couriers')}><Icon name="truck"/><span><b>UP Entregas</b><small>Ofertas, entregador e rastreamento</small></span><Icon name="arrow"/></button>}</section>
    </>}
    {view==='events'&&<section className="detail-section subview"><button className="back-inline" onClick={()=>setView('details')}>← Detalhes</button><h2>Linha do tempo</h2>{events.length?<ol className="timeline">{events.map(e=><li key={e.id}><b>{statusLabel(e.status)}</b><span>{timeLabel(e.occurred_at)}</span>{e.note&&<p>{e.note}</p>}</li>)}</ol>:<Empty title="Sem registros" text="As alterações aparecerão aqui."/>}</section>}
-   {view==='couriers'&&<section className="detail-section subview"><button className="back-inline" onClick={()=>setView('details')}>← Detalhes</button><h2>Entregadores</h2>{couriers.map(d=><div className="list-row" key={d.id}><div><b>{d.name}</b><small>{d.online?'Online':'Offline'} · {d.status}</small></div><button disabled={working||DONE.has(o.status)} onClick={()=>perform(async()=>{await call('assign_courier',{order_id:o.id,courier_id:d.id});await onChanged();setView('details')})}>{o.sourceRow.courier_id===d.id?'Vinculado':'Vincular'}</button></div>)}{!couriers.length&&<Empty title="Nenhum entregador"/>}</section>}
+   {view==='couriers'&&<section className="detail-section subview"><button className="back-inline" onClick={()=>setView('details')}>← Detalhes</button><h2>UP Entregas</h2>
+     <p className="muted">{cancellationInReview?'Cancelamento em análise: rastreamento desligado e suporte necessário.':o.courierId?'Motoboy aceitou esta entrega.':pendingOffer?'Oferta enviada, aguardando resposta do motoboy.':offerable?'Escolha um motoboy disponível para oferecer a entrega.':'Despacho disponível depois que o pedido estiver pronto.'}</p>
+     {cancellationInReview&&<div className="panel"><strong>Conciliação de cancelamento</strong>
+       <p className="muted">Se houve pagamento ou checkout, confirme o estorno na InfinitePay. O sistema não o considera realizado automaticamente.</p>
+       {financialReview&&<p role="alert" className="muted">Há pagamento ou checkout a conciliar. Esta análise exige confirmação financeira externa e não pode ser encerrada por este formulário.</p>}
+       {owner&&paymentIsInfinitepay&&paymentIsPaid&&
+         <div className="panel">
+           <strong>Conferência manual da InfinitePay</strong>
+           <p className="muted">Estornos são feitos no App ou na Conta Web InfinitePay. Este sistema somente registra a referência; uma segunda credencial deve conferir no Gadministra.</p>
+           {refundCase?<p className="muted">Comprovante: {refundCase.verification_status==='VERIFIED_MANUALLY'
+             ?'Conferido manualmente por outro operador':refundCase.verification_status==='REJECTED'
+               ?'Rejeitado pela conferência':'Aguardando segunda conferência'}. O pedido continua em análise.</p>
+           :<form onSubmit={e=>{e.preventDefault();reportManualRefund()}}>
+             <Field label="Referência do estorno"><input required minLength={6} maxLength={120}
+               value={refundReference} onChange={e=>setRefundReference(e.target.value)}
+               placeholder="Número no App/Conta Web InfinitePay"/></Field>
+             <Field label="Registro de operação (mínimo 12 caracteres)"><textarea required minLength={12}
+               maxLength={500} value={refundNote} onChange={e=>setRefundNote(e.target.value)}
+               placeholder="Confirme a data e a origem da operação, sem dados de cartão"/></Field>
+             <button type="submit" disabled={working||refundReference.trim().length<6||refundNote.trim().length<12}>Informar estorno realizado</button>
+           </form>}
+         </div>}
+       {paymentIsInfinitepay&&!paymentIsPaid&&<p className="muted">Pagamento ainda não confirmado pela InfinitePay. Não é possível registrar estorno ou encerrar este caso antes de conferir o checkout.</p>}
+       {owner&&(!financialReview||(paymentIsInfinitepay&&paymentIsPaid&&refundCase?.verification_status==='VERIFIED_MANUALLY'))&&<form onSubmit={e=>{e.preventDefault();resolveReturned()}}>
+         <label className="toggle-row"><span>Confirmo que os produtos retornaram à loja</span>
+           <input type="checkbox" checked={itemsReturned} onChange={e=>setItemsReturned(e.target.checked)}/></label>
+         <Field label="Registro da devolução"><textarea required minLength={12} maxLength={500}
+           value={reviewNote} onChange={e=>setReviewNote(e.target.value)}
+           placeholder="Descreva a devolução e quem recebeu os produtos"/></Field>
+         <button className="danger" type="submit" disabled={working||!itemsReturned||reviewNote.trim().length<12}>
+           {financialReview?'Encerrar após conferência manual do estorno':'Encerrar análise sem estorno'}</button>
+       </form>}
+       {!owner&&<p className="muted">Somente o proprietário pode encerrar essa análise.</p>}
+     </div>}
+     {o.courierId&&<p>Entregador vinculado ao pedido. Reatribuições exigem suporte.</p>}
+     {pendingOffer&&!o.courierId&&<button className="secondary" type="button" disabled={working} onClick={recallOffer}>Recolher oferta pendente</button>}
+     {!pendingOffer&&offerable&&couriers.map(d=><div className="list-row" key={d.id}><div><b>{d.name}</b><small>{d.online?'Online':'Offline'} · {d.status}</small></div><button type="button" disabled={working||!d.online||String(d.status).toLowerCase()!=='available'} onClick={()=>offerTo(d)}>Enviar oferta</button></div>)}
+     {!couriers.length&&<Empty title="Nenhum motoboy encontrado"/>}
+     {!pendingOffer&&offerable&&couriers.length>0&&!couriers.some(d=>d.online&&String(d.status).toLowerCase()==='available')&&<p className="muted">Nenhum motoboy disponível para receber ofertas.</p>}
+     {!DONE.has(o.status)&&!cancellationInReview&&o.type==='ENTREGA'&&<div className="panel"><Toggle label="Mostrar motoboy no mapa do cliente" checked={o.trackingEnabled} onChange={toggleTracking} /></div>}
+     <p className="muted">O mapa só aparece depois da retirada autorizada. A oferta não confirma automaticamente a entrega.</p>
+    </section>}
    {view==='chat'&&<section className="detail-section subview"><button className="back-inline" onClick={()=>setView('details')}>← Detalhes</button><h2>Chat cliente</h2><div className="messages">{messages.map(m=><div className={'bubble '+(m.sender_type==='staff'?'mine':'')} key={m.id}><p>{m.body}</p><small>{timeLabel(m.created_at)}</small></div>)}</div><form className="chat-form" onSubmit={e=>{e.preventDefault();perform(async()=>{const d=await call('send_message',{conversation_id:conversation.id,body:message});setMessages(m=>[...m,d.message]);setMessage('')})}}><input value={message} maxLength={2000} onChange={e=>setMessage(e.target.value)} placeholder="Mensagem" required/><button className="primary" disabled={working||!conversation}>Enviar</button></form></section>}
   </main>
-  <footer className="detail-dock">{next&&(canAttend||['EM_PREPARO','PRONTO'].includes(next[0]))&&<button className="detail-primary" disabled={working||NEW.has(o.status)&&acceptanceRemaining(o)<=0} onClick={()=>change(next[0])}>{next[1]}</button>}{canAttend&&!DONE.has(o.status)&&<button className="detail-more-action" onClick={()=>setCancel(true)}>Cancelar</button>}</footer>
-  {cancel&&<Modal title="Confirmar cancelamento" onClose={()=>setCancel(false)}><form onSubmit={e=>{e.preventDefault();change('CANCELADO')}}><Field label="Motivo"><textarea required minLength={3} maxLength={1000} value={reason} onChange={e=>setReason(e.target.value)}/></Field><button className="danger">Confirmar cancelamento</button></form></Modal>}
+  <footer className="detail-dock">{next&&(canAttend||['EM_PREPARO','PRONTO'].includes(next[0]))&&<button className="detail-primary" disabled={working||NEW.has(o.status)&&acceptanceRemaining(o)<=0} onClick={()=>change(next[0])}>{next[1]}</button>}{canAttend&&!DONE.has(o.status)&&!cancellationInReview&&<button className="detail-more-action" onClick={()=>setCancel(true)}>Cancelar</button>}</footer>
+  {cancel&&<Modal title={o.type==='ENTREGA'&&(o.courierId||o.pendingCourierId)?"Cancelar entrega UP":"Confirmar cancelamento"} onClose={()=>setCancel(false)}><form onSubmit={e=>{e.preventDefault();change('CANCELADO')}}><Field label="Motivo"><textarea required minLength={3} maxLength={1000} value={reason} onChange={e=>setReason(e.target.value)}/></Field><button className="danger">Confirmar cancelamento</button></form></Modal>}
  </section>
 }
 
