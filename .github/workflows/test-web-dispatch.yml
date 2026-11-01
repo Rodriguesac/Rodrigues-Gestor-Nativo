@@ -1,0 +1,32 @@
+name: Validar despacho no Rodrigues Gestor
+on:
+  pull_request:
+    paths:
+      - "web/src/**"
+      - "web/tests/**"
+      - ".github/workflows/test-web-dispatch.yml"
+  push:
+    branches: [main]
+    paths:
+      - "web/src/**"
+      - "web/tests/**"
+      - ".github/workflows/test-web-dispatch.yml"
+permissions:
+  contents: read
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Instalar dependências
+        working-directory: web
+        run: npm install --no-audit --no-fund
+      - name: Testes de domínio
+        working-directory: web
+        run: npm test
+      - name: Compilar interface React
+        working-directory: web
+        run: npm run build
