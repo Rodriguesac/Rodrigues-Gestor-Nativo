@@ -135,3 +135,21 @@ main{padding:22px 18px 112px}
  .detail-appbar{padding-left:max(18px,calc((100% - 760px)/2));padding-right:max(18px,calc((100% - 760px)/2))}
  .detail-dock{left:220px;padding-left:max(18px,calc((100% - 760px)/2));padding-right:max(18px,calc((100% - 760px)/2))}
 }
+
+
+/* Consulta de atraso: respostas rápidas no chat do Rodrigues Gestor. */
+.late-chat-alert{
+ display:grid;gap:6px;margin:10px 0;padding:13px 14px;
+ border:1px solid #eed3a0;border-radius:14px;background:#fff8e9;color:#7a5015
+}
+.late-chat-alert b{font-size:13px;font-weight:850}
+.late-chat-alert span{font-size:12px;line-height:1.5}
+.late-chat-shortcuts{margin:11px 0;border:1px solid #e4dbea;border-radius:14px;background:#faf7fc;padding:12px}
+.late-chat-shortcuts>strong{display:block;margin-bottom:8px;font-size:12px;color:#5a3274}
+.late-chat-shortcuts>div{display:flex;flex-wrap:wrap;gap:7px}
+.late-chat-shortcuts button{
+ background:#efe4f7;border:1px solid #ddcaec;border-radius:99px;
+ color:#5c277d;padding:9px 11px;font-size:12px;font-weight:750;
+ min-height:36px
+}
+.late-chat-shortcuts button:focus-visible{outline:2px solid #6f32a6;outline-offset:2px}
