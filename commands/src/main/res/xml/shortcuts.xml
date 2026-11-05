@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <capability android:name="actions.intent.OPEN_APP_FEATURE">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.rodrigues.comandos"
+            android:targetClass="com.rodrigues.comandos.MainActivity">
+            <parameter
+                android:name="feature"
+                android:key="featureParam" />
+        </intent>
+
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.rodrigues.comandos"
+            android:targetClass="com.rodrigues.comandos.MainActivity" />
+    </capability>
+
+    <capability android:name="actions.intent.GET_THING">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.rodrigues.comandos"
+            android:targetClass="com.rodrigues.comandos.MainActivity">
+            <parameter
+                android:name="thing.name"
+                android:key="command" />
+        </intent>
+    </capability>
+
+    <shortcut
+        android:shortcutId="voice_command"
+        android:enabled="true"
+        android:icon="@drawable/ic_app"
+        android:shortcutShortLabel="@string/shortcut_short"
+        android:shortcutLongLabel="@string/shortcut_long"
+        android:shortcutDisabledMessage="@string/shortcut_disabled">
+
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:data="rodriguescomandos://voice"
+            android:targetPackage="com.rodrigues.comandos"
+            android:targetClass="com.rodrigues.comandos.MainActivity" />
+
+        <capability-binding android:key="actions.intent.OPEN_APP_FEATURE">
+            <parameter-binding
+                android:key="feature"
+                android:value="@array/voice_feature_names" />
+        </capability-binding>
+    </shortcut>
+
+</shortcuts>
