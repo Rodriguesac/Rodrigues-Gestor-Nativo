@@ -92,6 +92,27 @@ class GestorConnectionService : Service() {
             }
             .sortedBy { if (it.createdAt > 0L) it.createdAt else Long.MAX_VALUE }
 
+        // Alertas locais com deduplicação persistida: funcionam mesmo quando
+        // nenhuma mensagem push específica de atraso foi enviada.
+        if (AlertPreferences.enabled(this)) {
+            orders.forEach { order ->
+                val ageMinutes = if (order.createdMillis > 0L)
+                    ((now - order.createdMillis).coerceAtLeast(0L) / 60_000L).toInt()
+                else -1
+                if (ageMinutes !in 0..180) return@forEach
+                val status = order.status.uppercase(Locale.ROOT)
+                if (status in StatusGroups.NEW && ageMinutes >= 3 &&
+                    firstTimedAlert("pending", order.id)) {
+                    NotificationHelper.showPendingAcceptance(this, order.id, order.number)
+                }
+                val late = (status in StatusGroups.NEW && ageMinutes >= 5) ||
+                    ((status in StatusGroups.CONFIRMED || status in StatusGroups.PREPARING) && ageMinutes >= 30)
+                if (late && firstTimedAlert("late", order.id)) {
+                    NotificationHelper.showLate(this, order.id, order.number, ageMinutes)
+                }
+            }
+        }
+
         val pendingIds = pending.map { it.id }.toSet()
         val target = if (firstSnapshot) {
             pending.firstOrNull()
@@ -133,6 +154,15 @@ class GestorConnectionService : Service() {
             )
         } catch (_: SecurityException) {
         }
+    }
+
+    private fun firstTimedAlert(category: String, orderId: String): Boolean {
+        if (orderId.isBlank()) return false
+        val prefs = getSharedPreferences("gestor_timed_alerts_v1", MODE_PRIVATE)
+        val key = "$category:$orderId"
+        if (prefs.contains(key)) return false
+        prefs.edit().putLong(key, System.currentTimeMillis()).apply()
+        return true
     }
 
     override fun onDestroy() {
