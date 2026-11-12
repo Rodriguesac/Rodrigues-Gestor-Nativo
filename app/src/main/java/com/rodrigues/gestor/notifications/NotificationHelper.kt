@@ -7,7 +7,7 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.media.AudioAttributes
-import android.media.RingtoneManager
+import android.net.Uri
 import android.os.Build
 import android.os.VibrationEffect
 import android.os.Vibrator
@@ -18,16 +18,21 @@ import com.rodrigues.gestor.NativeGestorActivity
 import com.rodrigues.gestor.R
 
 object NotificationHelper {
-    const val CHANNEL_ORDERS = "pedidos_urgentes_v3"
+    const val CHANNEL_ORDERS = "pedidos_urgentes_app_v4"
     const val CHANNEL_SERVICE = "gestor_servico_v1"
     const val CHANNEL_CONNECTION = "gestor_conectado_v1"
-    const val CHANNEL_MESSAGES = "mensagens_cliente_v1"
-    const val CHANNEL_CANCELLATIONS = "pedidos_cancelados_v1"
+    const val CHANNEL_MESSAGES = "mensagens_cliente_app_v2"
+    const val CHANNEL_CANCELLATIONS = "pedidos_cancelados_app_v2"
+    const val CHANNEL_NEGOTIATION = "negociacao_pedido_app_v1"
+    const val CHANNEL_LATE = "pedido_atrasado_app_v1"
+    const val CHANNEL_PENDING = "pendente_aceite_app_v1"
+    const val CHANNEL_PAYMENT = "pagamento_app_v1"
+    const val CHANNEL_DRIVER = "entregador_app_v1"
 
     fun createChannels(context: Context) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val manager = context.getSystemService(NotificationManager::class.java)
-        val ringtoneUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+        fun sound(name: String) = Uri.parse("android.resource://${context.packageName}/raw/$name")
         val attrs = AudioAttributes.Builder()
             .setUsage(AudioAttributes.USAGE_NOTIFICATION)
             .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
@@ -37,7 +42,7 @@ object NotificationHelper {
             description = "Novo pedido e ações imediatas da loja"
             enableVibration(true)
             vibrationPattern = longArrayOf(0, 550, 180, 550)
-            setSound(ringtoneUri, attrs)
+            setSound(sound("alert_strong"), attrs)
             lockscreenVisibility = Notification.VISIBILITY_PUBLIC
         }
         val service = NotificationChannel(CHANNEL_SERVICE, "Gestor ativo", NotificationManager.IMPORTANCE_LOW).apply {
@@ -51,18 +56,56 @@ object NotificationHelper {
             enableVibration(false)
             lockscreenVisibility = Notification.VISIBILITY_PUBLIC
         }
-        val messages = NotificationChannel(CHANNEL_MESSAGES, "Mensagens de clientes", NotificationManager.IMPORTANCE_HIGH).apply {
-            description = "Novas mensagens e solicitações dos clientes"
+        val messages = NotificationChannel(CHANNEL_MESSAGES, "Mensagens do cliente", NotificationManager.IMPORTANCE_HIGH).apply {
+            description = "Toque leve e agradável para novas mensagens"
             enableVibration(true)
+            vibrationPattern = longArrayOf(0, 120, 90, 120)
+            setSound(sound("chime"), attrs)
+            lockscreenVisibility = Notification.VISIBILITY_PRIVATE
         }
-        val cancellations = NotificationChannel(CHANNEL_CANCELLATIONS, "Pedidos cancelados", NotificationManager.IMPORTANCE_HIGH).apply {
-            description = "Aviso curto quando um pedido é cancelado"
+        val cancellations = NotificationChannel(CHANNEL_CANCELLATIONS, "Pedido cancelado", NotificationManager.IMPORTANCE_HIGH).apply {
+            description = "Aviso descendente e discreto para cancelamentos"
             enableVibration(true)
-            vibrationPattern = longArrayOf(0, 240, 120, 420)
-            setSound(ringtoneUri, attrs)
-            lockscreenVisibility = Notification.VISIBILITY_PUBLIC
+            vibrationPattern = longArrayOf(0, 180, 100, 320)
+            setSound(sound("beep_short"), attrs)
+            lockscreenVisibility = Notification.VISIBILITY_PRIVATE
         }
-        manager.createNotificationChannels(listOf(orders, service, connection, messages, cancellations))
+        val negotiation = NotificationChannel(CHANNEL_NEGOTIATION, "Negociação de pedido", NotificationManager.IMPORTANCE_HIGH).apply {
+            description = "Oferta, alteração ou contraproposta do cliente"
+            enableVibration(true)
+            vibrationPattern = longArrayOf(0, 240, 140, 240)
+            setSound(sound("old_phone"), attrs)
+            lockscreenVisibility = Notification.VISIBILITY_PRIVATE
+        }
+        val late = NotificationChannel(CHANNEL_LATE, "Pedido atrasado", NotificationManager.IMPORTANCE_HIGH).apply {
+            description = "Alerta de prazo crítico ou pedido atrasado"
+            enableVibration(true)
+            vibrationPattern = longArrayOf(0, 500, 140, 260)
+            setSound(sound("alert_strong"), attrs)
+            lockscreenVisibility = Notification.VISIBILITY_PRIVATE
+        }
+        val pending = NotificationChannel(CHANNEL_PENDING, "Pendente de aceite", NotificationManager.IMPORTANCE_HIGH).apply {
+            description = "Lembrete de pedido ainda não aceito"
+            enableVibration(true)
+            vibrationPattern = longArrayOf(0, 300, 140, 300)
+            setSound(sound("old_phone"), attrs)
+            lockscreenVisibility = Notification.VISIBILITY_PRIVATE
+        }
+        val payment = NotificationChannel(CHANNEL_PAYMENT, "Pagamentos", NotificationManager.IMPORTANCE_DEFAULT).apply {
+            description = "Confirmação ou alteração do pagamento"
+            enableVibration(true)
+            setSound(sound("chime"), attrs)
+            lockscreenVisibility = Notification.VISIBILITY_PRIVATE
+        }
+        val driver = NotificationChannel(CHANNEL_DRIVER, "UP Entregas", NotificationManager.IMPORTANCE_DEFAULT).apply {
+            description = "Entregador e andamento da entrega"
+            enableVibration(true)
+            setSound(sound("beep_short"), attrs)
+            lockscreenVisibility = Notification.VISIBILITY_PRIVATE
+        }
+        manager.createNotificationChannels(listOf(
+            orders, service, connection, messages, cancellations, negotiation, late, pending, payment, driver
+        ))
     }
 
     fun connectionNotification(
@@ -164,7 +207,8 @@ object NotificationHelper {
         }
     }
 
-    fun showMessage(context: Context, title: String, body: String, orderId: String = "") {
+    fun showMessage(context: Context, title: String, body: String, orderId: String = "", channel: String = CHANNEL_MESSAGES) {
+        createChannels(context)
         val openIntent = Intent(context, NativeGestorActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
             if (orderId.isNotBlank()) putExtra(NativeGestorActivity.EXTRA_ORDER_ID, orderId)
@@ -175,7 +219,7 @@ object NotificationHelper {
             openIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-        val n = NotificationCompat.Builder(context, CHANNEL_MESSAGES)
+        val n = NotificationCompat.Builder(context, channel)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(title)
             .setContentText(body)
@@ -188,6 +232,26 @@ object NotificationHelper {
             NotificationManagerCompat.from(context).notify(("message:$orderId:$title").hashCode(), n)
         } catch (_: SecurityException) {
         }
+    }
+
+    fun showLate(context: Context, orderId: String, number: String, minutes: Int) {
+        showMessage(
+            context,
+            "Pedido atrasado #$number",
+            "Atenção: este pedido está há $minutes minutos aguardando. Abra e verifique.",
+            orderId,
+            CHANNEL_LATE
+        )
+    }
+
+    fun showPendingAcceptance(context: Context, orderId: String, number: String) {
+        showMessage(
+            context,
+            "Pedido #$number aguardando aceite",
+            "O pedido ainda não foi aceito. Abra para responder.",
+            orderId,
+            CHANNEL_PENDING
+        )
     }
 
     fun showCancellation(
