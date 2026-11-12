@@ -31,6 +31,8 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.google.firebase.firestore.ListenerRegistration
 import com.rodrigues.gestor.data.GestorCredentials
+import com.rodrigues.gestor.data.OfflineOrderStore
+import com.rodrigues.gestor.data.OfflineOrderSyncWorker
 import com.rodrigues.gestor.data.Order
 import com.rodrigues.gestor.data.StatusGroups
 import com.rodrigues.gestor.data.SupabaseOrdersApi
@@ -48,6 +50,9 @@ import java.util.Locale
 class NativeGestorActivity : ComponentActivity() {
     private var registered: ListenerRegistration? = null
     private val orders = mutableStateListOf<Order>()
+    private lateinit var offlineStore: OfflineOrderStore
+    private var queuedActions by mutableIntStateOf(0)
+    private var conflictedActions by mutableIntStateOf(0)
     private var signedIn by mutableStateOf(false)
     private var loading by mutableStateOf(true)
     private var connectionError by mutableStateOf("")
@@ -63,6 +68,10 @@ class NativeGestorActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         NotificationHelper.createChannels(this)
+        offlineStore = OfflineOrderStore(this)
+        orders.addAll(offlineStore.cachedOrders())
+        queuedActions = offlineStore.waiting().size
+        conflictedActions = offlineStore.conflicts().size
         chosenOrder = intent?.getStringExtra(EXTRA_ORDER_ID)
         signedIn = GestorCredentials.load(this).length == 6
         setContent {
@@ -74,6 +83,8 @@ class NativeGestorActivity : ComponentActivity() {
                         loading = loading,
                         error = connectionError,
                         busy = pendingAction,
+                        queuedActions = queuedActions,
+                        conflictedActions = conflictedActions,
                         selectedOrderId = chosenOrder,
                         section = section,
                         filter = tab,
@@ -107,9 +118,14 @@ class NativeGestorActivity : ComponentActivity() {
 
     private fun startListening() {
         registered?.remove()
-        loading = true
+        loading = orders.isEmpty()
+        if (queuedActions > 0) OfflineOrderSyncWorker.schedule(this)
         registered = SupabaseOrdersApi.listenOrders(
             onData = {
+                offlineStore.storeOrders(it)
+                queuedActions = offlineStore.waiting().size
+                conflictedActions = offlineStore.conflicts().size
+                if (queuedActions > 0) OfflineOrderSyncWorker.schedule(this)
                 orders.clear()
                 orders.addAll(it)
                 loading = false
@@ -131,30 +147,32 @@ class NativeGestorActivity : ComponentActivity() {
     private fun updateOrder(order: Order, action: String) {
         if (pendingAction) return
         pendingAction = true
-        connectionError = ""
-        val done = {
-            pendingAction = false
-            chosenOrder = null
-            startListening()
-        }
-        val failed: (Throwable) -> Unit = {
-            pendingAction = false
-            connectionError = it.message ?: "Não foi possível atualizar o pedido."
-        }
-        when (action) {
-            "CONFIRMADO", "EM_PREPARO", "PRONTO", "EM_ENTREGA", "CONCLUIDO" ->
-                SupabaseOrdersApi.updateStatus(order.id, action, done, failed)
-            "RETIRADO" -> SupabaseOrdersApi.finishPickup(order.id, done, failed)
-            else -> {
-                pendingAction = false
-                connectionError = "Ação não suportada nesta versão."
+        try {
+            if (!offlineStore.enqueue(order.id, action, order.status)) {
+                connectionError = "Este pedido já possui uma alteração pendente. Verifique antes de continuar."
+                return
             }
+            queuedActions = offlineStore.waiting().size
+            conflictedActions = offlineStore.conflicts().size
+            chosenOrder = null
+            section = 1
+            connectionError = "Alteração salva no celular. Aguardando confirmação do servidor."
+            OfflineOrderSyncWorker.schedule(this)
+        } catch (error: Throwable) {
+            connectionError = error.message ?: "Não foi possível salvar no dispositivo."
+        } finally {
+            pendingAction = false
         }
     }
 
     private fun logout() {
+        if (offlineStore.waiting().isNotEmpty() || offlineStore.conflicts().isNotEmpty()) {
+            connectionError = "Existem alterações pendentes ou conflitos. Sincronize e resolva antes de sair."
+            return
+        }
         registered?.remove()
         registered = null
+        offlineStore.clearAll()
         GestorCredentials.clear()
         stopService(Intent(this, GestorConnectionService::class.java))
         OrderRingService.stop(this)
@@ -173,6 +191,7 @@ class NativeGestorActivity : ComponentActivity() {
 
     override fun onDestroy() {
         registered?.remove()
+        offlineStore.close()
         registered = null
         super.onDestroy()
     }
@@ -224,6 +243,11 @@ private fun OperatorLogin(error: String, onSubmit: (String) -> Unit) {
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(16.dp)
             )
+            if (queuedActions > 0 || conflictedActions > 0) {
+                Surface(color = Color(0xFFFFF3E3), modifier = Modifier.fillMaxWidth()) {
+                    Text("No aparelho: $queuedActions aguardando sincronização • $conflictedActions conflitos", Modifier.padding(horizontal = 16.dp, vertical = 8.dp), color = Color(0xFF775115), style = MaterialTheme.typography.labelSmall)
+                }
+            }
             if (error.isNotBlank()) {
                 Spacer(Modifier.height(10.dp))
                 Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
@@ -244,6 +268,8 @@ private fun NativeDashboard(
     loading: Boolean,
     error: String,
     busy: Boolean,
+    queuedActions: Int,
+    conflictedActions: Int,
     selectedOrderId: String?,
     section: Int,
     filter: String,
