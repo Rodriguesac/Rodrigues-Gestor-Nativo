@@ -26,15 +26,20 @@
             android:value="pedidos_urgentes_v3" />
 
         <activity
-            android:name=".MainActivity"
+            android:name=".NativeGestorActivity"
             android:exported="true"
-            android:launchMode="singleTop"
-            android:screenOrientation="unspecified">
+            android:launchMode="singleTop">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="false"
+            android:launchMode="singleTop"
+            android:screenOrientation="unspecified" />
 
         <service
             android:name=".voice.VoiceAssistantService"
