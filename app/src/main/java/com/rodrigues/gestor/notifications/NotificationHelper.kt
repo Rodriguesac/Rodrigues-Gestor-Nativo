@@ -14,7 +14,7 @@ import android.os.Vibrator
 import android.os.VibratorManager
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
-import com.rodrigues.gestor.MainActivity
+import com.rodrigues.gestor.NativeGestorActivity
 import com.rodrigues.gestor.R
 
 object NotificationHelper {
@@ -70,7 +70,7 @@ object NotificationHelper {
         detail: String = "Monitorando novos pedidos",
         pendingCount: Int = 0,
     ): Notification {
-        val openIntent = Intent(context, MainActivity::class.java).apply {
+        val openIntent = Intent(context, NativeGestorActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
         }
         val pending = PendingIntent.getActivity(
@@ -102,9 +102,9 @@ object NotificationHelper {
         clientName: String,
         foregroundService: Boolean = false,
     ): Notification {
-        val openIntent = Intent(context, MainActivity::class.java).apply {
+        val openIntent = Intent(context, NativeGestorActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
-            putExtra(MainActivity.EXTRA_ORDER_ID, orderId)
+            putExtra(NativeGestorActivity.EXTRA_ORDER_ID, orderId)
         }
         val openPending = PendingIntent.getActivity(
             context,
@@ -165,9 +165,9 @@ object NotificationHelper {
     }
 
     fun showMessage(context: Context, title: String, body: String, orderId: String = "") {
-        val openIntent = Intent(context, MainActivity::class.java).apply {
+        val openIntent = Intent(context, NativeGestorActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
-            if (orderId.isNotBlank()) putExtra(MainActivity.EXTRA_ORDER_ID, orderId)
+            if (orderId.isNotBlank()) putExtra(NativeGestorActivity.EXTRA_ORDER_ID, orderId)
         }
         val pending = PendingIntent.getActivity(
             context,
@@ -199,9 +199,9 @@ object NotificationHelper {
     ) {
         if (!AlertPreferences.cancellationAlerts(context) || isCancellationDuplicate(context, orderId)) return
         createChannels(context)
-        val openIntent = Intent(context, MainActivity::class.java).apply {
+        val openIntent = Intent(context, NativeGestorActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
-            if (orderId.isNotBlank()) putExtra(MainActivity.EXTRA_ORDER_ID, orderId)
+            if (orderId.isNotBlank()) putExtra(NativeGestorActivity.EXTRA_ORDER_ID, orderId)
         }
         val pending = PendingIntent.getActivity(
             context,
