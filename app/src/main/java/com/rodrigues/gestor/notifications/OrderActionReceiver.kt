@@ -3,12 +3,13 @@ package com.rodrigues.gestor.notifications
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import com.rodrigues.gestor.data.GestorCredentials
-import com.rodrigues.gestor.data.SupabaseOrdersApi
+import com.rodrigues.gestor.data.OfflineOrderStore
+import com.rodrigues.gestor.data.OfflineOrderSyncWorker
+import com.rodrigues.gestor.data.StatusGroups
 
 /**
- * O pedido canônico é do Supabase. Aceitar na notificação não deve mais
- * escrever apenas na coleção Firestore legada.
+ * O botão ACEITAR da notificação alimenta a mesma fila offline da interface.
+ * Somente a API canônica confirma o aceite depois da sincronização.
  */
 class OrderActionReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
@@ -17,35 +18,40 @@ class OrderActionReceiver : BroadcastReceiver() {
             ACTION_SILENCE -> OrderRingService.stop(context)
             ACTION_ACCEPT -> {
                 if (orderId.isBlank()) return
-                GestorCredentials.load(context)
-                val pending = goAsync()
+                val store = OfflineOrderStore(context)
                 try {
-                    SupabaseOrdersApi.updateStatus(
-                        orderId = orderId,
-                        status = "CONFIRMADO",
-                        onDone = {
-                            OrderRingService.stop(context)
-                            NotificationHelper.cancelOrder(context, orderId)
-                            pending.finish()
-                        },
-                        onError = {
-                            NotificationHelper.showMessage(
-                                context,
-                                "Pedido não confirmado",
-                                it.message ?: "Abra o Gestor e confira o status do pedido.",
-                                orderId
-                            )
-                            pending.finish()
-                        }
-                    )
+                    val current = store.cachedOrders().firstOrNull { it.id == orderId }
+                    if (current == null || current.status !in StatusGroups.NEW) {
+                        NotificationHelper.showMessage(
+                            context, "Confira o pedido",
+                            "Não foi possível validar o estado local. Abra o Gestor para conferir.",
+                            orderId
+                        )
+                        return
+                    }
+                    if (store.enqueue(orderId, "CONFIRMADO", current.status)) {
+                        OrderRingService.stop(context)
+                        NotificationHelper.cancelOrder(context, orderId)
+                        NotificationHelper.showMessage(
+                            context, "Aceite registrado no aparelho",
+                            "Pedido #${current.number} aguardando confirmação do servidor.",
+                            orderId
+                        )
+                        OfflineOrderSyncWorker.schedule(context)
+                    } else {
+                        NotificationHelper.showMessage(
+                            context, "Pedido com ação pendente",
+                            "Já existe uma alteração desse pedido aguardando sincronização.",
+                            orderId
+                        )
+                    }
                 } catch (error: Throwable) {
                     NotificationHelper.showMessage(
-                        context,
-                        "Pedido não confirmado",
-                        error.message ?: "Não foi possível confirmar o pedido.",
-                        orderId
+                        context, "Falha ao salvar o aceite",
+                        error.message ?: "Abra o Gestor para conferir.", orderId
                     )
-                    pending.finish()
+                } finally {
+                    store.close()
                 }
             }
         }
