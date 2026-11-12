@@ -1,0 +1,49 @@
+name: Gestor20 Android nativo - previa
+
+on:
+  push:
+    branches:
+      - feature/gestor20-compose-native
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-native:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Codigo-fonte
+        uses: actions/checkout@v4
+
+      - name: Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Android SDK
+        run: |
+          SDKROOT="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          SDKMANAGER="$SDKROOT/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$SDKMANAGER" ]; then SDKMANAGER="$SDKROOT/cmdline-tools/16.0/bin/sdkmanager"; fi
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" "platforms;android-36" "build-tools;35.0.0"
+
+      - name: Gradle 8.13
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.13"
+
+      - name: Alinhar repositorio ao Supabase de pedidos
+        run: python3 scripts/patch-supabase-orders.py
+
+      - name: Compilar interface Android Compose
+        run: gradle :app:assembleDebug --stacktrace
+
+      - name: APK de desenvolvimento
+        uses: actions/upload-artifact@v4
+        with:
+          name: Gestor20-Android-Compose-Preview
+          path: app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 14
