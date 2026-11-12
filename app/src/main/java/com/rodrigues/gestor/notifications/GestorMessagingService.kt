@@ -30,13 +30,23 @@ class GestorMessagingService : FirebaseMessagingService() {
                 if (AlertPreferences.messageAlerts(this)) NotificationHelper.showMessage(this, "Mensagem do cliente", body, orderId)
             }
             "ALTERACAO_PEDIDO", "ALTERAÇÃO_PEDIDO" -> {
-                if (AlertPreferences.changeAlerts(this)) NotificationHelper.showMessage(this, "Alteração solicitada", body, orderId)
+                if (AlertPreferences.changeAlerts(this)) NotificationHelper.showMessage(this, "Negociação / alteração solicitada", body, orderId, NotificationHelper.CHANNEL_NEGOTIATION)
             }
             "DRIVER_UPDATE", "UP_ENTREGAS", "ENTREGADOR", "CORRIDA" -> {
-                if (AlertPreferences.driverAlerts(this)) NotificationHelper.showMessage(this, "UP Entregas", body, orderId)
+                if (AlertPreferences.driverAlerts(this)) NotificationHelper.showMessage(this, "UP Entregas", body, orderId, NotificationHelper.CHANNEL_DRIVER)
             }
             "PAYMENT", "PAGAMENTO", "PAGAMENTO_APROVADO", "PAGAMENTO_RECUSADO" -> {
-                if (AlertPreferences.paymentAlerts(this)) NotificationHelper.showMessage(this, "Pagamento", body, orderId)
+                if (AlertPreferences.paymentAlerts(this)) NotificationHelper.showMessage(this, "Pagamento", body, orderId, NotificationHelper.CHANNEL_PAYMENT)
+            }
+            "ORDER_OVERDUE", "PEDIDO_ATRASADO", "DELAY_ALERT" -> {
+                val age = data["minutes"]?.toIntOrNull() ?: 0
+                NotificationHelper.showLate(this, orderId, number, age)
+            }
+            "PENDING_ACCEPTANCE", "AGUARDANDO_ACEITE", "PEDIDO_PENDENTE" -> {
+                NotificationHelper.showPendingAcceptance(this, orderId, number)
+            }
+            "NEGOTIATION", "NEGOCIACAO", "CONTRAPROPOSTA" -> {
+                if (AlertPreferences.changeAlerts(this)) NotificationHelper.showMessage(this, "Negociação do pedido", body, orderId, NotificationHelper.CHANNEL_NEGOTIATION)
             }
             "ORDER_CANCELLED", "ORDER_CANCELED", "PEDIDO_CANCELADO", "CANCELAMENTO_PEDIDO" -> {
                 NotificationHelper.showCancellation(this, orderId, number, client, body)
