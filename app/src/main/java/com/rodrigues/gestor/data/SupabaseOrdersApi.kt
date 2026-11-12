@@ -168,6 +168,22 @@ object SupabaseOrdersApi {
         }
     }
 
+    /**
+     * Chamadas bloqueantes apenas para Worker (thread de I/O), não para a UI.
+     * Mantêm o mesmo endpoint e autenticação do Gestor já existente.
+     */
+    fun fetchOrdersSnapshot(): List<Order> = fetchOrders()
+
+    fun updateStatusSync(orderId: String, status: String) {
+        require(orderId.isNotBlank() && status.isNotBlank())
+        request(
+            JSONObject()
+                .put("action", "status")
+                .put("orderId", orderId)
+                .put("status", status)
+        )
+    }
+
     fun updateStatus(
         orderId: String,
         status: String,
