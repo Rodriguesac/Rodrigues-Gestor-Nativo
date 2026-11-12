@@ -5,11 +5,14 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.media.MediaPlayer
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.compose.BackHandler
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -21,6 +24,7 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
@@ -30,6 +34,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.google.firebase.firestore.ListenerRegistration
+import com.rodrigues.gestor.R
 import com.rodrigues.gestor.data.GestorCredentials
 import com.rodrigues.gestor.data.OfflineOrderStore
 import com.rodrigues.gestor.data.OfflineOrderSyncWorker
@@ -560,25 +565,74 @@ private fun OrderDetails(order: Order, busy: Boolean, onAction: (String) -> Unit
 
 @Composable
 private fun MoreScreen(onNotify: () -> Unit, onLogout: () -> Unit) {
-    Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    val context = LocalContext.current
+    var player by remember { mutableStateOf<MediaPlayer?>(null) }
+    DisposableEffect(Unit) {
+        onDispose {
+            try { player?.stop(); player?.release() } catch (_: Throwable) {}
+            player = null
+        }
+    }
+    val sounds = listOf(
+        Triple("Novo pedido", "Campainha persistente", R.raw.old_phone),
+        Triple("Aguardando aceite", "Chamada de atenção", R.raw.old_phone),
+        Triple("Pedido atrasado", "Alerta forte", R.raw.alert_strong),
+        Triple("Mensagem do cliente", "Campainha leve", R.raw.chime),
+        Triple("Negociação / alteração", "Telefone de atenção", R.raw.old_phone),
+        Triple("Pedido cancelado", "Bipe curto", R.raw.beep_short),
+        Triple("Pagamento confirmado", "Campainha suave", R.raw.chime),
+        Triple("UP Entregas", "Aviso curto", R.raw.beep_short)
+    )
+    Column(
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
         Text("Mais opções", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+        Text("Sons próprios do Gestor 20", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        Text("Cada situação usa um som adequado. Toque para ouvir a prévia.",
+            style = MaterialTheme.typography.bodySmall, color = Color.Gray)
+        sounds.forEach { (title, subtitle, sound) ->
+            Card(colors = CardDefaults.cardColors(containerColor = Color.White)) {
+                ListItem(
+                    headlineContent = { Text(title, fontWeight = FontWeight.SemiBold) },
+                    supportingContent = { Text(subtitle) },
+                    trailingContent = {
+                        IconButton(onClick = {
+                            try {
+                                player?.stop()
+                                player?.release()
+                                player = MediaPlayer.create(context, sound)?.apply {
+                                    setOnCompletionListener { completed ->
+                                        completed.release()
+                                        player = null
+                                    }
+                                    start()
+                                }
+                            } catch (_: Throwable) { player = null }
+                        }) {
+                            Icon(Icons.Default.PlayArrow, contentDescription = "Ouvir $title", tint = Purple)
+                        }
+                    }
+                )
+            }
+        }
         Card(colors = CardDefaults.cardColors(containerColor = Color.White)) {
             ListItem(
-                headlineContent = { Text("Notificações Android") },
-                supportingContent = { Text("Permitir os alertas de novos pedidos") },
+                headlineContent = { Text("Permissões de notificações") },
+                supportingContent = { Text("Autorizar alertas no Android") },
                 leadingContent = { Icon(Icons.Default.Notifications, null) },
                 modifier = Modifier.clickable(onClick = onNotify)
             )
         }
         Card(colors = CardDefaults.cardColors(containerColor = Color.White)) {
             ListItem(
-                headlineContent = { Text("Sair da conta") },
-                supportingContent = { Text("Remover o PIN salvo neste dispositivo") },
+                headlineContent = { Text("Sair do aparelho") },
+                supportingContent = { Text("Desconecta após sincronizar todas as alterações") },
                 leadingContent = { Icon(Icons.Default.ExitToApp, null) },
                 modifier = Modifier.clickable(onClick = onLogout)
             )
         }
-        Text("Prévia nativa: pedidos e operações essenciais. Cardápio, chat, impressão e UP terão migração gradual.",
+        Text("Ajustes específicos do volume e da permissão de cada canal continuam disponíveis nas configurações do Android.",
             style = MaterialTheme.typography.bodySmall, color = Color.Gray)
     }
 }
