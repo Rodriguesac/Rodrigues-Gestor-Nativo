@@ -7,6 +7,7 @@ import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.compose.BackHandler
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -36,6 +37,7 @@ import com.rodrigues.gestor.data.SupabaseOrdersApi
 import com.rodrigues.gestor.data.money
 import com.rodrigues.gestor.notifications.GestorConnectionService
 import com.rodrigues.gestor.notifications.NotificationHelper
+import com.rodrigues.gestor.notifications.OrderRingService
 import java.util.Locale
 
 /**
@@ -64,6 +66,7 @@ class NativeGestorActivity : ComponentActivity() {
         chosenOrder = intent?.getStringExtra(EXTRA_ORDER_ID)
         signedIn = GestorCredentials.load(this).length == 6
         setContent {
+            BackHandler(enabled = chosenOrder != null) { chosenOrder = null }
             GestorTheme {
                 if (signedIn) {
                     NativeDashboard(
@@ -74,7 +77,7 @@ class NativeGestorActivity : ComponentActivity() {
                         selectedOrderId = chosenOrder,
                         section = section,
                         filter = tab,
-                        onSection = { section = it; chosenOrder = null },
+                        onSection = { section = it; chosenOrder = null; tab = "Todos" },
                         onFilter = { tab = it },
                         onSelect = { chosenOrder = it },
                         onBack = { chosenOrder = null },
@@ -153,6 +156,8 @@ class NativeGestorActivity : ComponentActivity() {
         registered?.remove()
         registered = null
         GestorCredentials.clear()
+        stopService(Intent(this, GestorConnectionService::class.java))
+        OrderRingService.stop(this)
         signedIn = false
         orders.clear()
         chosenOrder = null
