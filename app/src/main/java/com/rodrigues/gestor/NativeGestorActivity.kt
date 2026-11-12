@@ -248,11 +248,6 @@ private fun OperatorLogin(error: String, onSubmit: (String) -> Unit) {
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(16.dp)
             )
-            if (queuedActions > 0 || conflictedActions > 0) {
-                Surface(color = Color(0xFFFFF3E3), modifier = Modifier.fillMaxWidth()) {
-                    Text("No aparelho: $queuedActions aguardando sincronização • $conflictedActions conflitos", Modifier.padding(horizontal = 16.dp, vertical = 8.dp), color = Color(0xFF775115), style = MaterialTheme.typography.labelSmall)
-                }
-            }
             if (error.isNotBlank()) {
                 Spacer(Modifier.height(10.dp))
                 Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
@@ -333,6 +328,11 @@ private fun NativeDashboard(
         }
     ) { pad ->
         Column(Modifier.fillMaxSize().padding(pad)) {
+            if (queuedActions > 0 || conflictedActions > 0) {
+                Surface(color = Color(0xFFFFF3E3), modifier = Modifier.fillMaxWidth()) {
+                    Text("No aparelho: $queuedActions aguardando sincronização • $conflictedActions conflitos", Modifier.padding(horizontal = 16.dp, vertical = 8.dp), color = Color(0xFF775115), style = MaterialTheme.typography.labelSmall)
+                }
+            }
             if (error.isNotBlank()) {
                 Surface(color = Color(0xFFFFF1F0), modifier = Modifier.fillMaxWidth()) {
                     Text(error, Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
