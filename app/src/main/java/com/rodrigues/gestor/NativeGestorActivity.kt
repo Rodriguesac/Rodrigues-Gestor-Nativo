@@ -98,6 +98,8 @@ class NativeGestorActivity : ComponentActivity() {
     private var storeBusy by mutableStateOf(false)
     private var storeError by mutableStateOf("")
     private var lastOrderSync by mutableLongStateOf(0L)
+    private var offlineMode by mutableStateOf(false)
+    private var cacheWarning by mutableStateOf("")
     private lateinit var offlineStore: OfflineOrderStore
     private var queuedActions by mutableIntStateOf(0)
     private var conflictedActions by mutableIntStateOf(0)
@@ -118,6 +120,7 @@ class NativeGestorActivity : ComponentActivity() {
         NotificationHelper.createChannels(this)
         offlineStore = OfflineOrderStore(this)
         val saved = offlineStore.cachedOrders()
+        lastOrderSync = offlineStore.lastSavedAt()
         orders.addAll(saved.filterNot { isClosedStatus(it.status) })
         historyOrders.addAll(saved.filter { isClosedStatus(it.status) })
         catalog.addAll(NativeCatalogApi.cached(this))
@@ -158,8 +161,9 @@ class NativeGestorActivity : ComponentActivity() {
                         storeBusy = storeBusy,
                         storeError = storeError,
                         lastSync = lastOrderSync,
+                        offlineMode = offlineMode,
                         loading = loading,
-                        error = connectionError,
+                        error = if (cacheWarning.isNotBlank()) cacheWarning else connectionError,
                         busy = pendingAction,
                         queuedActions = queuedActions,
                         conflictedActions = conflictedActions,
@@ -268,8 +272,15 @@ class NativeGestorActivity : ComponentActivity() {
         loading = orders.isEmpty()
         registered = SupabaseOrdersApi.listenOrders(
             onData = {
-                offlineStore.storeOrders(it)
+                try {
+                    offlineStore.storeOrders(it)
+                    cacheWarning = ""
+                } catch (error: Throwable) {
+                    cacheWarning = "Falha ao salvar cópia offline. Confira o armazenamento do celular: " +
+                        (error.message ?: "espaço indisponível")
+                }
                 lastOrderSync = System.currentTimeMillis()
+                offlineMode = false
                 queuedActions = offlineStore.waiting().size
                 conflictedActions = offlineStore.conflicts().size
                 orders.clear()
@@ -287,6 +298,7 @@ class NativeGestorActivity : ComponentActivity() {
             },
             onError = { e ->
                 loading = false
+                offlineMode = true
                 connectionError = e.message ?: "Sem conexão com a central de pedidos."
                 if (GestorCredentials.pin.length != 6 || connectionError.contains("PIN", true)) {
                     signedIn = false
@@ -530,6 +542,9 @@ class NativeGestorActivity : ComponentActivity() {
         stopService(Intent(this, GestorConnectionService::class.java))
         OrderRingService.stop(this)
         signedIn = false
+        offlineMode = false
+        cacheWarning = ""
+        lastOrderSync = 0L
         orders.clear()
         historyOrders.clear()
         chosenOrder = null
@@ -640,6 +655,7 @@ private fun NativeDashboard(
     storeBusy: Boolean,
     storeError: String,
     lastSync: Long,
+    offlineMode: Boolean,
     loading: Boolean,
     error: String,
     busy: Boolean,
@@ -738,11 +754,21 @@ private fun NativeDashboard(
                 }
             }
             if (loading) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-            if (orders.isNotEmpty() && error.contains("conexão", true)) {
+            if (offlineMode && (orders.isNotEmpty() || historyOrders.isNotEmpty())) {
                 Surface(color = Color(0xFFF1EBFA), modifier = Modifier.fillMaxWidth()) {
-                    Text("Pedidos já recebidos disponíveis no aparelho, mesmo sem internet.",
-                        Modifier.padding(horizontal = 16.dp, vertical = 9.dp), color = PurpleDeep,
-                        style = MaterialTheme.typography.labelSmall)
+                    Column(Modifier.padding(horizontal = 16.dp, vertical = 9.dp)) {
+                        Text("Sem conexão — pedidos já recebidos continuam disponíveis.",
+                            color = PurpleDeep, style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.SemiBold)
+                        if (lastSync > 0L) {
+                            Text("Última atualização: " +
+                                java.text.SimpleDateFormat("dd/MM HH:mm", Locale("pt", "BR"))
+                                    .format(java.util.Date(lastSync)),
+                                style = MaterialTheme.typography.labelSmall, color = PurpleDeep)
+                        }
+                        Text("Atualizações de status e pedidos novos precisam de internet.",
+                            style = MaterialTheme.typography.labelSmall, color = PurpleDeep)
+                    }
                 }
             }
             when {

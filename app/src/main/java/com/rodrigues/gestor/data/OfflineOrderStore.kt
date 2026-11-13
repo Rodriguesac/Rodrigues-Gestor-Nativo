@@ -93,6 +93,16 @@ class OfflineOrderStore(context: Context) :
         return output.sortedByDescending { it.createdMillis }
     }
 
+    /** Horário da última cópia gravada, preservado ao reiniciar o aparelho. */
+    @Synchronized
+    fun lastSavedAt(): Long {
+        readableDatabase.rawQuery(
+            "SELECT COALESCE(MAX(updated_at), 0) FROM orders_cache", null
+        ).use { cursor ->
+            return if (cursor.moveToFirst()) cursor.getLong(0) else 0L
+        }
+    }
+
     /** Recusa ações concorrentes offline para o mesmo pedido. */
     @Synchronized
     fun enqueue(orderId: String, action: String, currentStatus: String): Boolean {
