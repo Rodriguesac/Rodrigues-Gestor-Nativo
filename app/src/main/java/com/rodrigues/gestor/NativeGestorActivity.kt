@@ -119,8 +119,16 @@ class NativeGestorActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         NotificationHelper.createChannels(this)
         offlineStore = OfflineOrderStore(this)
-        val saved = offlineStore.cachedOrders()
-        lastOrderSync = offlineStore.lastSavedAt()
+        val saved = try {
+            offlineStore.cachedOrders()
+        } catch (error: Throwable) {
+            cacheWarning = "Não foi possível abrir os pedidos salvos: " +
+                (error.message ?: "erro no armazenamento local")
+            emptyList()
+        }
+        lastOrderSync = try {
+            offlineStore.lastSavedAt()
+        } catch (_: Throwable) { 0L }
         orders.addAll(saved.filterNot { isClosedStatus(it.status) })
         historyOrders.addAll(saved.filter { isClosedStatus(it.status) })
         catalog.addAll(NativeCatalogApi.cached(this))
