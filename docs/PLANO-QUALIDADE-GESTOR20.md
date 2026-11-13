@@ -24,7 +24,7 @@ Branch atual: `feature/gestor20-completo-sem-apk`. Workflow de validação compi
 1. **Compilação de todas as mudanças** no workflow sem geração de APK. Qualquer falha de dependência ou compilação deve ser investigada e resolvida.
 2. **Testes automatizados** para serialização, estados de pedidos, autenticação, tempos, idempotência e concorrência entre gestores. Ainda insuficientes.
 3. **Validação do fluxo UP fim-a-fim**, com entrega, recusa, desistência, falha, cancelamento, pagamento e conflito concorrente. Não acionar pedidos de produção sem cenário controlado autorizado.
-4. **Pedido manual:** tela e rascunho AES implementados, preços e dados obrigatórios testados na JVM. O backend ainda precisa de `submit_whatsapp_builder_order` (não existe no banco consultado). A proposta está em `docs/backend/PROPOSTA-RPC-PEDIDO-MANUAL.sql` e não foi aplicada. Falta teste de criação e deduplicação em ambiente seguro e validação no celular.
+4. **Pedido manual:** tela e rascunho AES implementados, preços e dados obrigatórios testados na JVM. A função `submit_whatsapp_builder_order` foi implantada no Supabase sob a migração `20261113175813_gestor20_manual_order_rpc_idempotent_v1`. Teste isolado PostgreSQL 17 e 12 chamadas concorrentes aprovados; teste reversível no banco real confirmou zero pedidos persistidos. Falta validação da interface Android autenticada no celular, do checkout completo e das notificações.
 5. **Histórico paginado e relatórios filtráveis** com valores reconciliados com o backend.
 6. **Cliente e mensagens**: confirmar comunicação cliente↔gestor e notificações push funcionando também com o app fechado.
 7. **Login/sessões**: avaliar renovação de sessão sem exigir PIN para cada chamada e permissões granulares por funcionário.
@@ -51,3 +51,11 @@ A versão de desenvolvimento **não é um aplicativo final** e **nenhum APK deve
 - Servidor existente chama a RPC inexistente `submit_whatsapp_builder_order`; a proposta de função SQL foi documentada sem aplicar alterações.
 - GitHub Actions `43467810641`: `compileDebugKotlin`, `testDebugUnitTest` e **verificação de ausência de APK** concluídos com sucesso. Não substitui testes reais do aplicativo.
 - Nenhum pedido de produção foi criado/cancelado nesta rodada. Nenhum APK produzido ou distribuído.
+
+## Migração do backend aplicada (13/11/2026)
+
+- Projeto Supabase `fdqqwdplprzpqufpgdrm`: migração `20261113175813_gestor20_manual_order_rpc_idempotent_v1` aplicada e verificada.
+- `service_role` pode executar a RPC; `anon` e `authenticated` não podem. Sem `SECURITY DEFINER`.
+- Testes CI no PostgreSQL 17, incluindo 12 tentativas simultâneas, concluídos com sucesso: https://github.com/Rodriguesac/Rodrigues-Gestor-Nativo/actions/runs/43477851672
+- Teste real reversível executou a função e confirmou `persisted_test_orders=0` após `ROLLBACK`.
+- A aplicação Android atual segue intacta. A conclusão da funcionalidade exige teste autenticado na interface; **ainda não gerar APK final**.
