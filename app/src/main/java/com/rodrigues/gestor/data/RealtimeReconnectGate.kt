@@ -25,6 +25,9 @@ class RealtimeReconnectGate {
         isCurrent(version) && pending.compareAndSet(false, true)
 
     fun consumeReconnect(version: Int): Boolean {
+        // O callback de uma conexão antiga não pode zerar o agendamento
+        // já reservado pelo socket novo.
+        if (!isCurrent(version)) return false
         pending.set(false)
         return isCurrent(version)
     }

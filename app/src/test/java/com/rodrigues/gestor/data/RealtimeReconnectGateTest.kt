@@ -19,6 +19,18 @@ class RealtimeReconnectGateTest {
         assertTrue(gate.requestReconnect(second))
     }
 
+    @Test fun callbackAntigoNaoLimpaAgendamentoDaNovaConexao() {
+        val gate = RealtimeReconnectGate()
+        val antigo = gate.newConnection()
+        assertTrue(gate.requestReconnect(antigo))
+        assertTrue(gate.consumeReconnect(antigo))
+        val novo = gate.newConnection()
+        assertTrue(gate.requestReconnect(novo))
+        assertFalse(gate.consumeReconnect(antigo))
+        assertFalse(gate.requestReconnect(novo))
+        assertTrue(gate.consumeReconnect(novo))
+    }
+
     @Test fun stopPreventsScheduledCallbackFromReopeningSocket() {
         val gate = RealtimeReconnectGate()
         val version = gate.newConnection()
