@@ -40,6 +40,7 @@ import com.rodrigues.gestor.data.OfflineOrderStore
 import com.rodrigues.gestor.data.OfflineOrderSyncWorker
 import com.rodrigues.gestor.data.NativeCatalogApi
 import com.rodrigues.gestor.data.NativeOperationsApi
+import com.rodrigues.gestor.data.NativeOrdersHistoryApi
 import com.rodrigues.gestor.data.StoreInfo
 import com.rodrigues.gestor.data.CourierChoice
 import com.rodrigues.gestor.data.CatalogItem
@@ -62,6 +63,11 @@ import java.util.Locale
 class NativeGestorActivity : ComponentActivity() {
     private var registered: ListenerRegistration? = null
     private val orders = mutableStateListOf<Order>()
+    private val historyOrders = mutableStateListOf<Order>()
+    private var historyLoading by mutableStateOf(false)
+    private var historyError by mutableStateOf("")
+    private var historyHasMore by mutableStateOf(false)
+    private var loginBusy by mutableStateOf(false)
     private val catalog = mutableStateListOf<CatalogItem>()
     private var catalogLoading by mutableStateOf(false)
     private var catalogError by mutableStateOf("")
@@ -91,7 +97,9 @@ class NativeGestorActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         NotificationHelper.createChannels(this)
         offlineStore = OfflineOrderStore(this)
-        orders.addAll(offlineStore.cachedOrders())
+        val saved = offlineStore.cachedOrders()
+        orders.addAll(saved.filterNot { isClosedStatus(it.status) })
+        historyOrders.addAll(saved.filter { isClosedStatus(it.status) })
         catalog.addAll(NativeCatalogApi.cached(this))
         storeInfo = NativeOperationsApi.cachedStore(this)
         OfflineOrderSyncWorker.cancelLegacy(this)
@@ -107,6 +115,10 @@ class NativeGestorActivity : ComponentActivity() {
                 if (signedIn) {
                     NativeDashboard(
                         orders = orders,
+                        historyOrders = historyOrders,
+                        historyLoading = historyLoading,
+                        historyError = historyError,
+                        historyHasMore = historyHasMore,
                         catalog = catalog,
                         catalogLoading = catalogLoading,
                         catalogError = catalogError,
@@ -130,6 +142,7 @@ class NativeGestorActivity : ComponentActivity() {
                             chosenOrder = null
                             tab = "Todos"
                             if (it == 2) refreshCatalog()
+                            if (it == 3) loadHistory()
                         },
                         onFilter = { tab = it },
                         onSelect = { chosenOrder = it },
@@ -150,18 +163,57 @@ class NativeGestorActivity : ComponentActivity() {
                         onNotify = ::requestNotifications
                     )
                 } else {
-                    OperatorLogin(error = connectionError, onSubmit = {
-                        GestorCredentials.save(this, it)
-                        signedIn = true
-                        connectionError = ""
-                        startListening()
-                        refreshCatalog()
-                        refreshStore()
-                    })
+                    OperatorLogin(error = connectionError, busy = loginBusy, onSubmit = ::authenticate)
                 }
             }
         }
         if (signedIn) { startListening(); refreshCatalog(); refreshStore() }
+    }
+
+
+    private fun authenticate(pin: String) {
+        if (loginBusy) return
+        loginBusy = true
+        connectionError = ""
+        NativeCatalogApi.authenticatePin(pin, onSuccess = {
+            try {
+                GestorCredentials.save(this, pin)
+                signedIn = true
+                connectionError = ""
+                startListening()
+                refreshCatalog()
+                refreshStore()
+            } catch (error: Throwable) {
+                connectionError = "Não foi possível proteger o acesso neste aparelho: " + (error.message ?: "")
+            } finally {
+                loginBusy = false
+            }
+        }, onError = {
+            loginBusy = false
+            connectionError = "Acesso não autorizado ou servidor indisponível. " + (it.message ?: "")
+        })
+    }
+
+    private fun isClosedStatus(status: String): Boolean {
+        val normalized = status.uppercase(Locale.ROOT)
+        return normalized in StatusGroups.DONE || normalized in StatusGroups.CANCELED
+    }
+
+    private fun loadHistory() {
+        if (historyLoading) return
+        historyLoading = true
+        historyError = ""
+        NativeOrdersHistoryApi.loadLast30Days(onSuccess = { fetched, hasMore ->
+            historyOrders.clear()
+            historyOrders.addAll(fetched)
+            offlineStore.storeOrders(fetched)
+            historyHasMore = hasMore
+            historyLoading = false
+        }, onError = {
+            historyLoading = false
+            historyError = "Sem atualização do histórico: os registros já salvos continuam disponíveis. " +
+                (it.message ?: "")
+        })
     }
 
     private fun requestNotifications() {
@@ -180,7 +232,14 @@ class NativeGestorActivity : ComponentActivity() {
                 queuedActions = offlineStore.waiting().size
                 conflictedActions = offlineStore.conflicts().size
                 orders.clear()
-                orders.addAll(it)
+                orders.addAll(it.filterNot { row -> isClosedStatus(row.status) })
+                val closed = it.filter { row -> isClosedStatus(row.status) }
+                if (closed.isNotEmpty()) {
+                    val merged = (closed + historyOrders).distinctBy { row -> row.id }
+                        .sortedByDescending { row -> row.createdMillis }
+                    historyOrders.clear()
+                    historyOrders.addAll(merged.take(250))
+                }
                 loading = false
                 connectionError = ""
                 GestorConnectionService.start(this)
@@ -338,6 +397,7 @@ class NativeGestorActivity : ComponentActivity() {
         OrderRingService.stop(this)
         signedIn = false
         orders.clear()
+        historyOrders.clear()
         chosenOrder = null
         connectionError = ""
     }
@@ -385,7 +445,7 @@ private fun GestorTheme(content: @Composable () -> Unit) {
 }
 
 @Composable
-private fun OperatorLogin(error: String, onSubmit: (String) -> Unit) {
+private fun OperatorLogin(error: String, busy: Boolean, onSubmit: (String) -> Unit) {
     var pin by remember { mutableStateOf("") }
     Surface(color = Canvas, modifier = Modifier.fillMaxSize()) {
         Column(
@@ -412,8 +472,9 @@ private fun OperatorLogin(error: String, onSubmit: (String) -> Unit) {
                 Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
             }
             Spacer(Modifier.height(20.dp))
-            Button(onClick = { onSubmit(pin) }, enabled = pin.length == 6, modifier = Modifier.fillMaxWidth().height(52.dp)) {
-                Text("Entrar no Gestor")
+            Button(onClick = { onSubmit(pin) }, enabled = pin.length == 6 && !busy,
+                modifier = Modifier.fillMaxWidth().height(52.dp)) {
+                Text(if (busy) "Validando com o servidor…" else "Entrar no Gestor")
             }
             Spacer(Modifier.height(12.dp))
             Text("Ações são sincronizadas com a central de pedidos existente.", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
@@ -424,6 +485,10 @@ private fun OperatorLogin(error: String, onSubmit: (String) -> Unit) {
 @Composable
 private fun NativeDashboard(
     orders: List<Order>,
+    historyOrders: List<Order>,
+    historyLoading: Boolean,
+    historyError: String,
+    historyHasMore: Boolean,
     catalog: List<CatalogItem>,
     catalogLoading: Boolean,
     catalogError: String,
@@ -462,6 +527,7 @@ private fun NativeDashboard(
     onNotify: () -> Unit
 ) {
     val selected = orders.find { it.id == selectedOrderId }
+        ?: historyOrders.find { it.id == selectedOrderId }
     Scaffold(
         topBar = {
             Surface(color = Color.White, shadowElevation = 2.dp) {
@@ -540,7 +606,15 @@ private fun NativeDashboard(
                 section == 1 -> OrdersScreen(orders, filter, onFilter, onSelect, history = false)
                 section == 2 -> CatalogScreen(catalog, catalogLoading, catalogError, catalogBusy,
                     catalogOwner, onCatalogRefresh, onCatalogAvailability, onCatalogPrice, onShareCatalog)
-                section == 3 -> OrdersScreen(orders, filter, onFilter, onSelect, history = true)
+                section == 3 -> Column {
+                    if (historyLoading) LinearProgressIndicator(Modifier.fillMaxWidth())
+                    if (historyError.isNotBlank()) Text(historyError, Modifier.padding(12.dp),
+                        style = MaterialTheme.typography.bodySmall, color = RedAlert)
+                    if (historyHasMore) Text("Mostrando os 200 registros mais recentes do período. A paginação ainda está em desenvolvimento.",
+                        Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+                        style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+                    OrdersScreen(historyOrders, filter, onFilter, onSelect, history = true)
+                }
                 section == 5 -> StoreScreen(storeInfo, storeLoading, storeBusy, storeError,
                     catalogOwner, onStoreRefresh, onStoreOpen, onStoreSave)
                 else -> MoreScreen(onNotify, onLogout, onStore)

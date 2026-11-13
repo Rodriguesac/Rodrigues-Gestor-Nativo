@@ -85,6 +85,25 @@ object NativeCatalogApi {
         }
     }
 
+
+    /** O PIN inicial só é salvo no Keystore depois de autenticação real no servidor. */
+    fun authenticatePin(pin: String, onSuccess: () -> Unit, onError: (Throwable) -> Unit) {
+        if (pin.length != 6 || !pin.all(Char::isDigit)) {
+            onError(IllegalArgumentException("O PIN deve ter 6 números."))
+            return
+        }
+        io.execute {
+            try {
+                val result = post(JSONObject().put("action", "login").put("pin", pin))
+                val session = result.optString("session_token")
+                if (session.isBlank()) throw IllegalStateException("O servidor não confirmou a sessão.")
+                token = session
+                canEdit = result.optJSONObject("operator")?.optString("role") == "owner"
+                main.post(onSuccess)
+            } catch (error: Throwable) { main.post { onError(error) } }
+        }
+    }
+
     fun load(context: Context, onSuccess: (CatalogSnapshot) -> Unit, onError: (Throwable) -> Unit) {
         val app = context.applicationContext
         io.execute {

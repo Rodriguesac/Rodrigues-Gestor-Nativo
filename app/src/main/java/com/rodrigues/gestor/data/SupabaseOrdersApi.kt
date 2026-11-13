@@ -232,8 +232,11 @@ object SupabaseOrdersApi {
 
     private fun fetchOrders(): List<Order> {
         val response = request(JSONObject().put("action", "list").put("limit", 120))
-        val rows = response.optJSONArray("orders") ?: JSONArray()
-        return buildList {
+        return parseOrders(response.optJSONArray("orders") ?: JSONArray())
+    }
+
+    /** Normalização compartilhada: pedidos ativos e histórico usam a mesma estrutura. */
+    fun parseOrders(rows: JSONArray): List<Order> = buildList {
             for (index in 0 until rows.length()) {
                 val row = rows.optJSONObject(index) ?: continue
                 val id = row.optString("id").trim()
@@ -286,7 +289,6 @@ object SupabaseOrdersApi {
                 add(normalizeOrder(id, jsonObjectToMap(raw)))
             }
         }.sortedByDescending { it.createdMillis }
-    }
 
     private fun request(payload: JSONObject): JSONObject {
         val pin = GestorCredentials.pin.trim()
