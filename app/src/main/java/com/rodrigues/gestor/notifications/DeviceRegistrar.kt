@@ -1,66 +1,97 @@
 package com.rodrigues.gestor.notifications
 
+import android.content.Context
 import android.os.Build
 import com.rodrigues.gestor.BuildConfig
-import com.google.firebase.messaging.FirebaseMessaging
+import com.rodrigues.gestor.data.GestorCredentials
+import com.rodrigues.gestor.data.NativeCatalogApi
+import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
 import kotlin.concurrent.thread
 
+/** Não registra tokens de aparelhos sem login na central de pedidos. */
+object PushRegistrationPolicy {
+    fun allowed(isPreview: Boolean, pin: String, token: String): Boolean =
+        !isPreview && pin.length == 6 && pin.all(Char::isDigit) && token.isNotBlank()
+}
+
+/**
+ * Fluxo FCM v2: sessão 12h da gestor-app-api validada no servidor.
+ * O endpoint público antigo permanece exclusivo de apps já instalados.
+ */
 object DeviceRegistrar {
-    private const val ENDPOINT = "https://fdqqwdplprzpqufpgdrm.supabase.co/functions/v1/gestor-device-register"
-    private const val ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZkcXF3ZHBscHJ6cHF1ZnBnZHJtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTA3NjkwNzcsImV4cCI6MjEwNjM0NTA3N30.4eKobxZb_ULIykZBbV4xQHb9tCG8YochcC13MurqBY0"
+    private const val ENDPOINT =
+        "https://fdqqwdplprzpqufpgdrm.supabase.co/functions/v1/gestor-device-register-v2"
+    private const val PREFS = "gestor20_push_registration_v2"
 
-    fun register(token: String) {
-        if (token.isBlank()) return
-        // A versão de prévia instala separada para não substituir o Gestor.
-        // Nunca registrar seu token como dispositivo da operação real.
+    fun register(context: Context, token: String) {
+        val app = context.applicationContext
         if (BuildConfig.DEBUG && BuildConfig.APPLICATION_ID.endsWith(".preview")) return
-
-        FirebaseMessaging.getInstance().subscribeToTopic("gestor-pedidos")
-
-        thread(name = "GestorDeviceRegister") {
-            runCatching {
-                val payload =
-                    "{\"token\":" + json(token) +
-                    ",\"package\":\"com.rodrigues.gestor\"" +
-                    ",\"model\":" + json(Build.MANUFACTURER + " " + Build.MODEL) +
-                    ",\"sdk\":" + Build.VERSION.SDK_INT +
-                    ",\"app_version\":\"3.3.1-mobile\"}"
-
-                val connection = (URL(ENDPOINT).openConnection() as HttpURLConnection).apply {
-                    requestMethod = "POST"
-                    connectTimeout = 8_000
-                    readTimeout = 8_000
-                    doOutput = true
-                    useCaches = false
-                    setRequestProperty("Content-Type", "application/json; charset=utf-8")
-                    setRequestProperty("Accept", "application/json")
-                    setRequestProperty("apikey", ANON_KEY)
-                    setRequestProperty("Authorization", "Bearer " + ANON_KEY)
-                }
+        if (GestorCredentials.pin.length != 6) GestorCredentials.load(app)
+        if (!PushRegistrationPolicy.allowed(false, GestorCredentials.pin, token)) {
+            return
+        }
+        NativeCatalogApi.withValidSession(onSuccess = { session ->
+            thread(name = "GestorDeviceRegisterV2") {
                 try {
-                    connection.outputStream.use { it.write(payload.toByteArray(Charsets.UTF_8)) }
-                    connection.responseCode
-                } finally {
-                    connection.disconnect()
+                    val body = JSONObject()
+                        .put("token", token)
+                        .put("session_token", session)
+                        .put("package", "com.rodrigues.gestor")
+                        .put("model", (Build.MANUFACTURER + " " + Build.MODEL).take(160))
+                        .put("sdk", Build.VERSION.SDK_INT)
+                        .put("app_version", BuildConfig.VERSION_NAME)
+                    val connection = (URL(ENDPOINT).openConnection() as HttpURLConnection).apply {
+                        requestMethod = "POST"
+                        connectTimeout = 8_000
+                        readTimeout = 12_000
+                        useCaches = false
+                        doOutput = true
+                        setRequestProperty("Content-Type", "application/json; charset=utf-8")
+                        setRequestProperty("Accept", "application/json")
+                    }
+                    try {
+                        connection.outputStream.use {
+                            it.write(body.toString().toByteArray(Charsets.UTF_8))
+                        }
+                        val code = connection.responseCode
+                        val response = (if (code in 200..299) connection.inputStream
+                            else connection.errorStream)?.bufferedReader()?.use {
+                            it.readText().take(2048)
+                        }.orEmpty()
+                        if (code !in 200..299 ||
+                            !JSONObject(response.ifBlank { "{}" }).optBoolean("ok", false)) {
+                            throw IllegalStateException("Servidor recusou o cadastro (HTTP $code).")
+                        }
+                        app.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+                            .putLong("last_ok_at", System.currentTimeMillis())
+                            .putString("status", "Cadastrado no servidor")
+                            .apply()
+                    } finally {
+                        connection.disconnect()
+                    }
+                } catch (_: Throwable) {
+                    // Sem armazenar token nem sessão em texto puro, nem imprimir dados de acesso.
+                    app.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+                        .putString("status", "Cadastro não confirmado. Verifique a conexão e faça login.")
+                        .apply()
                 }
             }
-        }
+        }, onError = {
+            app.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+                .putString("status", "Sessão indisponível. Acesse o Gestor para reconectar.")
+                .apply()
+        })
     }
 
-    private fun json(value: String): String = buildString {
-        append('"')
-        value.forEach { ch ->
-            when (ch) {
-                '\\' -> append("\\\\")
-                '"' -> append("\\\"")
-                '\n' -> append("\\n")
-                '\r' -> append("\\r")
-                '\t' -> append("\\t")
-                else -> append(ch)
-            }
-        }
-        append('"')
-    }
+    fun status(context: Context): String =
+        if (BuildConfig.DEBUG && BuildConfig.APPLICATION_ID.endsWith(".preview"))
+            "Prévia: este aparelho não registra notificações de produção."
+        else context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getString("status", "Aguardando cadastro após login.")
+            ?: "Aguardando cadastro após login."
+
+    fun lastRegisteredAt(context: Context): Long =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getLong("last_ok_at", 0L)
 }

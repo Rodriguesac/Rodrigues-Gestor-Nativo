@@ -7,7 +7,7 @@ import java.util.concurrent.TimeUnit
 class GestorMessagingService : FirebaseMessagingService() {
     override fun onNewToken(token: String) {
         super.onNewToken(token)
-        DeviceRegistrar.register(token)
+        DeviceRegistrar.register(this, token)
     }
 
     override fun onMessageReceived(message: RemoteMessage) {

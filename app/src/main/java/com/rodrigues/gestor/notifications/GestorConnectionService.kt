@@ -33,7 +33,9 @@ class GestorConnectionService : Service() {
             CONNECTION_NOTIFICATION_ID,
             NotificationHelper.connectionNotification(this, "Conectando à central de pedidos…")
         )
-        FirebaseMessaging.getInstance().token.addOnSuccessListener(DeviceRegistrar::register)
+        FirebaseMessaging.getInstance().token.addOnSuccessListener { token ->
+            DeviceRegistrar.register(this, token)
+        }
         listenOrders()
     }
 

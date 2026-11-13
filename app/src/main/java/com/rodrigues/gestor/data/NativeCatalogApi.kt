@@ -187,6 +187,23 @@ object NativeCatalogApi {
         }
     }
 
+    /**
+     * A sessão expira e é renovada pela mesma API do Gestor20.
+     * Não envia PIN a serviços terceiros e não expõe o token ao disco.
+     */
+    fun withValidSession(onSuccess: (String) -> Unit, onError: (Throwable) -> Unit) {
+        io.execute {
+            try {
+                call("me")
+                val authorized = token
+                if (authorized.isBlank()) throw IllegalStateException("Sessão não autenticada.")
+                main.post { onSuccess(authorized) }
+            } catch (error: Throwable) {
+                main.post { onError(error) }
+            }
+        }
+    }
+
     /** Acesso autenticado e assíncrono à mesma API utilizada no Gestor20 web. */
     fun execute(
         action: String,
