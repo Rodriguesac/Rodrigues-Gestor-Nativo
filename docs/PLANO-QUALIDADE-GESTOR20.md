@@ -70,3 +70,15 @@ A versão de desenvolvimento **não é um aplicativo final** e **nenhum APK deve
 - Testes JVM adicionados para status canônico, conteúdo da comanda e deduplicação dos avisos.
 - **Validação GitHub Actions:** run `43483987160` em 13/11/2026: compilação Kotlin, testes JVM e verificação de ausência de APK **todas aprovadas**.
 - Nenhum APK gerado/distribuído e nenhum pedido real alterado nesta rodada.
+
+## Rodada 13/11/2026 — confiabilidade da conexão e do cache
+
+- Pedido manual: a confirmação HTTP isolada não apaga o rascunho. `NativeManualOrderApi.submit` agora exige `result.order_id` (UUID) e `result.order_code` numérico; o retorno idempotente informa quando o pedido já estava registrado. Testes JVM adicionados para confirmação válida e respostas malformadas.
+- Conexão Realtime: `SupabaseOrdersApi.listenOrders` utiliza gerações de websocket e controle atômico para uma única reconexão programada. Callbacks atrasados não substituem o estado do socket atual. `RealtimeReconnectGate` possui testes JVM de concorrência de 12 chamadas, fechamento do listener, gerações antigas e do callback de reconexão atrasado.
+- Cache: `OfflineOrderStore` fornece a data da última gravação confirmada. A tela mostra o modo offline e o horário dos dados que já foram recebidos, sem prometer pedidos novos ou atualização de status durante a queda de rede.
+- Erro de SQLite: falhas de abertura ou gravação geram mensagem em vez de encerrar imediatamente o aplicativo. O aplicativo não anuncia cópia offline bem-sucedida se a persistência falhar.
+- GitHub Actions: fluxo `validar-gestor20-sem-apk.yml` agora possui `concurrency` por branch, cancelando execuções antigas para reduzir consumo de cota. Continua executando compilação Kotlin, testes JVM e verificação de que não foi gerado APK.
+- Provas anteriores: CI `43487893382` (comprovação de pedido manual) e `43488551171` (controle Realtime e testes) aprovadas. Última validação do refinamento do callback antigo: `43489225045` (consultar status no GitHub).
+- O app em produção, banco Supabase e pedidos reais não foram modificados por estas mudanças. Ainda não há comprovação de teste Android em aparelho, entrega UP ponta a ponta ou push com aplicativo fechado.
+
+**Próximo gate:** testes instrumentados em ambiente Android seguro, validar PIN e reconexão após perda de rede, SMS/FCM, som Nokia sob restrições de Android e pedido manual por interface. Não distribuir APK final até concluir.
