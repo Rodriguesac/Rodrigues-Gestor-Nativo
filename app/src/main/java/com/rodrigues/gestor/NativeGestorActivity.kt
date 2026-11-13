@@ -45,6 +45,7 @@ import com.rodrigues.gestor.data.OfflineOrderSyncWorker
 import com.rodrigues.gestor.data.NativeCatalogApi
 import com.rodrigues.gestor.data.NativeOperationsApi
 import com.rodrigues.gestor.data.DeliveryProgress
+import com.rodrigues.gestor.data.OrderFlowPolicy
 import com.rodrigues.gestor.data.NativeOrdersHistoryApi
 import com.rodrigues.gestor.data.HistoryWindow
 import com.rodrigues.gestor.data.HistoryPagination
@@ -1150,19 +1151,10 @@ private fun OrderDetails(
     val delivery = DeliveryProgress.from(order)
     val hasUpMission = delivery.hasUpMission
     val storeDispatch = delivery.isOwn
-    val canChooseDispatch = !order.pickup && !hasUpMission &&
-        status in setOf("PRONTO", "AGUARDANDO_DECISAO_GESTOR", "BUSCANDO_ENTREGADOR")
-    val canOfferUp = !order.pickup && !hasUpMission &&
-        status in setOf("PRONTO", "AGUARDANDO_DECISAO_GESTOR", "BUSCANDO_ENTREGADOR", "AGUARDANDO_ENTREGADOR")
+    val canChooseDispatch = OrderFlowPolicy.canDispatchOwn(order)
+    val canOfferUp = OrderFlowPolicy.canOfferUp(order)
     var confirmation by remember(order.id) { mutableStateOf<String?>(null) }
-    val action: String? = when (group) {
-        "Novos" -> "CONFIRMADO"
-        "Aceitos" -> "EM_PREPARO"
-        "Preparo" -> "PRONTO"
-        "Prontos" -> if (order.pickup) "RETIRADO" else null
-        "Entrega" -> if (status == "EM_ENTREGA" && storeDispatch && !hasUpMission) "CONCLUIDO" else null
-        else -> null
-    }
+    val action: String? = OrderFlowPolicy.nextAction(order)
     val labels = mapOf(
         "CONFIRMADO" to "Aceitar pedido",
         "EM_PREPARO" to "Iniciar preparo",
@@ -1346,7 +1338,7 @@ private fun OrderDetails(
                         Spacer(Modifier.width(8.dp))
                         Text("Conversar sobre este pedido")
                     }
-                    if (group !in setOf("Concluídos", "Cancelados")) {
+                    if (OrderFlowPolicy.canCancel(order)) {
                         OutlinedButton(onClick = { showCancel = true },
                             modifier = Modifier.fillMaxWidth(), enabled = !busy) {
                             Icon(Icons.Default.Cancel, null, tint = RedAlert)
