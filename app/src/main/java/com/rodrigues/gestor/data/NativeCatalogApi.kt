@@ -25,7 +25,8 @@ data class CatalogItem(
     val description: String,
     val imageUrl: String,
     val sortOrder: Int,
-    val compareAtPrice: Double = 0.0
+    val compareAtPrice: Double = 0.0,
+    val variantPrices: Map<String, Double> = emptyMap()
 ) {
     val forSale: Boolean get() = available && active
 }
@@ -129,7 +130,13 @@ object NativeCatalogApi {
                         name = row.optString("name"), price = row.optDouble("price", 0.0),
                         available = row.optBoolean("available", true),
                         active = data.optBoolean("ativo", true), description = data.optString("descricao"),
-                        imageUrl = data.optString("imagem"), sortOrder = row.optInt("order", 0)
+                        imageUrl = data.optString("imagem"), sortOrder = row.optInt("order", 0),
+                        variantPrices = buildMap {
+                            val variants = row.optJSONObject("prices") ?: JSONObject()
+                            for (key in listOf("misto","origem","cupuacu","polpanorte")) {
+                                if (variants.has(key)) put(key, variants.optDouble(key, 0.0))
+                            }
+                        }
                     )
                 }
                 val items = all.filter { it.id.isNotBlank() && it.name.isNotBlank() }

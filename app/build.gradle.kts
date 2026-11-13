@@ -63,6 +63,7 @@ dependencies {
     testImplementation("junit:junit:4.13.2")
     implementation("androidx.work:work-runtime-ktx:2.11.2")
     implementation("com.google.code.gson:gson:2.14.0")
+    implementation("io.coil-kt:coil-compose:2.7.0")
     implementation("androidx.core:core-ktx:1.17.0")
     implementation("androidx.activity:activity-ktx:1.12.4")
     implementation("androidx.webkit:webkit:1.14.0")

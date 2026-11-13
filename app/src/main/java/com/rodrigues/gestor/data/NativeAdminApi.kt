@@ -24,7 +24,7 @@ data class CatalogDraft(
         if (MoneyInput.parse(price) == null) return "Preço inválido."
         if (compareAtPrice.isNotBlank() && MoneyInput.parse(compareAtPrice) == null)
             return "Preço de comparação inválido."
-        if (sortOrder.toIntOrNull() !in 0..100000) return "Ordem inválida."
+        if ((sortOrder.toIntOrNull() ?: -1) !in 0..100000) return "Ordem inválida."
         if (imageUrl.isNotBlank() && (!imageUrl.startsWith("https://") ||
             imageUrl.any { it.isWhitespace() })) return "Imagem deve usar URL HTTPS."
         if (variantPrices.any { (key,value) ->
