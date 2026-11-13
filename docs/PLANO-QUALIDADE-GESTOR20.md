@@ -109,5 +109,7 @@ Implementações salvas na branch **feature/gestor20-completo-sem-apk**:
   HTTP 401/401/403/405 em chamadas sem credencial válida.
 - Nenhum cadastro real v2 foi executado até esta etapa; produção legada
   permanece ativa e sem alterações. Falta teste autenticado em aparelho.
-- CI Kotlin da última mudança está em `43495069262`:
-  verificar resultado antes de anunciar conclusão.
+- CI Kotlin da última mudança **aprovada** em `43495069262`:
+  compilação do código, testes JVM e ausência de APK confirmados.
+- Teste HTTP do registro FCM v2 **aprovado** em `43495421742`.
+- Ainda falta validar aparelhos e entrega UP ponta a ponta antes da distribuição.
