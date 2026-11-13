@@ -1,0 +1,62 @@
+name: Validar autenticação da rota FCM v2 sem APK
+
+on:
+  push:
+    branches:
+      - feature/gestor20-completo-sem-apk
+    paths:
+      - "supabase/functions/gestor-device-register-v2/**"
+      - ".github/workflows/validar-registro-fcm-v2.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  auth-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Conferir bloqueio de cadastro sem sessão
+        shell: bash
+        run: |
+          set -euo pipefail
+          URL="https://fdqqwdplprzpqufpgdrm.supabase.co/functions/v1/gestor-device-register-v2"
+          TOKEN=$(printf 'a%.0s' {1..80})
+          FAKE_SESSION=$(printf 'b%.0s' {1..43})
+          status=$(curl -fsS --max-time 20 -X POST -H 'Content-Type: application/json' \
+            --data "{\"token\":\"$TOKEN\",\"package\":\"com.rodrigues.gestor\"}" \
+            -o /tmp/missing-session.json -w '%{http_code}' "$URL" || true)
+          if [ "$status" != "401" ] || ! grep -q 'session_required' /tmp/missing-session.json; then
+            echo "FALHOU: função aceitou cadastro sem sessão ou não ficou disponível (HTTP $status)"
+            exit 1
+          fi
+          status=$(curl -sS --max-time 20 -X POST -H 'Content-Type: application/json' \
+            --data "{\"token\":\"$TOKEN\",\"session_token\":\"$FAKE_SESSION\",\"package\":\"com.rodrigues.gestor\"}" \
+            -o /tmp/invalid-session.json -w '%{http_code}' "$URL")
+          if [ "$status" != "401" ] || ! grep -q 'session_expired' /tmp/invalid-session.json; then
+            echo "FALHOU: sessão falsa não foi rejeitada (HTTP $status)"
+            exit 1
+          fi
+          echo "APROVADO: sem sessão e sessão falsa são rejeitadas."
+
+      - name: Rejeitar pacote inválido e método GET
+        shell: bash
+        run: |
+          set -euo pipefail
+          URL="https://fdqqwdplprzpqufpgdrm.supabase.co/functions/v1/gestor-device-register-v2"
+          TOKEN=$(printf 'a%.0s' {1..80})
+          FAKE_SESSION=$(printf 'b%.0s' {1..43})
+          status=$(curl -sS --max-time 20 -X POST -H 'Content-Type: application/json' \
+            --data "{\"token\":\"$TOKEN\",\"session_token\":\"$FAKE_SESSION\",\"package\":\"app.desconhecido\"}" \
+            -o /tmp/wrong-package.json -w '%{http_code}' "$URL")
+          if [ "$status" != "403" ] || ! grep -q 'invalid_app' /tmp/wrong-package.json; then
+            echo "FALHOU: pacote inválido não foi rejeitado (HTTP $status)"
+            exit 1
+          fi
+          status=$(curl -sS --max-time 20 -o /tmp/get.json -w '%{http_code}' "$URL")
+          if [ "$status" != "405" ]; then
+            echo "FALHOU: rota aceita GET (HTTP $status)"
+            exit 1
+          fi
+          echo "APROVADO: pacote inválido e método GET são bloqueados."
