@@ -36,6 +36,86 @@ Deno.serve(async req => {
     return reply({ok:false,error:"invalid_payload"},400);
   const action=clean(body.action,40);
   const fail=(error:any)=>{if(error)throw error;};
+
+  if(action==="catalog_structure"){
+    const [categories,products]=await Promise.all([
+      admin.from("categories").select("id,name,active").order("sort_order").limit(250),
+      admin.from("products").select("id,category_id").limit(500)
+    ]);
+    fail(categories.error);fail(products.error);
+    return reply({ok:true,categories:categories.data||[],
+      products:products.data||[]});
+  }
+  if(action==="catalog_item_save"){
+    const id=clean(body.id,48),collection=clean(body.collection,60);
+    const name=clean(body.name,160),description=clean(body.description,3000);
+    const image=clean(body.image_url,2048);
+    const price=Number(body.price),compare=body.compare_at_price===null||body.compare_at_price===""
+      ?null:Number(body.compare_at_price);
+    const order=Number(body.sort_order??0),active=body.active!==false,
+      available=body.available!==false;
+    const groups=new Set(["products","bases","cardapio_acai","acompanhamentos_gratis",
+      "adicionais","coberturas","utensilios"]);
+    if(!groups.has(collection)||name.length<2||name.length>160||
+      !Number.isFinite(price)||price<0||price>10000||
+      !Number.isInteger(order)||order<0||order>100000||
+      (image&&!image.startsWith("https://"))||
+      (id&&!validUuid(id))||
+      (compare!==null&&(!Number.isFinite(compare)||compare<0||compare>10000)))
+      return reply({ok:false,error:"invalid_catalog_item"},400);
+    let savedId="";
+    if(collection==="products"){
+      const categoryId=clean(body.category_id,36);
+      if(!validUuid(categoryId))return reply({ok:false,error:"category_required"},400);
+      const cat=await admin.from("categories").select("id")
+        .eq("id",categoryId).eq("active",true).maybeSingle();
+      fail(cat.error);
+      if(!cat.data)return reply({ok:false,error:"category_not_available"},409);
+      const record={name,description,price,compare_at_price:compare,
+        image_url:image||null,sort_order:order,active,available,
+        category_id:categoryId,updated_at:new Date().toISOString()};
+      const row=id
+        ?await admin.from("products").update(record).eq("id",id).select("id").single()
+        :await admin.from("products").insert({...record,
+           firebase_id:crypto.randomUUID()}).select("id").single();
+      fail(row.error);savedId=String(row.data?.id||"");
+    }else{
+      const collectionName=collection;
+      const documentId=id||crypto.randomUUID();
+      const old=await admin.from("app_documents").select("data")
+        .eq("collection_name",collectionName).eq("document_id",documentId).maybeSingle();
+      fail(old.error);
+      const previous=old.data?.data||{};
+      const now=new Date().toISOString();
+      const data={...previous,nome:name,name,descricao:description,description,
+        preco:price,price,ordem:order,
+        imagem:image,ativo:active,disponivel:available,pausado:!available,
+        atualizadoEm:now};
+      const variants=body.variant_prices&&typeof body.variant_prices==="object"
+        ?body.variant_prices:{};
+      if(collection==="cardapio_acai"){
+        for(const key of ["misto","origem","cupuacu","polpanorte"]){
+          if(variants[key]===undefined||variants[key]===null||variants[key]==="")continue;
+          const n=Number(variants[key]);
+          if(!Number.isFinite(n)||n<0||n>10000)
+            return reply({ok:false,error:"invalid_variant_price"},400);
+          data[key]=n;
+        }
+      }
+      const row=await admin.from("app_documents").upsert({
+        collection_name:collectionName,document_id:documentId,data,updated_at:now
+      },{onConflict:"collection_name,document_id"});
+      fail(row.error);savedId=documentId;
+    }
+    const version=await admin.from("catalog_version").select("version")
+      .eq("id",1).maybeSingle();
+    fail(version.error);
+    const change=await admin.from("catalog_version").upsert({
+      id:1,version:Number(version.data?.version||0)+1,updated_at:new Date().toISOString()
+    },{onConflict:"id"});
+    fail(change.error);
+    return reply({ok:true,id:savedId});
+  }
   if(action==="categories"){
     const r=await admin.from("categories").select("id,name,description,sort_order,active,metadata")
       .order("sort_order",{ascending:true}).limit(250);
