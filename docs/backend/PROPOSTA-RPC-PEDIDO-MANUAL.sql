@@ -52,7 +52,7 @@ BEGIN
         RAISE EXCEPTION 'invalid_payload';
     END IF;
     IF v_request !~
-       '^manual-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}
+       '^manual-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN
         RAISE EXCEPTION 'invalid_submission_id';
     END IF;
 
