@@ -29,8 +29,7 @@ class OrderPdfExporterTest {
     )
 
     @Test fun pdfHasStatusCustomerProductsAndNotFiscalText() {
-        val lines = OrderPdfExporter.receiptLines(sampleOrder()).joinToString("
-")
+        val lines = OrderPdfExporter.receiptLines(sampleOrder()).joinToString("\n")
         assertTrue(lines.contains("Cliente Teste"))
         assertTrue(lines.contains("Rua das Flores"))
         assertTrue(lines.contains("Açaí 1L"))
