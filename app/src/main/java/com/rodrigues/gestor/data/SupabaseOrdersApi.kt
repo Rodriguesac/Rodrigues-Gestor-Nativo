@@ -270,7 +270,11 @@ object SupabaseOrdersApi {
                 raw.put("numeroPedido", row.optString("order_code", raw.optString("numeroPedido")))
                 raw.put("tipoPedido", row.optString("fulfillment_type", raw.optString("tipoPedido")))
                 raw.put("customer_id", row.optString("customer_id"))
-                raw.put("courier_id", row.optString("courier_id"))
+                // JSONObject.NULL vira a string "null" em optString em algumas versões.
+                // Jamais interpretar essa string como motoboy realmente associado.
+                raw.put("courier_id",
+                    if (row.isNull("courier_id")) "" else row.optString("courier_id"))
+                raw.put("tracking_enabled", row.optBoolean("tracking_enabled", false))
                 raw.put("payment_status", row.optString("payment_status", "PENDENTE"))
                 raw.put("payment_method", row.optString("payment_method"))
                 raw.put("subtotal", row.optDouble("subtotal", raw.optDouble("subtotal", 0.0)))

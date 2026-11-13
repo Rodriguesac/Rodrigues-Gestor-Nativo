@@ -16,7 +16,9 @@ data class DeliveryProgress(
 ) {
     companion object {
         private fun normalized(v: Any?): String =
-            v?.toString()?.trim()?.uppercase(Locale.ROOT).orEmpty()
+            v?.toString()?.trim()?.uppercase(Locale.ROOT)
+                ?.takeUnless { it == "NULL" || it == "NONE" || it == "UNDEFINED" }
+                .orEmpty()
 
         fun from(order: Order): DeliveryProgress {
             if (order.pickup) return DeliveryProgress(
@@ -48,6 +50,8 @@ data class DeliveryProgress(
             )
             if (activeUp) {
                 val label = when {
+                    status in StatusGroups.DONE -> "UP • entrega concluída"
+                    status in StatusGroups.CANCELED -> "UP • entrega cancelada"
                     recall -> "UP • aguardando aceite"
                     upState == "OFFER_RECALLED" -> "UP • oferta recolhida"
                     upState in setOf("OFFER_ACCEPTED", "ACCEPTED") -> "UP • aceita"
@@ -71,6 +75,11 @@ data class DeliveryProgress(
                 }
                 return DeliveryProgress(label, detail, true, false, true, recall)
             }
+            if (upState == "OFFER_RECALLED") return DeliveryProgress(
+                "UP • oferta recolhida",
+                "A oferta anterior foi recolhida. Escolha outra forma de despacho.",
+                false, false, false, false
+            )
             return DeliveryProgress(
                 StatusGroups.label(status),
                 "Nenhuma oferta UP ou despacho próprio ativo neste pedido.",

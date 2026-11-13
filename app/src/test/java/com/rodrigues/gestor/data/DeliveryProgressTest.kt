@@ -62,6 +62,31 @@ class DeliveryProgressTest {
         assertFalse(progress.isUp)
     }
 
+    @Test fun nullTextMustNotBlockOwnOrUpDispatch() {
+        val progress = DeliveryProgress.from(delivery(raw = mapOf(
+            "courier_id" to "null", "up_target_courier_id" to "null",
+            "up_pickup_at" to "null", "up_state" to "null"
+        )))
+        assertFalse(progress.hasUpMission)
+    }
+
+    @Test fun completedUpMissionIsNotShownAsInProgress() {
+        val progress = DeliveryProgress.from(delivery(
+            status = "ENTREGUE", raw = mapOf("courier_id" to "assigned")
+        ))
+        assertEquals("UP • entrega concluída", progress.label)
+        assertFalse(progress.canRecallOffer)
+    }
+
+    @Test fun recalledOfferIsShownWithoutActiveMission() {
+        val progress = DeliveryProgress.from(delivery(
+            status = "AGUARDANDO_DECISAO_GESTOR",
+            raw = mapOf("up_state" to "OFFER_RECALLED")
+        ))
+        assertEquals("UP • oferta recolhida", progress.label)
+        assertFalse(progress.hasUpMission)
+    }
+
     @Test fun pickupIsNeverMarkedAsUpMission() {
         val progress = DeliveryProgress.from(delivery(
             pickup = true,
