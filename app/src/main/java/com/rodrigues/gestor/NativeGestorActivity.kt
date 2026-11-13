@@ -39,6 +39,9 @@ import com.rodrigues.gestor.data.GestorCredentials
 import com.rodrigues.gestor.data.OfflineOrderStore
 import com.rodrigues.gestor.data.OfflineOrderSyncWorker
 import com.rodrigues.gestor.data.NativeCatalogApi
+import com.rodrigues.gestor.data.NativeOperationsApi
+import com.rodrigues.gestor.data.StoreInfo
+import com.rodrigues.gestor.data.CourierChoice
 import com.rodrigues.gestor.data.CatalogItem
 import com.rodrigues.gestor.data.Order
 import com.rodrigues.gestor.data.StatusGroups
@@ -64,6 +67,10 @@ class NativeGestorActivity : ComponentActivity() {
     private var catalogError by mutableStateOf("")
     private var catalogBusy by mutableStateOf(false)
     private var catalogOwner by mutableStateOf(false)
+    private var storeInfo by mutableStateOf(StoreInfo())
+    private var storeLoading by mutableStateOf(false)
+    private var storeBusy by mutableStateOf(false)
+    private var storeError by mutableStateOf("")
     private var lastOrderSync by mutableLongStateOf(0L)
     private lateinit var offlineStore: OfflineOrderStore
     private var queuedActions by mutableIntStateOf(0)
@@ -86,12 +93,16 @@ class NativeGestorActivity : ComponentActivity() {
         offlineStore = OfflineOrderStore(this)
         orders.addAll(offlineStore.cachedOrders())
         catalog.addAll(NativeCatalogApi.cached(this))
+        storeInfo = NativeOperationsApi.cachedStore(this)
+        OfflineOrderSyncWorker.cancelLegacy(this)
         queuedActions = offlineStore.waiting().size
         conflictedActions = offlineStore.conflicts().size
         chosenOrder = intent?.getStringExtra(EXTRA_ORDER_ID)
         signedIn = GestorCredentials.load(this).length == 6
         setContent {
-            BackHandler(enabled = chosenOrder != null) { chosenOrder = null }
+            BackHandler(enabled = chosenOrder != null || section == 5) {
+                if (chosenOrder != null) chosenOrder = null else section = 4
+            }
             GestorTheme {
                 if (signedIn) {
                     NativeDashboard(
@@ -101,6 +112,10 @@ class NativeGestorActivity : ComponentActivity() {
                         catalogError = catalogError,
                         catalogBusy = catalogBusy,
                         catalogOwner = catalogOwner,
+                        storeInfo = storeInfo,
+                        storeLoading = storeLoading,
+                        storeBusy = storeBusy,
+                        storeError = storeError,
                         lastSync = lastOrderSync,
                         loading = loading,
                         error = connectionError,
@@ -121,6 +136,12 @@ class NativeGestorActivity : ComponentActivity() {
                         onBack = { chosenOrder = null },
                         onRetry = { startListening() },
                         onAction = ::updateOrder,
+                        onOwnDispatch = ::dispatchOwn,
+                        onStore = { section = 5; chosenOrder = null; refreshStore() },
+                        onStoreBack = { section = 4 },
+                        onStoreRefresh = ::refreshStore,
+                        onStoreOpen = ::setStoreOpen,
+                        onStoreSave = ::saveStoreSettings,
                         onCatalogRefresh = ::refreshCatalog,
                         onCatalogAvailability = ::updateCatalogAvailability,
                         onCatalogPrice = ::updateCatalogPrice,
@@ -134,11 +155,13 @@ class NativeGestorActivity : ComponentActivity() {
                         signedIn = true
                         connectionError = ""
                         startListening()
+                        refreshCatalog()
+                        refreshStore()
                     })
                 }
             }
         }
-        if (signedIn) startListening()
+        if (signedIn) { startListening(); refreshCatalog(); refreshStore() }
     }
 
     private fun requestNotifications() {
@@ -150,14 +173,12 @@ class NativeGestorActivity : ComponentActivity() {
     private fun startListening() {
         registered?.remove()
         loading = orders.isEmpty()
-        if (queuedActions > 0) OfflineOrderSyncWorker.schedule(this)
         registered = SupabaseOrdersApi.listenOrders(
             onData = {
                 offlineStore.storeOrders(it)
                 lastOrderSync = System.currentTimeMillis()
                 queuedActions = offlineStore.waiting().size
                 conflictedActions = offlineStore.conflicts().size
-                if (queuedActions > 0) OfflineOrderSyncWorker.schedule(this)
                 orders.clear()
                 orders.addAll(it)
                 loading = false
@@ -248,15 +269,69 @@ class NativeGestorActivity : ComponentActivity() {
         startActivity(Intent.createChooser(share, "Enviar cardápio ao cliente"))
     }
 
+
+    private fun refreshStore() {
+        if (storeLoading || storeBusy) return
+        storeLoading = true
+        storeError = ""
+        NativeOperationsApi.loadStore(this, onSuccess = {
+            storeInfo = it
+            storeLoading = false
+        }, onError = {
+            storeLoading = false
+            storeError = "Sem conexão: mostrando o último estado salvo. " + (it.message ?: "")
+        })
+    }
+
+    private fun setStoreOpen(open: Boolean) {
+        if (storeBusy) return
+        storeBusy = true
+        storeError = ""
+        NativeOperationsApi.setOpen(this, open, onSuccess = {
+            storeInfo = it
+            storeBusy = false
+        }, onError = {
+            storeBusy = false
+            storeError = "Não foi possível mudar o status da loja: " + (it.message ?: "")
+        })
+    }
+
+    private fun saveStoreSettings(minutes: Int, message: String) {
+        if (storeBusy) return
+        storeBusy = true
+        storeError = ""
+        NativeOperationsApi.saveSettings(this, minutes, message, onSuccess = {
+            storeInfo = it
+            storeBusy = false
+        }, onError = {
+            storeBusy = false
+            storeError = "Não foi possível salvar: " + (it.message ?: "")
+        })
+    }
+
+    private fun dispatchOwn(order: Order) {
+        if (pendingAction) return
+        pendingAction = true
+        connectionError = ""
+        NativeOperationsApi.dispatchOwn(order.id, onSuccess = {
+            pendingAction = false
+            chosenOrder = null
+            connectionError = "Despacho próprio confirmado pelo servidor."
+            startListening()
+        }, onError = {
+            pendingAction = false
+            connectionError = "Despacho NÃO confirmado: " + (it.message ?: "verifique conexão e status")
+        })
+    }
+
     private fun logout() {
-        if (offlineStore.waiting().isNotEmpty() || offlineStore.conflicts().isNotEmpty()) {
-            connectionError = "Existem alterações pendentes ou conflitos. Sincronize e resolva antes de sair."
-            return
-        }
+        // Pendências de versões antigas não são mais enviadas automaticamente.
         registered?.remove()
         registered = null
         offlineStore.clearAll()
         NativeCatalogApi.clear(this)
+        NativeOperationsApi.clear(this)
+        storeInfo = StoreInfo()
         catalog.clear()
         GestorCredentials.clear()
         stopService(Intent(this, GestorConnectionService::class.java))
@@ -354,6 +429,10 @@ private fun NativeDashboard(
     catalogError: String,
     catalogBusy: Boolean,
     catalogOwner: Boolean,
+    storeInfo: StoreInfo,
+    storeLoading: Boolean,
+    storeBusy: Boolean,
+    storeError: String,
     lastSync: Long,
     loading: Boolean,
     error: String,
@@ -369,6 +448,12 @@ private fun NativeDashboard(
     onBack: () -> Unit,
     onRetry: () -> Unit,
     onAction: (Order, String) -> Unit,
+    onOwnDispatch: (Order) -> Unit,
+    onStore: () -> Unit,
+    onStoreBack: () -> Unit,
+    onStoreRefresh: () -> Unit,
+    onStoreOpen: (Boolean) -> Unit,
+    onStoreSave: (Int, String) -> Unit,
     onCatalogRefresh: () -> Unit,
     onCatalogAvailability: (CatalogItem, Boolean) -> Unit,
     onCatalogPrice: (CatalogItem, Double) -> Unit,
@@ -384,18 +469,18 @@ private fun NativeDashboard(
                     Modifier.fillMaxWidth().height(62.dp).padding(horizontal = 16.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    if (selectedOrderId != null) {
-                        IconButton(onClick = onBack) {
+                    if (selectedOrderId != null || section == 5) {
+                        IconButton(onClick = if (section == 5 && selectedOrderId == null) onStoreBack else onBack) {
                             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Voltar")
                         }
                     }
                     Column(Modifier.weight(1f)) {
-                        Text(if (selected != null) "Pedido #${selected.number}" else "RODRIGUES • GESTOR 20",
+                        Text(if (selected != null) "Pedido #${selected.number}" else if (section == 5) "MINHA LOJA" else "RODRIGUES • GESTOR 20",
                             fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium, color = PurpleDeep)
                         Text(if (selected != null) "Detalhes e andamento" else if (lastSync > 0) "Pedidos salvos • atualização automática" else "Central de operações",
                             style = MaterialTheme.typography.labelSmall, color = Color.Gray)
                     }
-                    if (selectedOrderId == null) {
+                    if (selectedOrderId == null && section != 5) {
                         IconButton(onClick = onRetry) {
                             Icon(Icons.Default.Refresh, contentDescription = "Atualizar pedidos", tint = Purple)
                         }
@@ -413,7 +498,7 @@ private fun NativeDashboard(
                     Triple("Mais", Icons.Default.MoreHoriz, 4)
                 ).forEach { (title, icon, index) ->
                     NavigationBarItem(
-                        selected = section == index,
+                        selected = section == index || (section == 5 && index == 4),
                         onClick = { onSection(index) },
                         icon = { Icon(icon, contentDescription = title) },
                         label = { Text(title) }
@@ -425,7 +510,7 @@ private fun NativeDashboard(
         Column(Modifier.fillMaxSize().padding(pad)) {
             if (queuedActions > 0 || conflictedActions > 0) {
                 Surface(color = Color(0xFFFFF3E3), modifier = Modifier.fillMaxWidth()) {
-                    Text("No aparelho: $queuedActions aguardando sincronização • $conflictedActions conflitos", Modifier.padding(horizontal = 16.dp, vertical = 8.dp), color = Color(0xFF775115), style = MaterialTheme.typography.labelSmall)
+                    Text("$queuedActions ações legadas e $conflictedActions conflitos: envio automático desativado. Confira os pedidos no servidor.", Modifier.padding(horizontal = 16.dp, vertical = 8.dp), color = Color(0xFF775115), style = MaterialTheme.typography.labelSmall)
                 }
             }
             if (error.isNotBlank()) {
@@ -446,15 +531,19 @@ private fun NativeDashboard(
                 selected != null -> OrderDetails(
                     order = selected,
                     busy = busy,
-                    onAction = { action -> onAction(selected, action) }
+                    onAction = { action -> onAction(selected, action) },
+                    onOwnDispatch = { onOwnDispatch(selected) },
+                    onDispatchDone = onRetry
                 )
                 selectedOrderId != null -> EmptyScreen("Pedido não encontrado ou indisponível.")
-                section == 0 -> HomeScreen(orders, onSelect)
+                section == 0 -> HomeScreen(orders, storeInfo, onStore, onSelect)
                 section == 1 -> OrdersScreen(orders, filter, onFilter, onSelect, history = false)
                 section == 2 -> CatalogScreen(catalog, catalogLoading, catalogError, catalogBusy,
                     catalogOwner, onCatalogRefresh, onCatalogAvailability, onCatalogPrice, onShareCatalog)
                 section == 3 -> OrdersScreen(orders, filter, onFilter, onSelect, history = true)
-                else -> MoreScreen(onNotify, onLogout)
+                section == 5 -> StoreScreen(storeInfo, storeLoading, storeBusy, storeError,
+                    catalogOwner, onStoreRefresh, onStoreOpen, onStoreSave)
+                else -> MoreScreen(onNotify, onLogout, onStore)
             }
         }
     }
@@ -472,7 +561,9 @@ private fun bucket(order: Order): String = when (order.status.uppercase(Locale.R
 }
 
 @Composable
-private fun HomeScreen(orders: List<Order>, onSelect: (String) -> Unit) {
+private fun HomeScreen(
+    orders: List<Order>, storeInfo: StoreInfo, onStore: () -> Unit, onSelect: (String) -> Unit
+) {
     val active = orders.filter { bucket(it) !in setOf("Concluídos", "Cancelados") }
     LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
@@ -486,6 +577,25 @@ private fun HomeScreen(orders: List<Order>, onSelect: (String) -> Unit) {
                     Spacer(Modifier.height(5.dp))
                     Text("Acompanhe cada etapa dos seus pedidos.", color = Color(0xFFE8DCF2),
                         style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        }
+        item {
+            Card(colors = CardDefaults.cardColors(containerColor = Color.White),
+                modifier = Modifier.fillMaxWidth().clickable(onClick = onStore),
+                shape = RoundedCornerShape(18.dp)) {
+                Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Storefront, null,
+                        tint = if (storeInfo.loaded && storeInfo.open) Green else Amber)
+                    Spacer(Modifier.width(10.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("Minha loja", fontWeight = FontWeight.Bold)
+                        Text(if (!storeInfo.loaded) "Verificar status"
+                            else if (storeInfo.open) "Aberta • preparo " + storeInfo.prepMinutes + " min"
+                            else "Fechada", style = MaterialTheme.typography.labelSmall,
+                            color = if (storeInfo.loaded && storeInfo.open) Green else Amber)
+                    }
+                    Icon(Icons.Default.ChevronRight, null, tint = Purple)
                 }
             }
         }
@@ -600,9 +710,17 @@ private fun OrderCard(order: Order, onSelect: (String) -> Unit) {
 }
 
 @Composable
-private fun OrderDetails(order: Order, busy: Boolean, onAction: (String) -> Unit) {
+private fun OrderDetails(
+    order: Order, busy: Boolean, onAction: (String) -> Unit,
+    onOwnDispatch: () -> Unit, onDispatchDone: () -> Unit
+) {
     val context = LocalContext.current
     var printingError by remember(order.id) { mutableStateOf("") }
+    var showUp by remember(order.id) { mutableStateOf(false) }
+    var upLoading by remember(order.id) { mutableStateOf(false) }
+    var upBusy by remember(order.id) { mutableStateOf(false) }
+    var upError by remember(order.id) { mutableStateOf("") }
+    val upCouriers = remember(order.id) { mutableStateListOf<CourierChoice>() }
     val group = bucket(order)
     var confirmation by remember(order.id) { mutableStateOf<String?>(null) }
     val action: String? = when (group) {
@@ -618,7 +736,7 @@ private fun OrderDetails(order: Order, busy: Boolean, onAction: (String) -> Unit
         "EM_PREPARO" to "Iniciar preparo",
         "PRONTO" to "Marcar como pronto",
         "RETIRADO" to "Confirmar retirada",
-        "EM_ENTREGA" to "Despachar (entrega própria)",
+        "MANUAL_DISPATCH" to "Despachar (entrega própria)",
         "CONCLUIDO" to "Finalizar entrega"
     )
     LazyColumn(
@@ -718,16 +836,28 @@ private fun OrderDetails(order: Order, busy: Boolean, onAction: (String) -> Unit
         }
         if (group == "Prontos" && !order.pickup) item {
             Button(
-                onClick = { confirmation = "EM_ENTREGA" },
+                onClick = { confirmation = "MANUAL_DISPATCH" },
                 enabled = !busy,
                 modifier = Modifier.fillMaxWidth().height(54.dp)
-            ) { Text(labels["EM_ENTREGA"]!!) }
+            ) { Text(labels["MANUAL_DISPATCH"]!!) }
             Spacer(Modifier.height(8.dp))
             OutlinedButton(
-                onClick = {},
-                enabled = false,
+                onClick = {
+                    showUp = true
+                    upLoading = true
+                    upError = ""
+                    NativeOperationsApi.couriers(onSuccess = {
+                        upCouriers.clear()
+                        upCouriers.addAll(it)
+                        upLoading = false
+                    }, onError = {
+                        upLoading = false
+                        upError = "Falha ao consultar entregadores: " + (it.message ?: "")
+                    })
+                },
+                enabled = !busy,
                 modifier = Modifier.fillMaxWidth()
-            ) { Text("Despachar com UP • integração pendente") }
+            ) { Text("Despachar com UP Entregas") }
         }
     }
     confirmation?.let { target ->
@@ -736,7 +866,10 @@ private fun OrderDetails(order: Order, busy: Boolean, onAction: (String) -> Unit
             title = { Text("Confirmar alteração?") },
             text = { Text("Pedido #${order.number}: ${labels[target] ?: target}. O pedido será atualizado no sistema real.") },
             confirmButton = {
-                TextButton(onClick = { confirmation = null; onAction(target) }) { Text("Confirmar") }
+                TextButton(onClick = {
+                    confirmation = null
+                    if (target == "MANUAL_DISPATCH") onOwnDispatch() else onAction(target)
+                }) { Text("Confirmar") }
             },
             dismissButton = { TextButton(onClick = { confirmation = null }) { Text("Voltar") } }
         )
@@ -884,10 +1017,138 @@ private fun CatalogScreen(
             }) { Text("Salvar") } },
             dismissButton = { TextButton(onClick = { editing = null }) { Text("Cancelar") } })
     }
+    if (showUp) {
+        AlertDialog(
+            onDismissRequest = { if (!upBusy) showUp = false },
+            title = { Text("Solicitar UP Entregas") },
+            text = {
+                Column(Modifier.heightIn(max = 380.dp).verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("Escolha um entregador. A oferta só será enviada após confirmação no servidor; ele ainda precisará aceitar.",
+                        style = MaterialTheme.typography.bodySmall)
+                    if (upLoading || upBusy) LinearProgressIndicator(Modifier.fillMaxWidth())
+                    if (upError.isNotBlank()) Text(upError, color = RedAlert)
+                    if (!upLoading && upCouriers.isEmpty()) Text("Nenhum entregador encontrado.")
+                    upCouriers.forEach { courier ->
+                        Card(colors = CardDefaults.cardColors(containerColor =
+                            if (courier.available) Color(0xFFF1E8FF) else Color(0xFFF2F2F2))) {
+                            Row(Modifier.fillMaxWidth().clickable(enabled = courier.available && !upBusy) {
+                                upBusy = true
+                                upError = ""
+                                NativeOperationsApi.offerUp(order.id, courier.id, onSuccess = {
+                                    upBusy = false
+                                    showUp = false
+                                    onDispatchDone()
+                                }, onError = {
+                                    upBusy = false
+                                    upError = "Oferta não enviada: " + (it.message ?: "")
+                                })
+                            }.padding(13.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.DeliveryDining, null,
+                                    tint = if (courier.available) Purple else Color.Gray)
+                                Spacer(Modifier.width(10.dp))
+                                Column {
+                                    Text(courier.name, fontWeight = FontWeight.Bold)
+                                    Text(if (courier.available) "Disponível — tocar para enviar oferta"
+                                         else "Indisponível — " + courier.status,
+                                         style = MaterialTheme.typography.labelSmall,
+                                         color = if (courier.available) Green else Color.Gray)
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { showUp = false }, enabled = !upBusy) { Text("Voltar") } }
+        )
+    }
+
+}
+
+
+@Composable
+private fun StoreScreen(
+    info: StoreInfo, loading: Boolean, busy: Boolean, error: String, owner: Boolean,
+    onRefresh: () -> Unit, onSetOpen: (Boolean) -> Unit, onSave: (Int, String) -> Unit
+) {
+    var preparation by remember(info.prepMinutes, info.updatedAt) { mutableStateOf(info.prepMinutes.toString()) }
+    var message by remember(info.message, info.updatedAt) { mutableStateOf(info.message) }
+    var confirming by remember { mutableStateOf<Boolean?>(null) }
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        Text("Minha loja", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+        Text("Configurações sincronizadas com o site do cliente.", color = Color.Gray)
+        Card(colors = CardDefaults.cardColors(containerColor = Color.White),
+            shape = RoundedCornerShape(20.dp)) {
+            Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Storefront, null, tint = if (info.loaded && info.open) Green else Amber)
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("Funcionamento", fontWeight = FontWeight.Bold)
+                        Text(when {
+                            !info.loaded -> "Aguardando sincronização"
+                            info.open -> "Loja aberta • recebendo pedidos"
+                            else -> "Loja fechada"
+                        }, color = if (info.loaded && info.open) Green else Amber)
+                    }
+                    Switch(checked = info.open, enabled = owner && info.loaded && !busy && !loading,
+                        onCheckedChange = { confirming = it })
+                }
+                if (!owner) Text("Apenas o dono pode editar as configurações da loja.",
+                    style = MaterialTheme.typography.bodySmall, color = Color.Gray)
+                Text("Status exibido após confirmação no servidor.",
+                    style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+            }
+        }
+        Card(colors = CardDefaults.cardColors(containerColor = Color.White),
+            shape = RoundedCornerShape(20.dp)) {
+            Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("Prazo e comunicação", fontWeight = FontWeight.Bold,
+                    style = MaterialTheme.typography.titleMedium)
+                OutlinedTextField(value = preparation, onValueChange = {
+                    preparation = it.filter(Char::isDigit).take(3)
+                }, label = { Text("Prazo estimado de preparo em minutos") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    enabled = owner && !busy, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                OutlinedTextField(value = message, onValueChange = { message = it.take(500) },
+                    label = { Text("Aviso exibido aos clientes") },
+                    enabled = owner && !busy, modifier = Modifier.fillMaxWidth(), minLines = 2)
+                Button(onClick = {
+                    val minutes = preparation.toIntOrNull()
+                    if (minutes != null && minutes in 1..180) onSave(minutes, message)
+                }, enabled = owner && !busy && !loading &&
+                    (preparation.toIntOrNull()?.let { it in 1..180 } == true),
+                    modifier = Modifier.fillMaxWidth()) {
+                    Text(if (busy) "Salvando…" else "Salvar configurações")
+                }
+            }
+        }
+        if (loading || busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+        if (error.isNotBlank()) Text(error, color = RedAlert)
+        OutlinedButton(onClick = onRefresh, enabled = !loading && !busy,
+            modifier = Modifier.fillMaxWidth()) {
+            Icon(Icons.Default.Refresh, null)
+            Spacer(Modifier.width(8.dp))
+            Text("Atualizar dados da loja")
+        }
+        Text("Offline: a tela mostra o último status salvo. Mudanças só podem ser confirmadas online.",
+            style = MaterialTheme.typography.bodySmall, color = Color.Gray)
+    }
+    confirming?.let { next ->
+        AlertDialog(onDismissRequest = { confirming = null },
+            title = { Text(if (next) "Abrir a loja?" else "Fechar a loja?") },
+            text = { Text("Isso muda a disponibilidade de pedidos no site Rodrigues Açaí e Cia.") },
+            confirmButton = { TextButton(onClick = {
+                confirming = null
+                onSetOpen(next)
+            }) { Text("Confirmar") } },
+            dismissButton = { TextButton(onClick = { confirming = null }) { Text("Cancelar") } })
+    }
 }
 
 @Composable
-private fun MoreScreen(onNotify: () -> Unit, onLogout: () -> Unit) {
+private fun MoreScreen(onNotify: () -> Unit, onLogout: () -> Unit, onStore: () -> Unit) {
     val context = LocalContext.current
     var player by remember { mutableStateOf<MediaPlayer?>(null) }
     var ringEnabled by remember { mutableStateOf(AlertPreferences.enabled(context)) }
@@ -915,6 +1176,15 @@ private fun MoreScreen(onNotify: () -> Unit, onLogout: () -> Unit) {
     ) {
         Text("Ferramentas e ajustes", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
         Text("Personalize os avisos, permissões e recursos do aplicativo.", color = Color.Gray)
+        Card(colors = CardDefaults.cardColors(containerColor = Color.White)) {
+            ListItem(
+                headlineContent = { Text("Minha loja", fontWeight = FontWeight.Bold) },
+                supportingContent = { Text("Abrir ou fechar, prazo e aviso aos clientes") },
+                leadingContent = { Icon(Icons.Default.Storefront, null, tint = Purple) },
+                trailingContent = { Icon(Icons.Default.ChevronRight, null) },
+                modifier = Modifier.clickable(onClick = onStore)
+            )
+        }
         Card(colors = CardDefaults.cardColors(containerColor = Color.White)) {
             Column(Modifier.padding(16.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
