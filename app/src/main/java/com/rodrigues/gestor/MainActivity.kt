@@ -90,7 +90,9 @@ class MainActivity : ComponentActivity() {
 
         NotificationHelper.createChannels(this)
         requestNotificationsIfNeeded()
-        FirebaseMessaging.getInstance().token.addOnSuccessListener(DeviceRegistrar::register)
+        FirebaseMessaging.getInstance().token.addOnSuccessListener { token ->
+            DeviceRegistrar.register(this, token)
+        }
         GestorConnectionService.start(this)
 
         val view = WebView(this)
