@@ -38,6 +38,8 @@ import com.rodrigues.gestor.R
 import com.rodrigues.gestor.data.GestorCredentials
 import com.rodrigues.gestor.data.OfflineOrderStore
 import com.rodrigues.gestor.data.OfflineOrderSyncWorker
+import com.rodrigues.gestor.data.NativeCatalogApi
+import com.rodrigues.gestor.data.CatalogItem
 import com.rodrigues.gestor.data.Order
 import com.rodrigues.gestor.data.StatusGroups
 import com.rodrigues.gestor.data.SupabaseOrdersApi
@@ -55,6 +57,12 @@ import java.util.Locale
 class NativeGestorActivity : ComponentActivity() {
     private var registered: ListenerRegistration? = null
     private val orders = mutableStateListOf<Order>()
+    private val catalog = mutableStateListOf<CatalogItem>()
+    private var catalogLoading by mutableStateOf(false)
+    private var catalogError by mutableStateOf("")
+    private var catalogBusy by mutableStateOf(false)
+    private var catalogOwner by mutableStateOf(false)
+    private var lastOrderSync by mutableLongStateOf(0L)
     private lateinit var offlineStore: OfflineOrderStore
     private var queuedActions by mutableIntStateOf(0)
     private var conflictedActions by mutableIntStateOf(0)
@@ -75,6 +83,7 @@ class NativeGestorActivity : ComponentActivity() {
         NotificationHelper.createChannels(this)
         offlineStore = OfflineOrderStore(this)
         orders.addAll(offlineStore.cachedOrders())
+        catalog.addAll(NativeCatalogApi.cached(this))
         queuedActions = offlineStore.waiting().size
         conflictedActions = offlineStore.conflicts().size
         chosenOrder = intent?.getStringExtra(EXTRA_ORDER_ID)
@@ -85,6 +94,12 @@ class NativeGestorActivity : ComponentActivity() {
                 if (signedIn) {
                     NativeDashboard(
                         orders = orders,
+                        catalog = catalog,
+                        catalogLoading = catalogLoading,
+                        catalogError = catalogError,
+                        catalogBusy = catalogBusy,
+                        catalogOwner = catalogOwner,
+                        lastSync = lastOrderSync,
                         loading = loading,
                         error = connectionError,
                         busy = pendingAction,
@@ -93,12 +108,21 @@ class NativeGestorActivity : ComponentActivity() {
                         selectedOrderId = chosenOrder,
                         section = section,
                         filter = tab,
-                        onSection = { section = it; chosenOrder = null; tab = "Todos" },
+                        onSection = {
+                            section = it
+                            chosenOrder = null
+                            tab = "Todos"
+                            if (it == 2) refreshCatalog()
+                        },
                         onFilter = { tab = it },
                         onSelect = { chosenOrder = it },
                         onBack = { chosenOrder = null },
                         onRetry = { startListening() },
                         onAction = ::updateOrder,
+                        onCatalogRefresh = ::refreshCatalog,
+                        onCatalogAvailability = ::updateCatalogAvailability,
+                        onCatalogPrice = ::updateCatalogPrice,
+                        onShareCatalog = ::shareCatalog,
                         onLogout = ::logout,
                         onNotify = ::requestNotifications
                     )
@@ -128,6 +152,7 @@ class NativeGestorActivity : ComponentActivity() {
         registered = SupabaseOrdersApi.listenOrders(
             onData = {
                 offlineStore.storeOrders(it)
+                lastOrderSync = System.currentTimeMillis()
                 queuedActions = offlineStore.waiting().size
                 conflictedActions = offlineStore.conflicts().size
                 if (queuedActions > 0) OfflineOrderSyncWorker.schedule(this)
@@ -149,25 +174,76 @@ class NativeGestorActivity : ComponentActivity() {
         )
     }
 
+    /** Mudanças de pedido exigem confirmação online; o cache local é somente leitura. */
     private fun updateOrder(order: Order, action: String) {
         if (pendingAction) return
         pendingAction = true
-        try {
-            if (!offlineStore.enqueue(order.id, action, order.status)) {
-                connectionError = "Este pedido já possui uma alteração pendente. Verifique antes de continuar."
-                return
+        connectionError = ""
+        SupabaseOrdersApi.updateStatus(order.id, action,
+            onDone = {
+                pendingAction = false
+                chosenOrder = null
+                section = 1
+                OrderRingService.stop(this)
+                connectionError = "Pedido atualizado e confirmado pelo servidor."
+                startListening()
+            },
+            onError = { error ->
+                pendingAction = false
+                connectionError = "Não foi possível confirmar a ação. O pedido continua salvo no celular. Confira a conexão e tente novamente: " +
+                    (error.message ?: "falha de rede")
             }
-            queuedActions = offlineStore.waiting().size
-            conflictedActions = offlineStore.conflicts().size
-            chosenOrder = null
-            section = 1
-            connectionError = "Alteração salva no celular. Aguardando confirmação do servidor."
-            OfflineOrderSyncWorker.schedule(this)
-        } catch (error: Throwable) {
-            connectionError = error.message ?: "Não foi possível salvar no dispositivo."
-        } finally {
-            pendingAction = false
+        )
+    }
+
+    private fun refreshCatalog() {
+        if (catalogLoading || catalogBusy) return
+        catalogLoading = true
+        catalogError = ""
+        NativeCatalogApi.load(this, onSuccess = { snapshot ->
+            catalog.clear()
+            catalog.addAll(snapshot.items)
+            catalogOwner = snapshot.canEdit
+            catalogLoading = false
+        }, onError = {
+            catalogLoading = false
+            catalogError = "Sem conexão: mostrando o último cardápio salvo. " + (it.message ?: "")
+        })
+    }
+
+    private fun updateCatalogAvailability(item: CatalogItem, available: Boolean) {
+        if (catalogBusy) return
+        catalogBusy = true
+        catalogError = ""
+        NativeCatalogApi.setAvailability(item, available, onSuccess = {
+            catalogBusy = false
+            refreshCatalog()
+        }, onError = {
+            catalogBusy = false
+            catalogError = "Alteração não confirmada pelo servidor: " + (it.message ?: "verifique a conexão")
+        })
+    }
+
+    private fun updateCatalogPrice(item: CatalogItem, newPrice: Double) {
+        if (catalogBusy) return
+        catalogBusy = true
+        catalogError = ""
+        NativeCatalogApi.setProductPrice(item, newPrice, onSuccess = {
+            catalogBusy = false
+            refreshCatalog()
+        }, onError = {
+            catalogBusy = false
+            catalogError = "Preço não foi alterado: " + (it.message ?: "verifique a conexão")
+        })
+    }
+
+    private fun shareCatalog() {
+        val share = Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(Intent.EXTRA_TEXT,
+                "Confira nosso cardápio e faça seu pedido na Rodrigues Açaí e Cia: https://rodriguesacaiecia.web.app")
         }
+        startActivity(Intent.createChooser(share, "Enviar cardápio ao cliente"))
     }
 
     private fun logout() {
@@ -178,6 +254,8 @@ class NativeGestorActivity : ComponentActivity() {
         registered?.remove()
         registered = null
         offlineStore.clearAll()
+        NativeCatalogApi.clear(this)
+        catalog.clear()
         GestorCredentials.clear()
         stopService(Intent(this, GestorConnectionService::class.java))
         OrderRingService.stop(this)
@@ -206,7 +284,11 @@ class NativeGestorActivity : ComponentActivity() {
     }
 }
 
-private val Purple = Color(0xFF6330A0)
+private val Purple = Color(0xFF632CA6)
+private val PurpleDeep = Color(0xFF42146F)
+private val Amber = Color(0xFFBE731C)
+private val RedAlert = Color(0xFFCC3C4A)
+private val Blue = Color(0xFF257BAA)
 private val Green = Color(0xFF087F62)
 private val Canvas = Color(0xFFF6F6FA)
 
@@ -265,6 +347,12 @@ private fun OperatorLogin(error: String, onSubmit: (String) -> Unit) {
 @Composable
 private fun NativeDashboard(
     orders: List<Order>,
+    catalog: List<CatalogItem>,
+    catalogLoading: Boolean,
+    catalogError: String,
+    catalogBusy: Boolean,
+    catalogOwner: Boolean,
+    lastSync: Long,
     loading: Boolean,
     error: String,
     busy: Boolean,
@@ -279,6 +367,10 @@ private fun NativeDashboard(
     onBack: () -> Unit,
     onRetry: () -> Unit,
     onAction: (Order, String) -> Unit,
+    onCatalogRefresh: () -> Unit,
+    onCatalogAvailability: (CatalogItem, Boolean) -> Unit,
+    onCatalogPrice: (CatalogItem, Double) -> Unit,
+    onShareCatalog: () -> Unit,
     onLogout: () -> Unit,
     onNotify: () -> Unit
 ) {
@@ -296,9 +388,9 @@ private fun NativeDashboard(
                         }
                     }
                     Column(Modifier.weight(1f)) {
-                        Text(if (selected != null) "Pedido #${selected.number}" else "Rodrigues Gestor 20",
-                            fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
-                        Text(if (selected != null) "Acompanhamento do pedido" else "Operação em tempo real",
+                        Text(if (selected != null) "Pedido #${selected.number}" else "RODRIGUES • GESTOR 20",
+                            fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium, color = PurpleDeep)
+                        Text(if (selected != null) "Detalhes e andamento" else if (lastSync > 0) "Pedidos salvos • atualização automática" else "Central de operações",
                             style = MaterialTheme.typography.labelSmall, color = Color.Gray)
                     }
                     if (selectedOrderId == null) {
@@ -314,8 +406,9 @@ private fun NativeDashboard(
                 listOf(
                     Triple("Início", Icons.Default.Home, 0),
                     Triple("Pedidos", Icons.Default.List, 1),
-                    Triple("Histórico", Icons.Default.History, 2),
-                    Triple("Mais", Icons.Default.MoreHoriz, 3)
+                    Triple("Cardápio", Icons.Default.RestaurantMenu, 2),
+                    Triple("Histórico", Icons.Default.History, 3),
+                    Triple("Mais", Icons.Default.MoreHoriz, 4)
                 ).forEach { (title, icon, index) ->
                     NavigationBarItem(
                         selected = section == index,
@@ -340,6 +433,13 @@ private fun NativeDashboard(
                 }
             }
             if (loading) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+            if (orders.isNotEmpty() && error.contains("conexão", true)) {
+                Surface(color = Color(0xFFF1EBFA), modifier = Modifier.fillMaxWidth()) {
+                    Text("Pedidos já recebidos disponíveis no aparelho, mesmo sem internet.",
+                        Modifier.padding(horizontal = 16.dp, vertical = 9.dp), color = PurpleDeep,
+                        style = MaterialTheme.typography.labelSmall)
+                }
+            }
             when {
                 selected != null -> OrderDetails(
                     order = selected,
@@ -349,7 +449,9 @@ private fun NativeDashboard(
                 selectedOrderId != null -> EmptyScreen("Pedido não encontrado ou indisponível.")
                 section == 0 -> HomeScreen(orders, onSelect)
                 section == 1 -> OrdersScreen(orders, filter, onFilter, onSelect, history = false)
-                section == 2 -> OrdersScreen(orders, filter, onFilter, onSelect, history = true)
+                section == 2 -> CatalogScreen(catalog, catalogLoading, catalogError, catalogBusy,
+                    catalogOwner, onCatalogRefresh, onCatalogAvailability, onCatalogPrice, onShareCatalog)
+                section == 3 -> OrdersScreen(orders, filter, onFilter, onSelect, history = true)
                 else -> MoreScreen(onNotify, onLogout)
             }
         }
@@ -372,15 +474,33 @@ private fun HomeScreen(orders: List<Order>, onSelect: (String) -> Unit) {
     val active = orders.filter { bucket(it) !in setOf("Concluídos", "Cancelados") }
     LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
-            Text("Sua operação", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-            Spacer(Modifier.height(4.dp))
-            Text("Tudo o que precisa de atenção agora.", color = Color.Gray)
+            Surface(color = PurpleDeep, shape = RoundedCornerShape(22.dp), modifier = Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(22.dp)) {
+                    Text("CENTRAL DE OPERAÇÕES", color = Color(0xFFE5D0FA),
+                        style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(6.dp))
+                    Text("Tudo sob controle.", color = Color.White, fontWeight = FontWeight.Bold,
+                        style = MaterialTheme.typography.headlineMedium)
+                    Spacer(Modifier.height(5.dp))
+                    Text("Acompanhe cada etapa dos seus pedidos.", color = Color(0xFFE8DCF2),
+                        style = MaterialTheme.typography.bodySmall)
+                }
+            }
         }
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(9.dp)) {
-                MetricCard("Novos", orders.count { bucket(it) == "Novos" }, Purple, Modifier.weight(1f))
-                MetricCard("Preparo", orders.count { bucket(it) == "Preparo" }, Green, Modifier.weight(1f))
-                MetricCard("Prontos", orders.count { bucket(it) == "Prontos" }, Color(0xFFB26612), Modifier.weight(1f))
+                MetricCard("Novos", orders.count { bucket(it) == "Novos" }, Amber, Modifier.weight(1f))
+                MetricCard("Preparo", orders.count { bucket(it) == "Preparo" }, Blue, Modifier.weight(1f))
+                MetricCard("Prontos", orders.count { bucket(it) == "Prontos" }, Green, Modifier.weight(1f))
+            }
+        }
+        item {
+            Row(horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+                MetricCard("Aceitos", orders.count { bucket(it) == "Aceitos" }, Purple, Modifier.weight(1f))
+                MetricCard("Entrega", orders.count { bucket(it) == "Entrega" }, Blue, Modifier.weight(1f))
+                MetricCard("Atenção", orders.count {
+                    bucket(it) == "Novos" && System.currentTimeMillis() - it.createdMillis > 180_000L
+                }, RedAlert, Modifier.weight(1f))
             }
         }
         item { Text("Pedidos em andamento", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium) }
@@ -449,8 +569,19 @@ private fun OrderCard(order: Order, onSelect: (String) -> Unit) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("#${order.number}", fontWeight = FontWeight.Bold, color = Purple)
                 Spacer(Modifier.weight(1f))
-                Text(bucket(order), color = if (bucket(order) == "Novos") Purple else Green,
-                    style = MaterialTheme.typography.labelMedium)
+                val (statusColor, statusBg) = when (bucket(order)) {
+                    "Novos" -> Amber to Color(0xFFFFF1D9)
+                    "Aceitos" -> Purple to Color(0xFFF1E8FF)
+                    "Preparo" -> Blue to Color(0xFFE6F3FC)
+                    "Prontos" -> Green to Color(0xFFE5F6EE)
+                    "Cancelados" -> RedAlert to Color(0xFFFFE8E9)
+                    else -> Green to Color(0xFFE5F6EE)
+                }
+                Surface(color = statusBg, shape = RoundedCornerShape(100.dp)) {
+                    Text(bucket(order), modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp),
+                        color = statusColor, fontWeight = FontWeight.Bold,
+                        style = MaterialTheme.typography.labelSmall)
+                }
             }
             Text(order.clientName, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.titleMedium)
             Text(order.items.firstOrNull()?.let { "${it.quantity}× ${it.name}" } ?: "Ver itens do pedido",
@@ -563,6 +694,149 @@ private fun OrderDetails(order: Order, busy: Boolean, onAction: (String) -> Unit
     }
 }
 
+
+@Composable
+private fun CatalogScreen(
+    catalog: List<CatalogItem>,
+    loading: Boolean,
+    error: String,
+    busy: Boolean,
+    canEdit: Boolean,
+    onRefresh: () -> Unit,
+    onAvailability: (CatalogItem, Boolean) -> Unit,
+    onPrice: (CatalogItem, Double) -> Unit,
+    onShare: () -> Unit
+) {
+    val groups = listOf(
+        "products" to "Produtos", "bases" to "Bases", "cardapio_acai" to "Tamanhos",
+        "acompanhamentos_gratis" to "Grátis", "adicionais" to "Adicionais",
+        "coberturas" to "Coberturas", "utensilios" to "Utensílios"
+    )
+    var group by remember { mutableStateOf("products") }
+    var search by remember { mutableStateOf("") }
+    var confirming by remember { mutableStateOf<Pair<CatalogItem, Boolean>?>(null) }
+    var editing by remember { mutableStateOf<CatalogItem?>(null) }
+    var newPrice by remember { mutableStateOf("") }
+    val visible = catalog.filter {
+        it.collection == group && it.name.contains(search.trim(), ignoreCase = true)
+    }
+    Column(Modifier.fillMaxSize()) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("Cardápio", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.headlineSmall)
+                Text("Controle produtos e ingredientes", color = Color.Gray,
+                    style = MaterialTheme.typography.bodySmall)
+            }
+            IconButton(onClick = onRefresh, enabled = !loading && !busy) {
+                Icon(Icons.Default.Refresh, contentDescription = "Atualizar cardápio", tint = Purple)
+            }
+        }
+        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            OutlinedButton(onClick = onShare, modifier = Modifier.weight(1f)) {
+                Icon(Icons.Default.Share, null)
+                Spacer(Modifier.width(8.dp))
+                Text("Enviar cardápio ao cliente")
+            }
+        }
+        Spacer(Modifier.height(10.dp))
+        androidx.compose.foundation.lazy.LazyRow(contentPadding = PaddingValues(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            items(groups) { (key, title) ->
+                FilterChip(selected = key == group, onClick = { group = key },
+                    label = { Text(title) })
+            }
+        }
+        OutlinedTextField(
+            value = search, onValueChange = { search = it },
+            label = { Text("Buscar produto ou ingrediente") },
+            leadingIcon = { Icon(Icons.Default.Search, null) },
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+            singleLine = true, shape = RoundedCornerShape(16.dp)
+        )
+        if (loading || busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+        if (error.isNotBlank()) {
+            Text(error, Modifier.padding(16.dp), color = RedAlert,
+                style = MaterialTheme.typography.bodySmall)
+        }
+        LazyColumn(contentPadding = PaddingValues(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            if (visible.isEmpty()) item {
+                EmptyScreen(if (loading) "Carregando cardápio…" else
+                    "Nenhum item nesta categoria. Se estiver offline, os itens já recebidos continuam disponíveis.")
+            }
+            items(visible, key = { it.collection + ":" + it.id }) { item ->
+                Card(colors = CardDefaults.cardColors(containerColor = Color.White),
+                    shape = RoundedCornerShape(18.dp)) {
+                    Column(Modifier.fillMaxWidth().padding(14.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Surface(color = if (item.forSale) Color(0xFFE6F7EE) else Color(0xFFFFE8E9),
+                                shape = RoundedCornerShape(12.dp)) {
+                                Icon(if (item.forSale) Icons.Default.CheckCircle else Icons.Default.PauseCircle,
+                                    null, Modifier.padding(10.dp), tint = if (item.forSale) Green else RedAlert)
+                            }
+                            Spacer(Modifier.width(12.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(item.name, fontWeight = FontWeight.Bold,
+                                    style = MaterialTheme.typography.titleSmall)
+                                Text(if (item.forSale) "Disponível" else "Pausado",
+                                    color = if (item.forSale) Green else RedAlert,
+                                    style = MaterialTheme.typography.labelSmall)
+                                if (item.price > 0) Text(money(item.price), color = Purple,
+                                    fontWeight = FontWeight.Bold)
+                            }
+                            if (canEdit) Switch(
+                                checked = item.forSale,
+                                enabled = !busy && !loading,
+                                onCheckedChange = { confirming = item to it }
+                            )
+                        }
+                        if (item.description.isNotBlank()) Text(item.description,
+                            style = MaterialTheme.typography.bodySmall, color = Color.Gray,
+                            maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        if (canEdit && item.collection == "products") {
+                            TextButton(onClick = { editing = item; newPrice = String.format(Locale.US, "%.2f", item.price) },
+                                enabled = !busy) { Text("Alterar preço") }
+                        }
+                    }
+                }
+            }
+            item {
+                Text("Mudanças só aparecem como concluídas após a confirmação do servidor.",
+                    style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+            }
+        }
+    }
+    confirming?.let { (item, available) ->
+        AlertDialog(onDismissRequest = { confirming = null },
+            title = { Text(if (available) "Ativar item?" else "Pausar item?") },
+            text = { Text(item.name + " — essa mudança será refletida no cardápio da loja.") },
+            confirmButton = { TextButton(onClick = {
+                confirming = null
+                onAvailability(item, available)
+            }) { Text("Confirmar") } },
+            dismissButton = { TextButton(onClick = { confirming = null }) { Text("Voltar") } })
+    }
+    editing?.let { item ->
+        AlertDialog(onDismissRequest = { editing = null },
+            title = { Text("Preço de " + item.name) },
+            text = {
+                OutlinedTextField(value = newPrice, onValueChange = { newPrice = it },
+                    label = { Text("Preço em reais") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
+            },
+            confirmButton = { TextButton(onClick = {
+                val value = newPrice.trim().replace(',', '.').toDoubleOrNull()
+                if (value != null && value.isFinite() && value in 0.0..10000.0) {
+                    editing = null
+                    onPrice(item, value)
+                }
+            }) { Text("Salvar") } },
+            dismissButton = { TextButton(onClick = { editing = null }) { Text("Cancelar") } })
+    }
+}
+
 @Composable
 private fun MoreScreen(onNotify: () -> Unit, onLogout: () -> Unit) {
     val context = LocalContext.current
@@ -574,8 +848,8 @@ private fun MoreScreen(onNotify: () -> Unit, onLogout: () -> Unit) {
         }
     }
     val sounds = listOf(
-        Triple("Novo pedido", "Campainha persistente", R.raw.old_phone),
-        Triple("Aguardando aceite", "Chamada de atenção", R.raw.old_phone),
+        Triple("Novo pedido", "Toque Nokia escolhido", R.raw.old_phone),
+        Triple("Aguardando aceite", "Toque Nokia escolhido", R.raw.old_phone),
         Triple("Pedido atrasado", "Alerta forte", R.raw.alert_strong),
         Triple("Mensagem do cliente", "Campainha leve", R.raw.chime),
         Triple("Negociação / alteração", "Telefone de atenção", R.raw.old_phone),
@@ -587,7 +861,8 @@ private fun MoreScreen(onNotify: () -> Unit, onLogout: () -> Unit) {
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Text("Mais opções", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+        Text("Ferramentas e ajustes", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+        Text("Personalize os avisos, permissões e recursos do aplicativo.", color = Color.Gray)
         Text("Sons próprios do Gestor 20", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
         Text("Cada situação usa um som adequado. Toque para ouvir a prévia.",
             style = MaterialTheme.typography.bodySmall, color = Color.Gray)
@@ -632,7 +907,7 @@ private fun MoreScreen(onNotify: () -> Unit, onLogout: () -> Unit) {
                 modifier = Modifier.clickable(onClick = onLogout)
             )
         }
-        Text("Ajustes específicos do volume e da permissão de cada canal continuam disponíveis nas configurações do Android.",
+        Text("O toque de pedidos será incorporado nesta versão. Volume e permissões dependem das configurações do Android.",
             style = MaterialTheme.typography.bodySmall, color = Color.Gray)
     }
 }
