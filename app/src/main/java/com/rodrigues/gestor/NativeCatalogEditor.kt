@@ -27,6 +27,7 @@ import coil.compose.AsyncImage
 import com.rodrigues.gestor.data.CATALOG_GROUPS
 import com.rodrigues.gestor.data.CatalogDraft
 import com.rodrigues.gestor.data.NativeMediaApi
+import com.rodrigues.gestor.data.NativeOwnerExtrasApi
 
 /** Editor verdadeiro: criação, foto, descrição, posição, disponibilidade e preços por base. */
 @Composable
@@ -43,6 +44,32 @@ internal fun NativeCatalogEditor(
     var imageError by remember { mutableStateOf("") }
     var validation by remember { mutableStateOf("") }
     var chooseGroup by remember { mutableStateOf(false) }
+    var chooseCategory by remember { mutableStateOf(false) }
+    var categories by remember { mutableStateOf<List<Pair<String,String>>>(emptyList()) }
+    var categoriesError by remember { mutableStateOf("") }
+    LaunchedEffect(initial.id, initial.collection) {
+        NativeOwnerExtrasApi.catalogStructure(onSuccess = { response ->
+            val rows = response.optJSONArray("categories")
+            val all = mutableListOf<Pair<String,String>>()
+            if (rows != null) for (i in 0 until rows.length()) {
+                val row = rows.optJSONObject(i) ?: continue
+                if (row.optBoolean("active",true))
+                    all.add(row.optString("id") to row.optString("name"))
+            }
+            categories = all
+            if (initial.collection == "products" && initial.id.isNotBlank()) {
+                val products = response.optJSONArray("products")
+                if (products != null) for (i in 0 until products.length()) {
+                    val row = products.optJSONObject(i) ?: continue
+                    if (row.optString("id") == initial.id) {
+                        draft = draft.copy(categoryId = row.optString("category_id"))
+                        break
+                    }
+                }
+            }
+        }, onError = { categoriesError = "Não foi possível carregar categorias: " +
+                (it.message ?: "sem conexão") })
+    }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null) {
             uploading = true
@@ -87,6 +114,27 @@ internal fun NativeCatalogEditor(
                                 })
                             }
                         }
+                    }
+                    if (draft.collection == "products") {
+                        Text("Categoria do site *", fontWeight = FontWeight.SemiBold)
+                        Box {
+                            OutlinedButton(onClick = { chooseCategory = true },
+                                enabled = categories.isNotEmpty() && !busy) {
+                                Text(categories.firstOrNull { it.first == draft.categoryId }?.second
+                                    ?: "Selecionar categoria")
+                            }
+                            DropdownMenu(expanded = chooseCategory,
+                                onDismissRequest = { chooseCategory = false }) {
+                                categories.forEach { (id,name) ->
+                                    DropdownMenuItem(text = { Text(name) }, onClick = {
+                                        draft = draft.copy(categoryId = id)
+                                        chooseCategory = false
+                                    })
+                                }
+                            }
+                        }
+                        if (categoriesError.isNotBlank())
+                            Text(categoriesError,color=MaterialTheme.colorScheme.error)
                     }
                     OutlinedTextField(draft.name, { draft = draft.copy(name = it.take(160)) },
                         label = { Text("Nome do item *") }, singleLine = true,
