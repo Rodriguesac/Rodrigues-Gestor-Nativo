@@ -252,6 +252,8 @@ object SupabaseOrdersApi {
                 raw.put("numeroPedido", row.optString("order_code", raw.optString("numeroPedido")))
                 raw.put("tipoPedido", row.optString("fulfillment_type", raw.optString("tipoPedido")))
                 raw.put("customer_id", row.optString("customer_id"))
+                raw.put("courier_id", row.optString("courier_id"))
+                raw.put("payment_status", row.optString("payment_status"))
                 raw.put("subtotal", row.optDouble("subtotal", raw.optDouble("subtotal", 0.0)))
                 raw.put("frete", row.optDouble("delivery_fee", raw.optDouble("frete", 0.0)))
                 raw.put("desconto", row.optDouble("discount", raw.optDouble("desconto", 0.0)))

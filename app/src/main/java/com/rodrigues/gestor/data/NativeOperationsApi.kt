@@ -110,6 +110,22 @@ object NativeOperationsApi {
             onSuccess = onSuccess, onError = onError)
     }
 
+    /**
+     * Avança status pela API canônica do Gestor20.
+     * O servidor impõe transições e impede avanço direto de corrida UP.
+     */
+    fun updateOrderStatus(orderId: String, status: String, onSuccess: () -> Unit,
+                          onError: (Throwable) -> Unit) {
+        if (status !in setOf("CONFIRMADO", "EM_PREPARO", "PRONTO", "CONCLUIDO")) {
+            onError(IllegalArgumentException("Transição não permitida pelo aplicativo."))
+            return
+        }
+        NativeCatalogApi.execute("update_order",
+            JSONObject().put("order_id", orderId)
+                .put("patch", JSONObject().put("status", status)),
+            onSuccess = { onSuccess() }, onError = onError)
+    }
+
     /** O backend valida status, motivo e bloqueia cancelamento com missão UP ativa. */
     fun cancelOrder(orderId: String, reason: String, onSuccess: () -> Unit,
                     onError: (Throwable) -> Unit) {

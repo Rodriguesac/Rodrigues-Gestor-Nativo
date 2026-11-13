@@ -265,21 +265,24 @@ class NativeGestorActivity : ComponentActivity() {
         if (pendingAction) return
         pendingAction = true
         connectionError = ""
-        SupabaseOrdersApi.updateStatus(order.id, action,
-            onDone = {
-                pendingAction = false
-                chosenOrder = null
-                section = 1
-                OrderRingService.stop(this)
-                connectionError = "Pedido atualizado e confirmado pelo servidor."
-                startListening()
-            },
-            onError = { error ->
-                pendingAction = false
-                connectionError = "Não foi possível confirmar a ação. O pedido continua salvo no celular. Confira a conexão e tente novamente: " +
-                    (error.message ?: "falha de rede")
-            }
-        )
+        val succeeded = {
+            pendingAction = false
+            chosenOrder = null
+            section = 1
+            OrderRingService.stop(this)
+            connectionError = "Alteração do pedido confirmada pelo servidor."
+            startListening()
+        }
+        val failed: (Throwable) -> Unit = { error ->
+            pendingAction = false
+            connectionError = "Não foi possível confirmar a ação. O pedido continua salvo para consulta. " +
+                (error.message ?: "Conferir conexão e estado atual do pedido.")
+        }
+        if (action == "RETIRADO") {
+            SupabaseOrdersApi.finishPickup(order.id, succeeded, failed)
+        } else {
+            NativeOperationsApi.updateOrderStatus(order.id, action, succeeded, failed)
+        }
     }
 
     private fun refreshCatalog() {
@@ -823,13 +826,25 @@ private fun OrderDetails(
     var upError by remember(order.id) { mutableStateOf("") }
     val upCouriers = remember(order.id) { mutableStateListOf<CourierChoice>() }
     val group = bucket(order)
+    val status = order.status.uppercase(Locale.ROOT)
+    val upState = order.raw["up_state"]?.toString().orEmpty().uppercase(Locale.ROOT)
+    val hasUpMission = !order.raw["courier_id"]?.toString().isNullOrBlank() ||
+        !order.raw["up_target_courier_id"]?.toString().isNullOrBlank() ||
+        !order.raw["up_pickup_at"]?.toString().isNullOrBlank() ||
+        upState in setOf("OFFER_PENDING", "OFFER_ACCEPTED", "ACCEPTED", "TO_STORE",
+            "AT_STORE", "TO_CUSTOMER", "AT_CUSTOMER")
+    val storeDispatch = order.raw["delivery_dispatch_mode"]?.toString() == "STORE"
+    val canChooseDispatch = !order.pickup && !hasUpMission &&
+        status in setOf("PRONTO", "AGUARDANDO_DECISAO_GESTOR", "BUSCANDO_ENTREGADOR")
+    val canOfferUp = !order.pickup && !hasUpMission &&
+        status in setOf("PRONTO", "AGUARDANDO_DECISAO_GESTOR", "BUSCANDO_ENTREGADOR", "AGUARDANDO_ENTREGADOR")
     var confirmation by remember(order.id) { mutableStateOf<String?>(null) }
     val action: String? = when (group) {
         "Novos" -> "CONFIRMADO"
         "Aceitos" -> "EM_PREPARO"
         "Preparo" -> "PRONTO"
         "Prontos" -> if (order.pickup) "RETIRADO" else null
-        "Entrega" -> "CONCLUIDO"
+        "Entrega" -> if (status == "EM_ENTREGA" && storeDispatch && !hasUpMission) "CONCLUIDO" else null
         else -> null
     }
     val labels = mapOf(
@@ -849,7 +864,12 @@ private fun OrderDetails(
                 Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("PEDIDO #${order.number}", color = Purple, fontWeight = FontWeight.Bold)
                     Text(order.clientName, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.headlineSmall)
-                    Text(group, color = Green)
+                    Text(group, color = when (group) {
+                        "Novos" -> Amber
+                        "Preparo" -> Blue
+                        "Cancelados" -> RedAlert
+                        else -> Green
+                    })
                     Text(if (order.pickup) "Retirada no local" else "Entrega", color = Color.Gray)
                     if (order.phone.isNotBlank()) Text("Telefone: ${order.phone}")
                     if (!order.pickup) Text("Endereço: ${order.address}")
@@ -957,14 +977,16 @@ private fun OrderDetails(
                 modifier = Modifier.fillMaxWidth().height(54.dp)
             ) { Text(if (busy) "Atualizando…" else labels[action] ?: "Confirmar") }
         }
-        if (group == "Prontos" && !order.pickup) item {
-            Button(
-                onClick = { confirmation = "MANUAL_DISPATCH" },
-                enabled = !busy,
-                modifier = Modifier.fillMaxWidth().height(54.dp)
-            ) { Text(labels["MANUAL_DISPATCH"]!!) }
-            Spacer(Modifier.height(8.dp))
-            OutlinedButton(
+        if (canChooseDispatch || canOfferUp) item {
+            if (canChooseDispatch) {
+                Button(
+                    onClick = { confirmation = "MANUAL_DISPATCH" },
+                    enabled = !busy,
+                    modifier = Modifier.fillMaxWidth().height(54.dp)
+                ) { Text(labels["MANUAL_DISPATCH"]!!) }
+                Spacer(Modifier.height(8.dp))
+            }
+            if (canOfferUp) OutlinedButton(
                 onClick = {
                     showUp = true
                     upLoading = true
