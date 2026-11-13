@@ -96,3 +96,18 @@ Implementações salvas na branch **feature/gestor20-completo-sem-apk**:
 - CI base da etapa anterior aprovado em `43492071662` (Kotlin, JUnit e nenhum APK). Última rodada com autenticação FCM e políticas de fluxo em `43493839198`: consultar resultado antes de declarar validada.
 
 **Ainda bloqueia o APK final:** teste no celular/emulador dos fluxos principais, impressão 58/80mm e PDF, teste de push com app aberto/fechado, som Nokia com economia de bateria, sessão e PIN, integração com UP com um entregador aprovado, pagamentos e reconciliação, cenário de perda/volta de internet, revisão de acesso de funcionários, assinatura e distribuição de release. Unidade Kotlin/CI verde não equivale a essa validação.
+
+## Rodada adicional — cancelamento UP e teste HTTP FCM (13/11/2026)
+
+- Cancelamento comum usa `update_order`; missão/oferta UP usa
+  `up_cancel_delivery`, com motivo de 5–500 caracteres e resposta
+  explícita `requires_support`. Casos encaminhados ao suporte não são
+  marcados pelo app como cancelados definitivamente.
+- Pedido no estado `CANCELAMENTO_EM_ANALISE` bloqueia nova tentativa.
+  Testes JVM cobrem missão aceita, oferta pendente e pedido encerrado.
+- Nova função FCM v2 validada em rede por GitHub Actions `43495421742`:
+  HTTP 401/401/403/405 em chamadas sem credencial válida.
+- Nenhum cadastro real v2 foi executado até esta etapa; produção legada
+  permanece ativa e sem alterações. Falta teste autenticado em aparelho.
+- CI Kotlin da última mudança está em `43495069262`:
+  verificar resultado antes de anunciar conclusão.
