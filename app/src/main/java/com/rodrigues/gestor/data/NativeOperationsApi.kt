@@ -137,6 +137,32 @@ object NativeOperationsApi {
             onSuccess = { onSuccess() }, onError = onError)
     }
 
+    data class UpCancellationOutcome(
+        val status: String,
+        val requiresSupport: Boolean,
+        val alreadyCancelled: Boolean
+    )
+
+    /** Pedido com motoboy ou oferta UP: cancelamento auditado pelo servidor. */
+    fun cancelUpDelivery(orderId: String, reason: String,
+                         onSuccess: (UpCancellationOutcome) -> Unit,
+                         onError: (Throwable) -> Unit) {
+        val clean = reason.trim()
+        if (clean.length !in 5..500) {
+            onError(IllegalArgumentException("Informe motivo de 5 a 500 caracteres."))
+            return
+        }
+        NativeCatalogApi.execute("up_cancel_delivery",
+            JSONObject().put("order_id", orderId).put("reason", clean),
+            onSuccess = { response ->
+                onSuccess(UpCancellationOutcome(
+                    status = response.optString("order_status"),
+                    requiresSupport = response.optBoolean("requires_support", false),
+                    alreadyCancelled = response.optBoolean("already_cancelled", false)
+                ))
+            }, onError = onError)
+    }
+
     /** O backend valida status, motivo e bloqueia cancelamento com missão UP ativa. */
     fun cancelOrder(orderId: String, reason: String, onSuccess: () -> Unit,
                     onError: (Throwable) -> Unit) {
