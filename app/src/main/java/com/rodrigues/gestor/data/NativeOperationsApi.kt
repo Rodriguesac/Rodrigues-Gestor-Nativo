@@ -103,6 +103,17 @@ object NativeOperationsApi {
         }, onError = onError)
     }
 
+    /**
+     * Recolhe apenas oferta que ainda aguarda aceite.
+     * A função UP do servidor também valida status e atualização concorrente.
+     */
+    fun recallUpOffer(orderId: String, onSuccess: () -> Unit,
+                      onError: (Throwable) -> Unit) {
+        NativeCatalogApi.execute("up_recall_offer",
+            JSONObject().put("order_id", orderId),
+            onSuccess = { onSuccess() }, onError = onError)
+    }
+
     fun offerUp(orderId: String, courierId: String,
                 onSuccess: (JSONObject) -> Unit, onError: (Throwable) -> Unit) {
         NativeCatalogApi.execute("up_offer_to_courier",
