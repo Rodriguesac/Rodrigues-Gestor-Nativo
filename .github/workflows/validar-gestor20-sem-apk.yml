@@ -47,6 +47,9 @@ jobs:
       - name: Compilar apenas Kotlin — sem gerar APK
         run: gradle :app:compileDebugKotlin --stacktrace --no-daemon
 
+      - name: Testar valores e validações de pedido manual (JVM)
+        run: gradle :app:testDebugUnitTest --stacktrace --no-daemon
+
       - name: Validar ausência de APK gerado
         run: |
           if find app/build/outputs/apk -name '*.apk' -print -quit 2>/dev/null | grep -q .; then
