@@ -1,0 +1,61 @@
+name: GERAR APK Gestor20 Administracao Android
+
+on:
+  push:
+    branches:
+      - feature/gestor20-completo-sem-apk
+    paths:
+      - "app/**"
+      - "scripts/patch-supabase-orders.py"
+      - ".github/workflows/gerar-gestor20-admin-apk.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gestor20-admin-apk-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Preparar SDK Android
+        run: |
+          set -euo pipefail
+          SDKROOT="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          SDKMANAGER="$SDKROOT/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$SDKMANAGER" ]; then SDKMANAGER="$SDKROOT/cmdline-tools/16.0/bin/sdkmanager"; fi
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" "platforms;android-36" "build-tools;35.0.0"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.13"
+      - name: Preparar integração existente
+        run: python3 scripts/patch-supabase-orders.py
+      - name: Testes Kotlin e regras de negócio
+        run: gradle :app:testDebugUnitTest --stacktrace --no-daemon
+      - name: Gerar APK Android de avaliação (instala ao lado do Gestor atual)
+        run: gradle :app:assembleDebug --stacktrace --no-daemon
+      - name: Validar e renomear APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s app/build/outputs/apk/debug/app-debug.apk
+          mkdir -p dist
+          cp app/build/outputs/apk/debug/app-debug.apk dist/RODRIGUES-GESTOR20-ADMIN-TESTE.apk
+          unzip -t dist/RODRIGUES-GESTOR20-ADMIN-TESTE.apk | tail -n 2
+          sha256sum dist/RODRIGUES-GESTOR20-ADMIN-TESTE.apk > dist/sha256.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Gestor20-Administrador-Android-TESTE
+          path: dist/*
+          retention-days: 30
+          if-no-files-found: error
