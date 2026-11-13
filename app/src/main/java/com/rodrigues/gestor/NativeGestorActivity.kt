@@ -42,6 +42,8 @@ import com.rodrigues.gestor.data.NativeCatalogApi
 import com.rodrigues.gestor.data.NativeOperationsApi
 import com.rodrigues.gestor.data.NativeOrdersHistoryApi
 import com.rodrigues.gestor.data.NativeChatApi
+import com.rodrigues.gestor.data.NativeFinanceApi
+import com.rodrigues.gestor.data.FinanceSummary
 import com.rodrigues.gestor.data.NativeChatMessage
 import kotlinx.coroutines.delay
 import com.rodrigues.gestor.data.StoreInfo
@@ -71,6 +73,10 @@ class NativeGestorActivity : ComponentActivity() {
     private var historyError by mutableStateOf("")
     private var historyHasMore by mutableStateOf(false)
     private var loginBusy by mutableStateOf(false)
+    private var financeInfo by mutableStateOf(FinanceSummary())
+    private var financeDays by mutableIntStateOf(1)
+    private var financeLoading by mutableStateOf(false)
+    private var financeError by mutableStateOf("")
     private val catalog = mutableStateListOf<CatalogItem>()
     private var catalogLoading by mutableStateOf(false)
     private var catalogError by mutableStateOf("")
@@ -111,7 +117,7 @@ class NativeGestorActivity : ComponentActivity() {
         chosenOrder = intent?.getStringExtra(EXTRA_ORDER_ID)
         signedIn = GestorCredentials.load(this).length == 6
         setContent {
-            BackHandler(enabled = chosenOrder != null || section == 5) {
+            BackHandler(enabled = chosenOrder != null || section == 5 || section == 7) {
                 if (chosenOrder != null) chosenOrder = null else section = 4
             }
             GestorTheme {
@@ -122,6 +128,10 @@ class NativeGestorActivity : ComponentActivity() {
                         historyLoading = historyLoading,
                         historyError = historyError,
                         historyHasMore = historyHasMore,
+                        financeInfo = financeInfo,
+                        financeDays = financeDays,
+                        financeLoading = financeLoading,
+                        financeError = financeError,
                         catalog = catalog,
                         catalogLoading = catalogLoading,
                         catalogError = catalogError,
@@ -156,6 +166,8 @@ class NativeGestorActivity : ComponentActivity() {
                         onCancel = ::cancelOrderWithReason,
                         onStore = { section = 5; chosenOrder = null; refreshStore() },
                         onStoreBack = { section = 4 },
+                        onFinance = { section = 7; chosenOrder = null; loadFinance(financeDays) },
+                        onFinancePeriod = ::loadFinance,
                         onStoreRefresh = ::refreshStore,
                         onStoreOpen = ::setStoreOpen,
                         onStoreSave = ::saveStoreSettings,
@@ -407,6 +419,21 @@ class NativeGestorActivity : ComponentActivity() {
         })
     }
 
+
+    private fun loadFinance(days: Int) {
+        if (financeLoading) return
+        financeDays = days
+        financeLoading = true
+        financeError = ""
+        NativeFinanceApi.load(days, onSuccess = {
+            financeInfo = it
+            financeLoading = false
+        }, onError = {
+            financeLoading = false
+            financeError = "Não foi possível consultar o financeiro: " + (it.message ?: "")
+        })
+    }
+
     private fun logout() {
         // Pendências de versões antigas não são mais enviadas automaticamente.
         registered?.remove()
@@ -513,6 +540,10 @@ private fun NativeDashboard(
     historyLoading: Boolean,
     historyError: String,
     historyHasMore: Boolean,
+    financeInfo: FinanceSummary,
+    financeDays: Int,
+    financeLoading: Boolean,
+    financeError: String,
     catalog: List<CatalogItem>,
     catalogLoading: Boolean,
     catalogError: String,
@@ -541,6 +572,8 @@ private fun NativeDashboard(
     onCancel: (Order, String) -> Unit,
     onStore: () -> Unit,
     onStoreBack: () -> Unit,
+    onFinance: () -> Unit,
+    onFinancePeriod: (Int) -> Unit,
     onStoreRefresh: () -> Unit,
     onStoreOpen: (Boolean) -> Unit,
     onStoreSave: (Int, String) -> Unit,
@@ -560,18 +593,18 @@ private fun NativeDashboard(
                     Modifier.fillMaxWidth().height(62.dp).padding(horizontal = 16.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    if (selectedOrderId != null || section == 5) {
-                        IconButton(onClick = if (section == 5 && selectedOrderId == null) onStoreBack else onBack) {
+                    if (selectedOrderId != null || section == 5 || section == 7) {
+                        IconButton(onClick = if (selectedOrderId == null && section in setOf(5, 7)) onStoreBack else onBack) {
                             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Voltar")
                         }
                     }
                     Column(Modifier.weight(1f)) {
-                        Text(if (selected != null) "Pedido #${selected.number}" else if (section == 5) "MINHA LOJA" else "RODRIGUES • GESTOR 20",
+                        Text(if (selected != null) "Pedido #${selected.number}" else if (section == 5) "MINHA LOJA" else if (section == 7) "FINANCEIRO" else "RODRIGUES • GESTOR 20",
                             fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium, color = PurpleDeep)
                         Text(if (selected != null) "Detalhes e andamento" else if (lastSync > 0) "Pedidos salvos • atualização automática" else "Central de operações",
                             style = MaterialTheme.typography.labelSmall, color = Color.Gray)
                     }
-                    if (selectedOrderId == null && section != 5) {
+                    if (selectedOrderId == null && section !in setOf(5, 7)) {
                         IconButton(onClick = onRetry) {
                             Icon(Icons.Default.Refresh, contentDescription = "Atualizar pedidos", tint = Purple)
                         }
@@ -589,7 +622,7 @@ private fun NativeDashboard(
                     Triple("Mais", Icons.Default.MoreHoriz, 4)
                 ).forEach { (title, icon, index) ->
                     NavigationBarItem(
-                        selected = section == index || (section == 5 && index == 4),
+                        selected = section == index || (section in setOf(5, 7) && index == 4),
                         onClick = { onSection(index) },
                         icon = { Icon(icon, contentDescription = title) },
                         label = { Text(title) }
@@ -643,7 +676,9 @@ private fun NativeDashboard(
                 }
                 section == 5 -> StoreScreen(storeInfo, storeLoading, storeBusy, storeError,
                     catalogOwner, onStoreRefresh, onStoreOpen, onStoreSave)
-                else -> MoreScreen(onNotify, onLogout, onStore)
+                section == 7 -> FinanceScreen(financeInfo, financeDays, financeLoading,
+                    financeError, onFinancePeriod)
+                else -> MoreScreen(onNotify, onLogout, onStore, onFinance)
             }
         }
     }
@@ -1413,8 +1448,88 @@ private fun StoreScreen(
     }
 }
 
+
 @Composable
-private fun MoreScreen(onNotify: () -> Unit, onLogout: () -> Unit, onStore: () -> Unit) {
+private fun FinanceScreen(
+    info: FinanceSummary,
+    days: Int,
+    loading: Boolean,
+    error: String,
+    onPeriod: (Int) -> Unit
+) {
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(13.dp)) {
+        Text("Resumo financeiro", style = MaterialTheme.typography.headlineSmall,
+            fontWeight = FontWeight.Bold)
+        Text("Valores de pedidos concluídos, consultados diretamente no servidor.",
+            color = Color.Gray, style = MaterialTheme.typography.bodySmall)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf(1 to "Hoje", 7 to "7 dias", 30 to "30 dias").forEach { (period, title) ->
+                FilterChip(selected = days == period, label = { Text(title) },
+                    onClick = { if (!loading) onPeriod(period) })
+            }
+        }
+        if (loading) LinearProgressIndicator(Modifier.fillMaxWidth())
+        if (error.isNotBlank()) Text(error, color = RedAlert)
+        Surface(color = PurpleDeep, shape = RoundedCornerShape(22.dp),
+            modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(20.dp)) {
+                Text("VENDAS CONCLUÍDAS", color = Color(0xFFE3D0F7),
+                    style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                Text(money(info.revenue), color = Color.White,
+                    style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
+                Text("Não inclui pedidos cancelados ou pendentes.",
+                    color = Color(0xFFE3D0F7), style = MaterialTheme.typography.bodySmall)
+            }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            MetricCard("Pedidos", info.orders, Purple, Modifier.weight(1f))
+            MetricCard("Concluídos", info.completed, Green, Modifier.weight(1f))
+            MetricCard("Cancelados", info.cancelled, RedAlert, Modifier.weight(1f))
+        }
+        Card(colors = CardDefaults.cardColors(containerColor = Color.White)) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("Resumo de valores", fontWeight = FontWeight.Bold,
+                    style = MaterialTheme.typography.titleMedium)
+                Row {
+                    Text("Taxas de entrega", modifier = Modifier.weight(1f))
+                    Text(money(info.deliveries), fontWeight = FontWeight.SemiBold)
+                }
+                Row {
+                    Text("Descontos", modifier = Modifier.weight(1f))
+                    Text(money(info.discounts), fontWeight = FontWeight.SemiBold)
+                }
+            }
+        }
+        Card(colors = CardDefaults.cardColors(containerColor = Color.White)) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("Por forma de pagamento", fontWeight = FontWeight.Bold,
+                    style = MaterialTheme.typography.titleMedium)
+                if (info.byPayment.isEmpty()) Text("Nenhuma venda concluída neste período.",
+                    style = MaterialTheme.typography.bodySmall, color = Color.Gray)
+                info.byPayment.toList().sortedByDescending { it.second }.forEach { (type, value) ->
+                    Row {
+                        Text(type, modifier = Modifier.weight(1f))
+                        Text(money(value), fontWeight = FontWeight.SemiBold)
+                    }
+                    HorizontalDivider(color = Color(0xFFEDEAF0))
+                }
+            }
+        }
+        OutlinedButton(onClick = { onPeriod(days) }, enabled = !loading,
+            modifier = Modifier.fillMaxWidth()) {
+            Icon(Icons.Default.Refresh, null)
+            Spacer(Modifier.width(8.dp))
+            Text("Atualizar relatório")
+        }
+        Text("Relatório operacional, não substitui conciliação de pagamentos ou controle de reembolsos.",
+            color = Color.Gray, style = MaterialTheme.typography.bodySmall)
+    }
+}
+
+@Composable
+private fun MoreScreen(onNotify: () -> Unit, onLogout: () -> Unit,
+                       onStore: () -> Unit, onFinance: () -> Unit) {
     val context = LocalContext.current
     var player by remember { mutableStateOf<MediaPlayer?>(null) }
     var ringEnabled by remember { mutableStateOf(AlertPreferences.enabled(context)) }
@@ -1442,6 +1557,15 @@ private fun MoreScreen(onNotify: () -> Unit, onLogout: () -> Unit, onStore: () -
     ) {
         Text("Ferramentas e ajustes", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
         Text("Personalize os avisos, permissões e recursos do aplicativo.", color = Color.Gray)
+        Card(colors = CardDefaults.cardColors(containerColor = Color.White)) {
+            ListItem(
+                headlineContent = { Text("Financeiro", fontWeight = FontWeight.Bold) },
+                supportingContent = { Text("Vendas concluídas, descontos e formas de pagamento") },
+                leadingContent = { Icon(Icons.Default.AccountBalanceWallet, null, tint = Purple) },
+                trailingContent = { Icon(Icons.Default.ChevronRight, null) },
+                modifier = Modifier.clickable(onClick = onFinance)
+            )
+        }
         Card(colors = CardDefaults.cardColors(containerColor = Color.White)) {
             ListItem(
                 headlineContent = { Text("Minha loja", fontWeight = FontWeight.Bold) },
