@@ -151,7 +151,7 @@ class NativeGestorActivity : ComponentActivity() {
         chosenOrder = intent?.getStringExtra(EXTRA_ORDER_ID)
         signedIn = GestorCredentials.load(this).length == 6
         setContent {
-            BackHandler(enabled = chosenOrder != null || section in setOf(5, 6, 7)) {
+            BackHandler(enabled = chosenOrder != null || section in setOf(5, 6, 7, 8)) {
                 if (chosenOrder != null) chosenOrder = null
                 else section = if (section == 6) 1 else 4
             }
@@ -210,6 +210,7 @@ class NativeGestorActivity : ComponentActivity() {
                         onStore = { section = 5; chosenOrder = null; refreshStore() },
                         onStoreBack = { section = 4 },
                         onFinance = { section = 7; chosenOrder = null; loadFinance(financeDays) },
+                        onAdmin = { section = 8; chosenOrder = null; refreshCatalog() },
                         onFinancePeriod = ::loadFinance,
                         onHistoryPeriod = ::changeHistoryPeriod,
                         onHistoryMore = ::loadHistoryMore,
@@ -810,6 +811,7 @@ private fun NativeDashboard(
     onStore: () -> Unit,
     onStoreBack: () -> Unit,
     onFinance: () -> Unit,
+    onAdmin: () -> Unit,
     onFinancePeriod: (Int) -> Unit,
     onHistoryPeriod: (Int) -> Unit,
     onHistoryMore: () -> Unit,
@@ -838,9 +840,9 @@ private fun NativeDashboard(
                     Modifier.fillMaxWidth().height(62.dp).padding(horizontal = 16.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    if (selectedOrderId != null || section in setOf(5, 6, 7)) {
+                    if (selectedOrderId != null || section in setOf(5, 6, 7, 8)) {
                         IconButton(onClick = {
-                            if (selectedOrderId == null && section in setOf(5, 6, 7)) {
+                            if (selectedOrderId == null && section in setOf(5, 6, 7, 8)) {
                                 if (section == 6) onSection(1) else onStoreBack()
                             } else onBack()
                         }) {
@@ -848,12 +850,12 @@ private fun NativeDashboard(
                         }
                     }
                     Column(Modifier.weight(1f)) {
-                        Text(if (selected != null) "Pedido #${selected.number}" else if (section == 5) "MINHA LOJA" else if (section == 7) "FINANCEIRO" else if (section == 6) "NOVO PEDIDO" else "RODRIGUES • GESTOR 20",
+                        Text(if (selected != null) "Pedido #${selected.number}" else if (section == 5) "MINHA LOJA" else if (section == 7) "FINANCEIRO" else if (section == 6) "NOVO PEDIDO" else if (section == 8) "ADMINISTRAÇÃO" else "RODRIGUES • GESTOR 20",
                             fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium, color = PurpleDeep)
                         Text(if (selected != null) "Detalhes e andamento" else if (lastSync > 0) "Pedidos salvos • atualização automática" else "Central de operações",
                             style = MaterialTheme.typography.labelSmall, color = Color.Gray)
                     }
-                    if (selectedOrderId == null && section !in setOf(5, 6, 7)) {
+                    if (selectedOrderId == null && section !in setOf(5, 6, 7, 8)) {
                         IconButton(onClick = onRetry) {
                             Icon(Icons.Default.Refresh, contentDescription = "Atualizar pedidos", tint = Purple)
                         }
@@ -871,7 +873,7 @@ private fun NativeDashboard(
                     Triple("Mais", Icons.Default.MoreHoriz, 4)
                 ).forEach { (title, icon, index) ->
                     NavigationBarItem(
-                        selected = section == index || (section in setOf(5, 7) && index == 4) || (section == 6 && index == 1),
+                        selected = section == index || (section in setOf(5, 7, 8) && index == 4) || (section == 6 && index == 1),
                         onClick = { onSection(index) },
                         icon = { Icon(icon, contentDescription = title) },
                         label = { Text(title) }
@@ -954,10 +956,12 @@ private fun NativeDashboard(
                     catalogOwner, onStoreRefresh, onStoreOpen, onStoreSave)
                 section == 7 -> FinanceScreen(financeInfo, financeDays, financeLoading,
                     financeError, onFinancePeriod)
+                section == 8 -> NativeAdministrationScreen(catalogOwner,
+                    onOpenCatalog = { onSection(2) })
                 section == 6 -> NativeManualOrderScreen(manualDraft, catalog, catalogLoading,
                     manualSending, manualError, onManualChange, onManualSubmit,
                     onCatalogRefresh, onManualDiscard)
-                else -> MoreScreen(onNotify, onLogout, onStore, onFinance, onNewManual)
+                else -> MoreScreen(onNotify, onLogout, onStore, onFinance, onNewManual, onAdmin)
             }
         }
     }
@@ -1947,7 +1951,7 @@ private fun FinanceScreen(
 @Composable
 private fun MoreScreen(onNotify: () -> Unit, onLogout: () -> Unit,
                        onStore: () -> Unit, onFinance: () -> Unit,
-                       onNewManual: () -> Unit) {
+                       onNewManual: () -> Unit, onAdmin: () -> Unit) {
     val context = LocalContext.current
     var player by remember { mutableStateOf<MediaPlayer?>(null) }
     var ringEnabled by remember { mutableStateOf(AlertPreferences.enabled(context)) }
@@ -1984,7 +1988,16 @@ private fun MoreScreen(onNotify: () -> Unit, onLogout: () -> Unit,
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Text("Ferramentas e ajustes", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-        Text("Personalize os avisos, permissões e recursos do aplicativo.", color = Color.Gray)
+        Text("Pedidos, cardápio, administração e recursos do aplicativo.", color = Color.Gray)
+        Card(colors = CardDefaults.cardColors(containerColor = Color.White)) {
+            ListItem(
+                headlineContent = { Text("Administração completa", fontWeight = FontWeight.Bold) },
+                supportingContent = { Text("Cupons, banners, funcionários e controle do cardápio") },
+                leadingContent = { Icon(Icons.Default.AdminPanelSettings, null, tint = Purple) },
+                trailingContent = { Icon(Icons.Default.ChevronRight, null) },
+                modifier = Modifier.clickable(onClick = onAdmin)
+            )
+        }
         Card(colors = CardDefaults.cardColors(containerColor = Color.White)) {
             ListItem(
                 headlineContent = { Text("Novo pedido manual", fontWeight = FontWeight.Bold) },
