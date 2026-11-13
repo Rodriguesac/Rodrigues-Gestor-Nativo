@@ -60,7 +60,8 @@ Deno.serve(async req => {
       !Number.isFinite(price)||price<0||price>10000||
       !Number.isInteger(order)||order<0||order>100000||
       (image&&!image.startsWith("https://"))||
-      (id&&!validUuid(id))||
+      (id&&(id.length>180||/[\u0000-\u001F]/.test(id)||
+        (collection==="products"&&!validUuid(id))))||
       (compare!==null&&(!Number.isFinite(compare)||compare<0||compare>10000)))
       return reply({ok:false,error:"invalid_catalog_item"},400);
     let savedId="";
