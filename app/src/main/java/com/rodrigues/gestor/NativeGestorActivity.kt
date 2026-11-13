@@ -46,6 +46,7 @@ import com.rodrigues.gestor.data.NativeCatalogApi
 import com.rodrigues.gestor.data.NativeOperationsApi
 import com.rodrigues.gestor.data.DeliveryProgress
 import com.rodrigues.gestor.data.OrderFlowPolicy
+import com.rodrigues.gestor.data.OrderCancellationPolicy
 import com.rodrigues.gestor.data.NativeOrdersHistoryApi
 import com.rodrigues.gestor.data.HistoryWindow
 import com.rodrigues.gestor.data.HistoryPagination
@@ -203,6 +204,7 @@ class NativeGestorActivity : ComponentActivity() {
                         onOwnDispatch = ::dispatchOwn,
                         onRecallOffer = ::recallUpOffer,
                         onCancel = ::cancelOrderWithReason,
+                        onCancelUp = ::cancelUpDeliveryWithReason,
                         onStore = { section = 5; chosenOrder = null; refreshStore() },
                         onStoreBack = { section = 4 },
                         onFinance = { section = 7; chosenOrder = null; loadFinance(financeDays) },
@@ -515,8 +517,39 @@ class NativeGestorActivity : ComponentActivity() {
         })
     }
 
+    private fun cancelUpDeliveryWithReason(order: Order, reason: String) {
+        if (pendingAction) return
+        val problem = OrderCancellationPolicy.validate(order, reason)
+        if (problem != null) {
+            connectionError = problem
+            return
+        }
+        pendingAction = true
+        connectionError = ""
+        NativeOperationsApi.cancelUpDelivery(order.id, reason, onSuccess = { result ->
+            pendingAction = false
+            chosenOrder = null
+            section = 1
+            connectionError = when {
+                result.requiresSupport ->
+                    "Cancelamento da entrega UP enviado para análise do suporte. " +
+                    "Confira devolução e eventual reembolso antes de encerrar."
+                result.alreadyCancelled ->
+                    "Cancelamento UP já registrado no servidor. Nenhuma ação duplicada."
+                else -> "Cancelamento da missão UP confirmado pelo servidor."
+            }
+            startListening()
+        }, onError = {
+            pendingAction = false
+            connectionError = "Cancelamento UP não confirmado: " +
+                (it.message ?: "atualize o pedido e tente novamente")
+        })
+    }
+
     private fun cancelOrderWithReason(order: Order, reason: String) {
-        if (pendingAction || isClosedStatus(order.status)) return
+        if (pendingAction || !OrderFlowPolicy.canCancel(order)) return
+        val problem = OrderCancellationPolicy.validate(order, reason)
+        if (problem != null) { connectionError = problem; return }
         pendingAction = true
         connectionError = ""
         NativeOperationsApi.cancelOrder(order.id, reason, onSuccess = {
@@ -753,6 +786,7 @@ private fun NativeDashboard(
     onOwnDispatch: (Order) -> Unit,
     onRecallOffer: (Order) -> Unit,
     onCancel: (Order, String) -> Unit,
+    onCancelUp: (Order, String) -> Unit,
     onStore: () -> Unit,
     onStoreBack: () -> Unit,
     onFinance: () -> Unit,
@@ -862,7 +896,10 @@ private fun NativeDashboard(
                     onAction = { action -> onAction(selected, action) },
                     onOwnDispatch = { onOwnDispatch(selected) },
                     onRecallOffer = { onRecallOffer(selected) },
-                    onCancel = { reason -> onCancel(selected, reason) },
+                    onCancel = { reason ->
+                        if (OrderCancellationPolicy.needsUpFlow(selected))
+                            onCancelUp(selected, reason) else onCancel(selected, reason)
+                    },
                     onDispatchDone = onRetry
                 )
                 selectedOrderId != null -> EmptyScreen("Pedido não encontrado ou indisponível.")
@@ -1343,7 +1380,9 @@ private fun OrderDetails(
                             modifier = Modifier.fillMaxWidth(), enabled = !busy) {
                             Icon(Icons.Default.Cancel, null, tint = RedAlert)
                             Spacer(Modifier.width(8.dp))
-                            Text("Cancelar pedido", color = RedAlert)
+                            Text(if (OrderCancellationPolicy.needsUpFlow(order))
+                                "Cancelar entrega com UP" else "Cancelar pedido",
+                                color = RedAlert)
                         }
                     }
                 }
@@ -1410,7 +1449,10 @@ private fun OrderDetails(
             title = { Text("Cancelar pedido #" + order.number + "?") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text("Esta ação modifica o pedido real. Se a entrega já estiver no UP, o cancelamento deve seguir o fluxo próprio do UP.",
+                    Text(if (OrderCancellationPolicy.needsUpFlow(order))
+                        "A missão UP será cancelada pelo servidor. Se houver coleta ou entrega " +
+                            "em andamento, o suporte poderá precisar avaliar devolução e reembolso."
+                        else "Esta ação cancela o pedido real. Confira a necessidade de reembolso.",
                         style = MaterialTheme.typography.bodySmall)
                     OutlinedTextField(value = cancelReason, onValueChange = { cancelReason = it.take(500) },
                         label = { Text("Motivo obrigatório") }, minLines = 2)
@@ -1421,7 +1463,8 @@ private fun OrderDetails(
             confirmButton = { TextButton(onClick = {
                 showCancel = false
                 onCancel(cancelReason.trim())
-            }, enabled = cancelReason.trim().length >= 3 && !busy) {
+            }, enabled = cancelReason.trim().length >=
+                OrderCancellationPolicy.minReasonLength(order) && !busy) {
                 Text("Confirmar cancelamento", color = RedAlert)
             } },
             dismissButton = { TextButton(onClick = { showCancel = false }) { Text("Voltar") } }
