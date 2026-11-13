@@ -33,5 +33,7 @@ object OrderFlowPolicy {
             "BUSCANDO_ENTREGADOR", "AGUARDANDO_ENTREGADOR")
 
     fun canCancel(order: Order): Boolean =
-        status(order) !in StatusGroups.DONE && status(order) !in StatusGroups.CANCELED
+        status(order) !in StatusGroups.DONE &&
+        status(order) !in StatusGroups.CANCELED &&
+        status(order) != "CANCELAMENTO_EM_ANALISE"
 }

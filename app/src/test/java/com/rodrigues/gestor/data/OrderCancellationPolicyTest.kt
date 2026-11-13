@@ -33,6 +33,13 @@ class OrderCancellationPolicyTest {
         assertTrue(OrderCancellationPolicy.needsUpFlow(offer))
     }
 
+    @Test fun upSupportReviewBlocksAnotherCancellation() {
+        assertNotNull(OrderCancellationPolicy.validate(
+            order("CANCELAMENTO_EM_ANALISE",
+                mapOf("courier_id" to "assigned", "up_state" to "TO_CUSTOMER")),
+            "Tentar cancelar novamente"))
+    }
+
     @Test fun closedOrderCannotBeCancelledAgain() {
         assertNotNull(OrderCancellationPolicy.validate(order("CANCELADO"),"repetido"))
         assertNotNull(OrderCancellationPolicy.validate(order("ENTREGUE"),"repetido"))
