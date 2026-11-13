@@ -110,6 +110,20 @@ object NativeOperationsApi {
             onSuccess = onSuccess, onError = onError)
     }
 
+    /** O backend valida status, motivo e bloqueia cancelamento com missão UP ativa. */
+    fun cancelOrder(orderId: String, reason: String, onSuccess: () -> Unit,
+                    onError: (Throwable) -> Unit) {
+        val clean = reason.trim()
+        if (clean.length < 3 || clean.length > 500) {
+            onError(IllegalArgumentException("Informe o motivo do cancelamento (3 a 500 caracteres)."))
+            return
+        }
+        NativeCatalogApi.execute("update_order",
+            JSONObject().put("order_id", orderId).put("patch",
+                JSONObject().put("status", "CANCELADO").put("cancellation_reason", clean)),
+            onSuccess = { onSuccess() }, onError = onError)
+    }
+
     fun clear(context: Context) {
         context.getSharedPreferences(STORE_PREFS, Context.MODE_PRIVATE).edit().clear().apply()
     }
