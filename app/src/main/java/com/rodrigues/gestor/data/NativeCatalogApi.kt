@@ -168,6 +168,23 @@ object NativeCatalogApi {
         }
     }
 
+    /** Acesso autenticado e assíncrono à mesma API utilizada no Gestor20 web. */
+    fun execute(
+        action: String,
+        data: JSONObject = JSONObject(),
+        onSuccess: (JSONObject) -> Unit,
+        onError: (Throwable) -> Unit
+    ) {
+        io.execute {
+            try {
+                val response = call(action, data)
+                main.post { onSuccess(response) }
+            } catch (error: Throwable) {
+                main.post { onError(error) }
+            }
+        }
+    }
+
     fun clear(context: Context) {
         token = ""
         canEdit = false

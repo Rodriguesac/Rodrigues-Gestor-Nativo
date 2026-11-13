@@ -190,7 +190,7 @@ object NotificationHelper {
             .setAutoCancel(!foregroundService)
             .setOngoing(foregroundService)
             .setContentIntent(openPending)
-            .addAction(0, "ABRIR PARA ACEITAR", openPending)
+            .addAction(0, "ABRIR PEDIDO", openPending)
             .addAction(0, "SILENCIAR", silencePending)
             .build()
     }
