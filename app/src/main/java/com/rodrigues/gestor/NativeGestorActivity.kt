@@ -45,6 +45,8 @@ import com.rodrigues.gestor.data.OfflineOrderSyncWorker
 import com.rodrigues.gestor.data.NativeCatalogApi
 import com.rodrigues.gestor.data.NativeOperationsApi
 import com.rodrigues.gestor.data.NativeOrdersHistoryApi
+import com.rodrigues.gestor.data.HistoryWindow
+import com.rodrigues.gestor.data.HistoryPagination
 import com.rodrigues.gestor.data.NativeChatApi
 import com.rodrigues.gestor.data.NativeFinanceApi
 import com.rodrigues.gestor.data.FinanceSummary
@@ -80,6 +82,9 @@ class NativeGestorActivity : ComponentActivity() {
     private var historyLoading by mutableStateOf(false)
     private var historyError by mutableStateOf("")
     private var historyHasMore by mutableStateOf(false)
+    private var historyDays by mutableIntStateOf(30)
+    private var historyNextOffset by mutableIntStateOf(0)
+    private var historyWindow: HistoryWindow? = null
     private var loginBusy by mutableStateOf(false)
     private var financeInfo by mutableStateOf(FinanceSummary())
     private var financeDays by mutableIntStateOf(1)
@@ -152,6 +157,8 @@ class NativeGestorActivity : ComponentActivity() {
                         historyLoading = historyLoading,
                         historyError = historyError,
                         historyHasMore = historyHasMore,
+                        historyDays = historyDays,
+                        historyNextOffset = historyNextOffset,
                         financeInfo = financeInfo,
                         financeDays = financeDays,
                         financeLoading = financeLoading,
@@ -196,6 +203,9 @@ class NativeGestorActivity : ComponentActivity() {
                         onStoreBack = { section = 4 },
                         onFinance = { section = 7; chosenOrder = null; loadFinance(financeDays) },
                         onFinancePeriod = ::loadFinance,
+                        onHistoryPeriod = ::changeHistoryPeriod,
+                        onHistoryMore = ::loadHistoryMore,
+                        onHistoryRefresh = ::loadHistory,
                         onNewManual = {
                             section = 6
                             chosenOrder = null
@@ -254,17 +264,53 @@ class NativeGestorActivity : ComponentActivity() {
 
     private fun loadHistory() {
         if (historyLoading) return
+        historyWindow = NativeOrdersHistoryApi.window(historyDays)
+        historyNextOffset = 0
+        loadHistoryPage(0)
+    }
+
+    private fun changeHistoryPeriod(days: Int) {
+        if (historyLoading || days !in setOf(1, 7, 30, 90)) return
+        historyDays = days
+        historyWindow = NativeOrdersHistoryApi.window(days)
+        historyNextOffset = 0
+        loadHistoryPage(0)
+    }
+
+    private fun loadHistoryMore() {
+        if (historyLoading || !historyHasMore ||
+            historyNextOffset > NativeOrdersHistoryApi.MAX_OFFSET) return
+        loadHistoryPage(historyNextOffset)
+    }
+
+    private fun loadHistoryPage(offset: Int) {
+        if (historyLoading) return
+        val window = historyWindow ?: NativeOrdersHistoryApi.window(historyDays).also {
+            historyWindow = it
+        }
         historyLoading = true
         historyError = ""
-        NativeOrdersHistoryApi.loadLast30Days(onSuccess = { fetched, hasMore ->
+        NativeOrdersHistoryApi.loadPage(window, offset, onSuccess = { page ->
+            // Só substituir a lista quando a primeira página realmente chegar.
+            val merged = HistoryPagination.merge(
+                if (offset == 0) emptyList() else historyOrders.toList(),
+                page.orders
+            )
             historyOrders.clear()
-            historyOrders.addAll(fetched)
-            offlineStore.storeOrders(fetched)
-            historyHasMore = hasMore
+            historyOrders.addAll(merged)
+            try {
+                offlineStore.storeOrders(page.orders)
+            } catch (error: Throwable) {
+                historyError = "O histórico foi consultado, mas não foi possível salvar " +
+                    "a cópia offline: " + (error.message ?: "")
+            }
+            historyNextOffset = HistoryPagination.nextOffset(offset, page.rawCount)
+            historyHasMore = page.hasMore &&
+                historyNextOffset <= NativeOrdersHistoryApi.MAX_OFFSET
             historyLoading = false
         }, onError = {
             historyLoading = false
-            historyError = "Sem atualização do histórico: os registros já salvos continuam disponíveis. " +
+            historyError = "Falha ao consultar o histórico. Registros já salvos continuam disponíveis: " +
                 (it.message ?: "")
         })
     }
@@ -555,6 +601,9 @@ class NativeGestorActivity : ComponentActivity() {
         lastOrderSync = 0L
         orders.clear()
         historyOrders.clear()
+        historyWindow = null
+        historyNextOffset = 0
+        historyHasMore = false
         chosenOrder = null
         connectionError = ""
     }
@@ -646,6 +695,8 @@ private fun NativeDashboard(
     historyLoading: Boolean,
     historyError: String,
     historyHasMore: Boolean,
+    historyDays: Int,
+    historyNextOffset: Int,
     financeInfo: FinanceSummary,
     financeDays: Int,
     financeLoading: Boolean,
@@ -684,6 +735,9 @@ private fun NativeDashboard(
     onStoreBack: () -> Unit,
     onFinance: () -> Unit,
     onFinancePeriod: (Int) -> Unit,
+    onHistoryPeriod: (Int) -> Unit,
+    onHistoryMore: () -> Unit,
+    onHistoryRefresh: () -> Unit,
     onNewManual: () -> Unit,
     onManualChange: (ManualOrderDraft) -> Unit,
     onManualSubmit: () -> Unit,
@@ -795,13 +849,24 @@ private fun NativeDashboard(
                 section == 2 -> CatalogScreen(catalog, catalogLoading, catalogError, catalogBusy,
                     catalogOwner, onCatalogRefresh, onCatalogAvailability, onCatalogPrice, onShareCatalog)
                 section == 3 -> Column {
+                    androidx.compose.foundation.lazy.LazyRow(
+                        contentPadding = PaddingValues(horizontal = 16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(listOf(1 to "Hoje", 7 to "7 dias", 30 to "30 dias", 90 to "90 dias")) { option ->
+                            FilterChip(selected = historyDays == option.first,
+                                onClick = { onHistoryPeriod(option.first) },
+                                enabled = !historyLoading,
+                                label = { Text(option.second) })
+                        }
+                    }
                     if (historyLoading) LinearProgressIndicator(Modifier.fillMaxWidth())
                     if (historyError.isNotBlank()) Text(historyError, Modifier.padding(12.dp),
                         style = MaterialTheme.typography.bodySmall, color = RedAlert)
-                    if (historyHasMore) Text("Mostrando os 200 registros mais recentes do período. A paginação ainda está em desenvolvimento.",
-                        Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
-                        style = MaterialTheme.typography.labelSmall, color = Color.Gray)
-                    OrdersScreen(historyOrders, filter, onFilter, onSelect, history = true)
+                    OrdersScreen(historyOrders, filter, onFilter, onSelect, history = true,
+                        historyLoading = historyLoading, historyHasMore = historyHasMore,
+                        historyNextOffset = historyNextOffset,
+                        onLoadMore = onHistoryMore, onHistoryRefresh = onHistoryRefresh)
                 }
                 section == 5 -> StoreScreen(storeInfo, storeLoading, storeBusy, storeError,
                     catalogOwner, onStoreRefresh, onStoreOpen, onStoreSave)
@@ -915,7 +980,12 @@ private fun OrdersScreen(
     onFilter: (String) -> Unit,
     onSelect: (String) -> Unit,
     history: Boolean,
-    onNewManual: () -> Unit = {}
+    onNewManual: () -> Unit = {},
+    historyLoading: Boolean = false,
+    historyHasMore: Boolean = false,
+    historyNextOffset: Int = 0,
+    onLoadMore: () -> Unit = {},
+    onHistoryRefresh: () -> Unit = {}
 ) {
     val tabs = if (history) listOf("Todos", "Concluídos", "Cancelados")
         else listOf("Todos", "Novos", "Aceitos", "Preparo", "Prontos", "Entrega")
@@ -949,6 +1019,10 @@ private fun OrdersScreen(
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             if (visible.isEmpty()) item { EmptyScreen("Nenhum pedido nesta categoria.") }
+            if (history && visible.isEmpty() && !historyLoading && historyHasMore) {
+                item { Text("Há mais registros no período. Toque em Carregar mais.",
+                    color = Color.Gray, style = MaterialTheme.typography.bodySmall) }
+            }
             items(visible, key = { it.id }) { order -> OrderCard(order, onSelect) }
         }
     }
