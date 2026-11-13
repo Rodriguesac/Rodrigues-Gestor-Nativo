@@ -274,12 +274,12 @@ class NativeGestorActivity : ComponentActivity() {
             onData = {
                 try {
                     offlineStore.storeOrders(it)
+                    lastOrderSync = offlineStore.lastSavedAt()
                     cacheWarning = ""
                 } catch (error: Throwable) {
                     cacheWarning = "Falha ao salvar cópia offline. Confira o armazenamento do celular: " +
                         (error.message ?: "espaço indisponível")
                 }
-                lastOrderSync = System.currentTimeMillis()
                 offlineMode = false
                 queuedActions = offlineStore.waiting().size
                 conflictedActions = offlineStore.conflicts().size
