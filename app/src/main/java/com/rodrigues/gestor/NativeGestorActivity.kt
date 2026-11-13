@@ -9,6 +9,7 @@ import android.media.MediaPlayer
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
@@ -56,6 +57,8 @@ import com.rodrigues.gestor.data.StatusGroups
 import com.rodrigues.gestor.data.SupabaseOrdersApi
 import com.rodrigues.gestor.data.money
 import com.rodrigues.gestor.printing.OrderPrinter
+import com.rodrigues.gestor.printing.OrderPdfExporter
+import com.rodrigues.gestor.data.PaymentStatusDisplay
 import com.rodrigues.gestor.notifications.AlertPreferences
 import com.rodrigues.gestor.notifications.GestorConnectionService
 import com.rodrigues.gestor.notifications.NotificationHelper
@@ -959,6 +962,22 @@ private fun OrderDetails(
 ) {
     val context = LocalContext.current
     var printingError by remember(order.id) { mutableStateOf("") }
+    var pdfMessage by remember(order.id) { mutableStateOf("") }
+    val pdfLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument(OrderPdfExporter.MIME_TYPE)
+    ) { uri ->
+        if (uri != null) {
+            try {
+                OrderPdfExporter.save(context, order, uri)
+                pdfMessage = "PDF salvo no local escolhido."
+                printingError = ""
+            } catch (error: Throwable) {
+                pdfMessage = ""
+                printingError = "Não foi possível salvar o PDF: " +
+                    (error.message ?: "verifique o armazenamento")
+            }
+        }
+    }
     var showChat by remember(order.id) { mutableStateOf(false) }
     var showCancel by remember(order.id) { mutableStateOf(false) }
     var cancelReason by remember(order.id) { mutableStateOf("") }
@@ -1046,6 +1065,25 @@ private fun OrderDetails(
             }
         }
         item {
+            Card(colors = CardDefaults.cardColors(containerColor = Color.White),
+                shape = RoundedCornerShape(16.dp)) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("Situação do pagamento", fontWeight = FontWeight.Bold,
+                        style = MaterialTheme.typography.titleMedium)
+                    val paid = PaymentStatusDisplay.isPaid(order.payment.status)
+                    Text(PaymentStatusDisplay.label(order.payment.status),
+                        color = if (paid) Green else Amber,
+                        fontWeight = FontWeight.SemiBold)
+                    Text("Forma: " + order.payment.form + " • Total: " + money(order.total))
+                    Text("Situação consultada no sistema. Para Pix e cartão, a confirmação " +
+                        "depende do provedor financeiro; não é feita automaticamente pelo Gestor.",
+                        style = MaterialTheme.typography.bodySmall, color = Color.Gray)
+                    if (!paid) Text("Não entregue como pago sem confirmar o recebimento.",
+                        style = MaterialTheme.typography.labelSmall, color = RedAlert)
+                }
+            }
+        }
+        item {
             Text("Cupom e compartilhamento", style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold)
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -1085,9 +1123,20 @@ private fun OrderDetails(
                     Text("Compartilhar")
                 }
             }
+            OutlinedButton(onClick = {
+                printingError = ""
+                pdfMessage = ""
+                pdfLauncher.launch(OrderPdfExporter.proposedFileName(order))
+            }, modifier = Modifier.fillMaxWidth()) {
+                Icon(Icons.Default.PictureAsPdf, null)
+                Spacer(Modifier.width(8.dp))
+                Text("Salvar comanda em PDF")
+            }
+            if (pdfMessage.isNotBlank()) Text(pdfMessage, color = Green,
+                style = MaterialTheme.typography.bodySmall)
             if (printingError.isNotBlank()) Text(printingError, color = RedAlert,
                 style = MaterialTheme.typography.bodySmall)
-            Text("O cupom funciona também com os dados de pedidos salvos no celular.",
+            Text("Cupom não fiscal. A impressão e o PDF usam os dados guardados no celular.",
                 color = Color.Gray, style = MaterialTheme.typography.labelSmall)
         }
         item {
