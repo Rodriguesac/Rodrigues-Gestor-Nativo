@@ -8,7 +8,7 @@ import java.util.Locale
  * já houve aviso de novo pedido no mesmo pedido.
  */
 object NotificationEventPolicy {
-    fun type(value: String): String = value.trim().uppercase(Locale.ROOT)
+    fun normalizeType(value: String): String = value.trim().uppercase(Locale.ROOT)
 
     fun key(
         providerEventId: String?,
@@ -22,7 +22,7 @@ object NotificationEventPolicy {
         val message = messageId?.trim().orEmpty()
         if (message.isNotBlank()) return "message:$message"
         if (orderId.isBlank()) return ""
-        val kind = type(type).ifBlank { "GERAL" }
+        val kind = normalizeType(type).ifBlank { "GERAL" }
         return "order:$kind:$orderId:${state?.trim().orEmpty()}"
     }
 }
