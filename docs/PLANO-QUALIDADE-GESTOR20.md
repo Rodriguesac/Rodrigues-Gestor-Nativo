@@ -78,7 +78,7 @@ A versão de desenvolvimento **não é um aplicativo final** e **nenhum APK deve
 - Cache: `OfflineOrderStore` fornece a data da última gravação confirmada. A tela mostra o modo offline e o horário dos dados que já foram recebidos, sem prometer pedidos novos ou atualização de status durante a queda de rede.
 - Erro de SQLite: falhas de abertura ou gravação geram mensagem em vez de encerrar imediatamente o aplicativo. O aplicativo não anuncia cópia offline bem-sucedida se a persistência falhar.
 - GitHub Actions: fluxo `validar-gestor20-sem-apk.yml` agora possui `concurrency` por branch, cancelando execuções antigas para reduzir consumo de cota. Continua executando compilação Kotlin, testes JVM e verificação de que não foi gerado APK.
-- Provas anteriores: CI `43487893382` (comprovação de pedido manual) e `43488551171` (controle Realtime e testes) aprovadas. Última validação do refinamento do callback antigo: `43489225045` (consultar status no GitHub).
+- Provas anteriores: CI `43487893382` (comprovação de pedido manual) e `43488551171` (controle Realtime e testes) aprovadas. Última validação do refinamento do callback antigo: `43489225045`, **aprovada** (compilação Kotlin, testes JVM e ausência de APK).
 - O app em produção, banco Supabase e pedidos reais não foram modificados por estas mudanças. Ainda não há comprovação de teste Android em aparelho, entrega UP ponta a ponta ou push com aplicativo fechado.
 
 **Próximo gate:** testes instrumentados em ambiente Android seguro, validar PIN e reconexão após perda de rede, SMS/FCM, som Nokia sob restrições de Android e pedido manual por interface. Não distribuir APK final até concluir.
