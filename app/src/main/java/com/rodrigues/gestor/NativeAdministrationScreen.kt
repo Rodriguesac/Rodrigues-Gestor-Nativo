@@ -28,6 +28,8 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import coil.compose.AsyncImage
 import com.rodrigues.gestor.data.NativeAdminApi
+import com.rodrigues.gestor.data.NativeOwnerExtrasApi
+import org.json.JSONArray
 import com.rodrigues.gestor.data.NativeMediaApi
 import org.json.JSONObject
 
@@ -38,7 +40,9 @@ private fun JSONObject.txt(key: String) = optString(key).takeUnless { it == "nul
 
 @Composable
 internal fun NativeAdministrationScreen(owner: Boolean, onOpenCatalog: () -> Unit) {
-    val modes = listOf("coupons" to "Cupons", "banners" to "Banners", "staff" to "Equipe")
+    val modes = listOf("coupons" to "Cupons", "banners" to "Banners",
+        "categories" to "Categorias", "notices" to "Avisos",
+        "customers" to "Clientes", "staff" to "Equipe")
     var mode by remember { mutableStateOf("coupons") }
     val list = remember { mutableStateListOf<JSONObject>() }
     var loading by remember { mutableStateOf(false) }
@@ -50,15 +54,19 @@ internal fun NativeAdministrationScreen(owner: Boolean, onOpenCatalog: () -> Uni
         if (!owner) return@LaunchedEffect
         loading = true
         error = ""
-        NativeAdminApi.list(mode, onSuccess = { rows ->
+        val received: (JSONArray) -> Unit = { rows ->
             list.clear()
             for (i in 0 until rows.length()) rows.optJSONObject(i)?.let { list.add(it) }
             loading = false
-        }, onError = {
+        }
+        val failed: (Throwable) -> Unit = {
             error = "Não foi possível carregar " + (modes.firstOrNull { it.first == mode }?.second
                 ?: "o módulo") + ": " + (it.message ?: "sem conexão")
             loading = false
-        })
+        }
+        if (mode in setOf("categories", "notices", "customers"))
+            NativeOwnerExtrasApi.list(mode,onSuccess=received,onError=failed)
+        else NativeAdminApi.list(mode,onSuccess=received,onError=failed)
     }
 
     Column(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
@@ -94,7 +102,8 @@ internal fun NativeAdministrationScreen(owner: Boolean, onOpenCatalog: () -> Uni
             IconButton(onClick = { version++ }, enabled = !saving) {
                 Icon(Icons.Default.Refresh, "Atualizar")
             }
-            Button(onClick = { editor = JSONObject() }, enabled = owner && !saving) {
+            Button(onClick = { editor = JSONObject() },
+                enabled = owner && !saving && mode != "customers") {
                 Icon(Icons.Default.Add, null)
                 Text("Novo")
             }
@@ -124,7 +133,7 @@ internal fun NativeAdministrationScreen(owner: Boolean, onOpenCatalog: () -> Uni
                         Column(Modifier.weight(1f)) {
                             Text(when (mode) {
                                 "coupons" -> row.txt("code")
-                                "banners" -> row.txt("title")
+                                "banners", "notices" -> row.txt("title")
                                 else -> row.txt("name")
                             }, fontWeight = FontWeight.Bold)
                             Text(when (mode) {
@@ -134,9 +143,13 @@ internal fun NativeAdministrationScreen(owner: Boolean, onOpenCatalog: () -> Uni
                                     else -> "Entrega grátis"
                                 }
                                 "banners" -> "Banner da página inicial"
+                                "notices" -> row.txt("body").take(100)
+                                "categories" -> row.txt("description").ifBlank { "Categoria do site" }
+                                "customers" -> row.txt("phone") + " • " + row.txt("email")
                                 else -> row.txt("role").replaceFirstChar { it.uppercase() }
                             }, style = MaterialTheme.typography.bodySmall, color = Color.Gray)
-                            Text(if (row.optBoolean("active",true)) "Ativo" else "Desativado",
+                            if(mode != "customers") Text(
+                                if (row.optBoolean("active",true)) "Ativo" else "Desativado",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = if (row.optBoolean("active",true)) Color(0xFF147B5B)
                                 else Color(0xFFCB4958))
@@ -149,7 +162,10 @@ internal fun NativeAdministrationScreen(owner: Boolean, onOpenCatalog: () -> Uni
     }
 
     editor?.let { initial ->
-        AdminRecordEditor(kind = mode, initial = initial, saving = saving,
+        if(mode in setOf("categories", "notices", "customers")) {
+            NativeExtrasEditor(kind = mode, source = initial,
+                onSaved = { editor = null; version++ }, onDismiss = { editor = null })
+        } else AdminRecordEditor(kind = mode, initial = initial, saving = saving,
             error = error, onDismiss = { editor = null },
             onSaveCoupon = { id, code, desc, type, value, min, active ->
                 saving = true; error = ""
