@@ -874,6 +874,52 @@ private fun OrderDetails(
             dismissButton = { TextButton(onClick = { confirmation = null }) { Text("Voltar") } }
         )
     }
+    if (showUp) {
+        AlertDialog(
+            onDismissRequest = { if (!upBusy) showUp = false },
+            title = { Text("Solicitar UP Entregas") },
+            text = {
+                Column(Modifier.heightIn(max = 380.dp).verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("Escolha um entregador. A oferta só será enviada após confirmação no servidor; ele ainda precisará aceitar.",
+                        style = MaterialTheme.typography.bodySmall)
+                    if (upLoading || upBusy) LinearProgressIndicator(Modifier.fillMaxWidth())
+                    if (upError.isNotBlank()) Text(upError, color = RedAlert)
+                    if (!upLoading && upCouriers.isEmpty()) Text("Nenhum entregador encontrado.")
+                    upCouriers.forEach { courier ->
+                        Card(colors = CardDefaults.cardColors(containerColor =
+                            if (courier.available) Color(0xFFF1E8FF) else Color(0xFFF2F2F2))) {
+                            Row(Modifier.fillMaxWidth().clickable(enabled = courier.available && !upBusy) {
+                                upBusy = true
+                                upError = ""
+                                NativeOperationsApi.offerUp(order.id, courier.id, onSuccess = {
+                                    upBusy = false
+                                    showUp = false
+                                    onDispatchDone()
+                                }, onError = {
+                                    upBusy = false
+                                    upError = "Oferta não enviada: " + (it.message ?: "")
+                                })
+                            }.padding(13.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.DeliveryDining, null,
+                                    tint = if (courier.available) Purple else Color.Gray)
+                                Spacer(Modifier.width(10.dp))
+                                Column {
+                                    Text(courier.name, fontWeight = FontWeight.Bold)
+                                    Text(if (courier.available) "Disponível — tocar para enviar oferta"
+                                         else "Indisponível — " + courier.status,
+                                         style = MaterialTheme.typography.labelSmall,
+                                         color = if (courier.available) Green else Color.Gray)
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { showUp = false }, enabled = !upBusy) { Text("Voltar") } }
+        )
+    }
+
 }
 
 
@@ -1016,51 +1062,6 @@ private fun CatalogScreen(
                 }
             }) { Text("Salvar") } },
             dismissButton = { TextButton(onClick = { editing = null }) { Text("Cancelar") } })
-    }
-    if (showUp) {
-        AlertDialog(
-            onDismissRequest = { if (!upBusy) showUp = false },
-            title = { Text("Solicitar UP Entregas") },
-            text = {
-                Column(Modifier.heightIn(max = 380.dp).verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text("Escolha um entregador. A oferta só será enviada após confirmação no servidor; ele ainda precisará aceitar.",
-                        style = MaterialTheme.typography.bodySmall)
-                    if (upLoading || upBusy) LinearProgressIndicator(Modifier.fillMaxWidth())
-                    if (upError.isNotBlank()) Text(upError, color = RedAlert)
-                    if (!upLoading && upCouriers.isEmpty()) Text("Nenhum entregador encontrado.")
-                    upCouriers.forEach { courier ->
-                        Card(colors = CardDefaults.cardColors(containerColor =
-                            if (courier.available) Color(0xFFF1E8FF) else Color(0xFFF2F2F2))) {
-                            Row(Modifier.fillMaxWidth().clickable(enabled = courier.available && !upBusy) {
-                                upBusy = true
-                                upError = ""
-                                NativeOperationsApi.offerUp(order.id, courier.id, onSuccess = {
-                                    upBusy = false
-                                    showUp = false
-                                    onDispatchDone()
-                                }, onError = {
-                                    upBusy = false
-                                    upError = "Oferta não enviada: " + (it.message ?: "")
-                                })
-                            }.padding(13.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Default.DeliveryDining, null,
-                                    tint = if (courier.available) Purple else Color.Gray)
-                                Spacer(Modifier.width(10.dp))
-                                Column {
-                                    Text(courier.name, fontWeight = FontWeight.Bold)
-                                    Text(if (courier.available) "Disponível — tocar para enviar oferta"
-                                         else "Indisponível — " + courier.status,
-                                         style = MaterialTheme.typography.labelSmall,
-                                         color = if (courier.available) Green else Color.Gray)
-                                }
-                            }
-                        }
-                    }
-                }
-            },
-            confirmButton = { TextButton(onClick = { showUp = false }, enabled = !upBusy) { Text("Voltar") } }
-        )
     }
 
 }
