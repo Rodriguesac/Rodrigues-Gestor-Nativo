@@ -37,7 +37,8 @@ Branch atual: `feature/gestor20-completo-sem-apk`. Workflow de validação compi
 ## Relato de testes
 
 - Commits `5e5fcb1`, `01532fa`, `08ff465`, `49c5dbb`: validação Kotlin sem APK concluída com sucesso.
-- Uma execução posterior encontrou falha de download de dependências Maven/Google. Reexecução/verificação mais recente ainda precisa ser confirmada; **não relatar como código validado sem o respectivo workflow verde**.
+- O commit `74c647d6` passou na validação Kotlin **sem gerar APK**, workflow GitHub Actions `43463308303` (13/11/2026). Esse resultado atesta compilação, não testes funcionais em aparelho ou aprovação de produção.
+- Um build intermediário falhou por indisponibilidade de dependências Maven/Google; a verificação seguinte foi concluída com sucesso.
 
 ## Decisão de entrega
 
