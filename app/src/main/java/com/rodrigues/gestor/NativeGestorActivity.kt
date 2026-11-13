@@ -676,8 +676,11 @@ private fun NativeDashboard(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     if (selectedOrderId != null || section in setOf(5, 6, 7)) {
-                        IconButton(onClick = if (selectedOrderId == null && section in setOf(5, 6, 7))
-                            { if (section == 6) onSection(1) else onStoreBack() } else onBack) {
+                        IconButton(onClick = {
+                            if (selectedOrderId == null && section in setOf(5, 6, 7)) {
+                                if (section == 6) onSection(1) else onStoreBack()
+                            } else onBack()
+                        }) {
                             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Voltar")
                         }
                     }
