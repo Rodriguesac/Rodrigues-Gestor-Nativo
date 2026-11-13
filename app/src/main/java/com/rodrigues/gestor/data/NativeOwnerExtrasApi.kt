@@ -47,6 +47,10 @@ object NativeOwnerExtrasApi {
         }, onError = onError)
     }
 
+    fun catalogStructure(onSuccess:(JSONObject)->Unit, onError:(Throwable)->Unit) {
+        call("catalog_structure", onSuccess=onSuccess,onError=onError)
+    }
+
     fun list(kind:String, search:String="", onSuccess:(JSONArray)->Unit,
              onError:(Throwable)->Unit) {
         if(kind !in setOf("categories","customers","notices")) {

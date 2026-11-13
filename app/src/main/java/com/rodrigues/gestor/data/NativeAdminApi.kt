@@ -15,10 +15,14 @@ data class CatalogDraft(
     val sortOrder: String = "0",
     val active: Boolean = true,
     val available: Boolean = true,
-    val variantPrices: Map<String, String> = emptyMap()
+    val variantPrices: Map<String, String> = emptyMap(),
+    val categoryId: String = ""
 ) {
     fun validate(): String? {
         if (collection !in CATALOG_GROUPS.map { it.first }) return "Tipo de item inválido."
+        if (collection == "products" && !categoryId.matches(
+                Regex("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
+            )) return "Selecione a categoria do produto."
         if (name.trim().length !in 2..160) return "Informe um nome de 2 a 160 caracteres."
         if (description.length > 3000) return "Descrição maior que o permitido."
         if (MoneyInput.parse(price) == null) return "Preço inválido."
@@ -68,36 +72,26 @@ object NativeAdminApi {
                     onError: (Throwable) -> Unit) {
         val problem = draft.validate()
         if (problem != null) { onError(IllegalArgumentException(problem)); return }
+        val prices = JSONObject()
+        draft.variantPrices.filterValues { it.isNotBlank() }.forEach { (key,value) ->
+            prices.put(key, MoneyInput.parse(value))
+        }
         val payload = JSONObject()
-            .put("collection", if (draft.collection == "products") "" else draft.collection)
+            .put("id", draft.id)
+            .put("collection", draft.collection)
             .put("name", draft.name.trim())
             .put("description", draft.description.trim())
             .put("price", MoneyInput.parse(draft.price))
+            .put("compare_at_price", if (draft.compareAtPrice.isBlank()) JSONObject.NULL
+                else MoneyInput.parse(draft.compareAtPrice))
             .put("image_url", draft.imageUrl.trim())
             .put("sort_order", draft.sortOrder.toInt())
             .put("active", draft.active)
             .put("available", draft.available)
-        if (draft.id.isNotBlank()) payload.put("id", draft.id)
-        if (draft.collection == "products" && draft.compareAtPrice.isNotBlank())
-            payload.put("compare_at_price", MoneyInput.parse(draft.compareAtPrice))
-        NativeCatalogApi.execute("catalog_save", payload, onSuccess = { response ->
-            val variants = draft.variantPrices.filterValues { it.isNotBlank() }
-            if (draft.collection != "cardapio_acai" || variants.isEmpty()) {
-                onSuccess()
-            } else {
-                val id = response.optString("id").ifBlank { draft.id }
-                if (id.isBlank()) {
-                    onError(IllegalStateException("Servidor não confirmou o ID do tamanho."))
-                } else {
-                    val patch = JSONObject()
-                    variants.forEach { (key,value) -> patch.put(key, MoneyInput.parse(value)) }
-                    NativeCatalogApi.execute("update_builder_item",
-                        JSONObject().put("collection", draft.collection)
-                            .put("document_id", id).put("patch", patch),
-                        onSuccess = { onSuccess() }, onError = onError)
-                }
-            }
-        }, onError = onError)
+            .put("category_id", draft.categoryId)
+            .put("variant_prices", prices)
+        NativeOwnerExtrasApi.call("catalog_item_save", payload,
+            onSuccess = { onSuccess() }, onError = onError)
     }
 
     fun list(kind: String, onSuccess: (JSONArray) -> Unit, onError: (Throwable) -> Unit) {

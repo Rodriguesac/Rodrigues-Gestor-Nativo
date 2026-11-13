@@ -14,9 +14,10 @@ class CatalogAdminTest {
     }
     @Test fun rejectsEmptyItemsAndUnsafePhotoUrls() {
         assertNotNull(CatalogDraft(name="").validate())
-        assertNotNull(CatalogDraft(name="Açaí 500ml",imageUrl="http://example.com/a.jpg").validate())
-        assertNotNull(CatalogDraft(name="Açaí 500ml",imageUrl="javascript:alert(1)").validate())
-        assertNull(CatalogDraft(name="Açaí 500ml",imageUrl="https://example.com/a.jpg").validate())
+        assertNotNull(CatalogDraft(name="Açaí 500ml",categoryId="00000000-0000-4000-8000-000000000011",imageUrl="http://example.com/a.jpg").validate())
+        assertNotNull(CatalogDraft(name="Açaí 500ml",categoryId="00000000-0000-4000-8000-000000000011",imageUrl="javascript:alert(1)").validate())
+        assertNull(CatalogDraft(name="Açaí 500ml",categoryId="00000000-0000-4000-8000-000000000011",imageUrl="https://example.com/a.jpg").validate())
+        assertNotNull(CatalogDraft(name="Açaí 500ml").validate())
     }
     @Test fun validatesAllVariantsAndCategories() {
         assertNull(CatalogDraft(collection="cardapio_acai",name="Copo 500ml",
@@ -26,7 +27,7 @@ class CatalogAdminTest {
         assertNotNull(CatalogDraft(collection="inexistente",name="Copo").validate())
     }
     @Test fun newItemStartsPausedOnlyWhenExplicitlyDisabled() {
-        val draft=CatalogDraft(collection="products",name="Açaí na Garrafa",available=false,active=true)
+        val draft=CatalogDraft(collection="products",name="Açaí na Garrafa",categoryId="00000000-0000-4000-8000-000000000011",available=false,active=true)
         assertNull(draft.validate())
         assertFalse(draft.available)
         assertTrue(draft.active)
