@@ -5,6 +5,24 @@ import org.junit.Test
 import java.math.BigDecimal
 
 class ManualOrderDraftTest {
+    @Test fun receiptRequiresServerProofBeforeClearingDraft() {
+        val existing = ManualOrderReceipt.validated(
+            "33333333-4444-4555-8666-777777777777", "9100001", true)
+        assertEquals("9100001", existing.orderCode)
+        assertTrue(existing.alreadyExists)
+        assertThrows(IllegalArgumentException::class.java) {
+            ManualOrderReceipt.validated("", "9100002", false)
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            ManualOrderReceipt.validated(
+                "33333333-4444-4555-8666-777777777777", "", false)
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            ManualOrderReceipt.validated(
+                "33333333-4444-4555-8666-777777777777", "ABC42", false)
+        }
+    }
+
     private fun valid() = ManualOrderDraft(
         customerName = "Cliente de teste",
         phone = "67999998888",

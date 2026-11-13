@@ -91,6 +91,28 @@ data class ManualOrderDraft(
     }
 }
 
+/**
+ * Sucesso requer ID e código numérico válidos do servidor.
+ * HTTP 200 não basta para limpar um rascunho local.
+ */
+data class ManualOrderReceipt(
+    val orderId: String,
+    val orderCode: String,
+    val alreadyExists: Boolean
+) {
+    companion object {
+        fun validated(orderId: String, orderCode: String, alreadyExists: Boolean): ManualOrderReceipt {
+            require(orderId.matches(Regex(
+                "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+            ))) { "Servidor não confirmou a identificação do pedido." }
+            require(orderCode.matches(Regex("^[0-9]{1,24}$"))) {
+                "Servidor não confirmou o código numérico do pedido."
+            }
+            return ManualOrderReceipt(orderId, orderCode, alreadyExists)
+        }
+    }
+}
+
 object NativeManualOrderApi {
     private const val PREFS = "gestor20_manual_draft_encrypted_v1"
     private const val KEY = "draft_ciphertext"
@@ -138,7 +160,7 @@ object NativeManualOrderApi {
     }
 
     fun submit(draft: ManualOrderDraft,
-               onSuccess: (JSONObject) -> Unit, onError: (Throwable) -> Unit) {
+               onSuccess: (ManualOrderReceipt) -> Unit, onError: (Throwable) -> Unit) {
         val problem = draft.validate()
         if (problem != null) { onError(IllegalArgumentException(problem)); return }
         val products = JSONArray()
@@ -167,6 +189,19 @@ object NativeManualOrderApi {
             .put("customer_note", draft.customerNote.trim())
             .put("items", products)
         NativeCatalogApi.execute("manual_order", JSONObject().put("order", order),
-            onSuccess = onSuccess, onError = onError)
+            onSuccess = { response ->
+                try {
+                    val result = response.optJSONObject("result")
+                        ?: throw IllegalStateException("Servidor não confirmou a criação do pedido.")
+                    onSuccess(ManualOrderReceipt.validated(
+                        result.optString("order_id"),
+                        result.optString("order_code"),
+                        result.optBoolean("already_exists", false)
+                    ))
+                } catch (error: Throwable) {
+                    // Resposta ambígua: manter o rascunho até confirmação.
+                    onError(error)
+                }
+            }, onError = onError)
     }
 }

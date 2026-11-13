@@ -494,12 +494,14 @@ class NativeGestorActivity : ComponentActivity() {
         manualSending = true
         manualError = ""
         val submission = manualDraft
-        NativeManualOrderApi.submit(submission, onSuccess = {
+        NativeManualOrderApi.submit(submission, onSuccess = { receipt ->
             manualSending = false
             NativeManualOrderApi.clear(this)
             manualDraft = ManualOrderDraft()
             manualError = ""
-            connectionError = "Pedido manual registrado no servidor. Confira na lista de pedidos."
+            connectionError = if (receipt.alreadyExists)
+                "Pedido #" + receipt.orderCode + " já havia sido registrado; não foi duplicado."
+            else "Pedido manual #" + receipt.orderCode + " registrado no servidor."
             section = 1
             chosenOrder = null
             startListening()
