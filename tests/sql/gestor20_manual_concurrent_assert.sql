@@ -6,7 +6,7 @@ DECLARE
  v_order_id uuid;
  v_total numeric;
 BEGIN
- SELECT count(*), max(id)::text::uuid INTO v_order_count, v_order_id
+ SELECT count(*), max(id::text)::uuid INTO v_order_count, v_order_id
  FROM public.orders
  WHERE source = 'GESTOR20_MANUAL'
    AND client_request_id = 'manual-55555555-5555-4555-8555-555555555555';
