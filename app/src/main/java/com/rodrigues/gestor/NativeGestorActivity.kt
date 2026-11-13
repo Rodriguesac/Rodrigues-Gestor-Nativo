@@ -44,6 +44,8 @@ import com.rodrigues.gestor.data.NativeOrdersHistoryApi
 import com.rodrigues.gestor.data.NativeChatApi
 import com.rodrigues.gestor.data.NativeFinanceApi
 import com.rodrigues.gestor.data.FinanceSummary
+import com.rodrigues.gestor.data.ManualOrderDraft
+import com.rodrigues.gestor.data.NativeManualOrderApi
 import com.rodrigues.gestor.data.NativeChatMessage
 import kotlinx.coroutines.delay
 import com.rodrigues.gestor.data.StoreInfo
@@ -77,6 +79,9 @@ class NativeGestorActivity : ComponentActivity() {
     private var financeDays by mutableIntStateOf(1)
     private var financeLoading by mutableStateOf(false)
     private var financeError by mutableStateOf("")
+    private var manualDraft by mutableStateOf(ManualOrderDraft())
+    private var manualSending by mutableStateOf(false)
+    private var manualError by mutableStateOf("")
     private val catalog = mutableStateListOf<CatalogItem>()
     private var catalogLoading by mutableStateOf(false)
     private var catalogError by mutableStateOf("")
@@ -110,6 +115,7 @@ class NativeGestorActivity : ComponentActivity() {
         orders.addAll(saved.filterNot { isClosedStatus(it.status) })
         historyOrders.addAll(saved.filter { isClosedStatus(it.status) })
         catalog.addAll(NativeCatalogApi.cached(this))
+        manualDraft = NativeManualOrderApi.load(this)
         storeInfo = NativeOperationsApi.cachedStore(this)
         OfflineOrderSyncWorker.cancelLegacy(this)
         queuedActions = offlineStore.waiting().size
@@ -117,8 +123,9 @@ class NativeGestorActivity : ComponentActivity() {
         chosenOrder = intent?.getStringExtra(EXTRA_ORDER_ID)
         signedIn = GestorCredentials.load(this).length == 6
         setContent {
-            BackHandler(enabled = chosenOrder != null || section == 5 || section == 7) {
-                if (chosenOrder != null) chosenOrder = null else section = 4
+            BackHandler(enabled = chosenOrder != null || section in setOf(5, 6, 7)) {
+                if (chosenOrder != null) chosenOrder = null
+                else section = if (section == 6) 1 else 4
             }
             GestorTheme {
                 if (signedIn) {
@@ -132,6 +139,9 @@ class NativeGestorActivity : ComponentActivity() {
                         financeDays = financeDays,
                         financeLoading = financeLoading,
                         financeError = financeError,
+                        manualDraft = manualDraft,
+                        manualSending = manualSending,
+                        manualError = manualError,
                         catalog = catalog,
                         catalogLoading = catalogLoading,
                         catalogError = catalogError,
@@ -168,6 +178,15 @@ class NativeGestorActivity : ComponentActivity() {
                         onStoreBack = { section = 4 },
                         onFinance = { section = 7; chosenOrder = null; loadFinance(financeDays) },
                         onFinancePeriod = ::loadFinance,
+                        onNewManual = {
+                            section = 6
+                            chosenOrder = null
+                            manualError = ""
+                            refreshCatalog()
+                        },
+                        onManualChange = ::updateManualDraft,
+                        onManualSubmit = ::submitManualDraft,
+                        onManualDiscard = ::discardManualDraft,
                         onStoreRefresh = ::refreshStore,
                         onStoreOpen = ::setStoreOpen,
                         onStoreSave = ::saveStoreSettings,
@@ -434,6 +453,59 @@ class NativeGestorActivity : ComponentActivity() {
         })
     }
 
+
+    private fun updateManualDraft(next: ManualOrderDraft) {
+        if (manualSending) return
+        manualDraft = next
+        try {
+            NativeManualOrderApi.save(this, next)
+            manualError = ""
+        } catch (error: Throwable) {
+            manualError = "Não foi possível salvar o rascunho protegido: " +
+                (error.message ?: "erro de armazenamento")
+        }
+    }
+
+    private fun discardManualDraft() {
+        if (manualSending) return
+        NativeManualOrderApi.clear(this)
+        manualDraft = ManualOrderDraft()
+        manualError = ""
+    }
+
+    private fun submitManualDraft() {
+        if (manualSending) return
+        val problem = manualDraft.validate()
+        if (problem != null) { manualError = problem; return }
+        try {
+            // Confirma que o rascunho está persistido ANTES de solicitar ao servidor.
+            NativeManualOrderApi.save(this, manualDraft)
+        } catch (error: Throwable) {
+            manualError = "Falha ao proteger o rascunho. Pedido não enviado. " +
+                (error.message ?: "")
+            return
+        }
+        manualSending = true
+        manualError = ""
+        val submission = manualDraft
+        NativeManualOrderApi.submit(submission, onSuccess = {
+            manualSending = false
+            NativeManualOrderApi.clear(this)
+            manualDraft = ManualOrderDraft()
+            manualError = ""
+            connectionError = "Pedido manual registrado no servidor. Confira na lista de pedidos."
+            section = 1
+            chosenOrder = null
+            startListening()
+        }, onError = {
+            manualSending = false
+            // Mesmo ID em novas tentativas: não cria outro rascunho após resposta ambígua.
+            manualError = "Pedido não confirmado. Verifique a conexão e confira se ele já " +
+                "apareceu em Pedidos antes de tentar novamente: " +
+                (it.message ?: "erro desconhecido")
+        })
+    }
+
     private fun logout() {
         // Pendências de versões antigas não são mais enviadas automaticamente.
         registered?.remove()
@@ -441,6 +513,9 @@ class NativeGestorActivity : ComponentActivity() {
         offlineStore.clearAll()
         NativeCatalogApi.clear(this)
         NativeOperationsApi.clear(this)
+        NativeManualOrderApi.clear(this)
+        manualDraft = ManualOrderDraft()
+        manualError = ""
         storeInfo = StoreInfo()
         catalog.clear()
         GestorCredentials.clear()
@@ -544,6 +619,9 @@ private fun NativeDashboard(
     financeDays: Int,
     financeLoading: Boolean,
     financeError: String,
+    manualDraft: ManualOrderDraft,
+    manualSending: Boolean,
+    manualError: String,
     catalog: List<CatalogItem>,
     catalogLoading: Boolean,
     catalogError: String,
@@ -574,6 +652,10 @@ private fun NativeDashboard(
     onStoreBack: () -> Unit,
     onFinance: () -> Unit,
     onFinancePeriod: (Int) -> Unit,
+    onNewManual: () -> Unit,
+    onManualChange: (ManualOrderDraft) -> Unit,
+    onManualSubmit: () -> Unit,
+    onManualDiscard: () -> Unit,
     onStoreRefresh: () -> Unit,
     onStoreOpen: (Boolean) -> Unit,
     onStoreSave: (Int, String) -> Unit,
@@ -593,18 +675,19 @@ private fun NativeDashboard(
                     Modifier.fillMaxWidth().height(62.dp).padding(horizontal = 16.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    if (selectedOrderId != null || section == 5 || section == 7) {
-                        IconButton(onClick = if (selectedOrderId == null && section in setOf(5, 7)) onStoreBack else onBack) {
+                    if (selectedOrderId != null || section in setOf(5, 6, 7)) {
+                        IconButton(onClick = if (selectedOrderId == null && section in setOf(5, 6, 7))
+                            { if (section == 6) onSection(1) else onStoreBack } else onBack) {
                             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Voltar")
                         }
                     }
                     Column(Modifier.weight(1f)) {
-                        Text(if (selected != null) "Pedido #${selected.number}" else if (section == 5) "MINHA LOJA" else if (section == 7) "FINANCEIRO" else "RODRIGUES • GESTOR 20",
+                        Text(if (selected != null) "Pedido #${selected.number}" else if (section == 5) "MINHA LOJA" else if (section == 7) "FINANCEIRO" else if (section == 6) "NOVO PEDIDO" else "RODRIGUES • GESTOR 20",
                             fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium, color = PurpleDeep)
                         Text(if (selected != null) "Detalhes e andamento" else if (lastSync > 0) "Pedidos salvos • atualização automática" else "Central de operações",
                             style = MaterialTheme.typography.labelSmall, color = Color.Gray)
                     }
-                    if (selectedOrderId == null && section !in setOf(5, 7)) {
+                    if (selectedOrderId == null && section !in setOf(5, 6, 7)) {
                         IconButton(onClick = onRetry) {
                             Icon(Icons.Default.Refresh, contentDescription = "Atualizar pedidos", tint = Purple)
                         }
@@ -622,7 +705,7 @@ private fun NativeDashboard(
                     Triple("Mais", Icons.Default.MoreHoriz, 4)
                 ).forEach { (title, icon, index) ->
                     NavigationBarItem(
-                        selected = section == index || (section in setOf(5, 7) && index == 4),
+                        selected = section == index || (section in setOf(5, 7) && index == 4) || (section == 6 && index == 1),
                         onClick = { onSection(index) },
                         icon = { Icon(icon, contentDescription = title) },
                         label = { Text(title) }
@@ -661,8 +744,9 @@ private fun NativeDashboard(
                     onDispatchDone = onRetry
                 )
                 selectedOrderId != null -> EmptyScreen("Pedido não encontrado ou indisponível.")
-                section == 0 -> HomeScreen(orders, storeInfo, onStore, onSelect)
-                section == 1 -> OrdersScreen(orders, filter, onFilter, onSelect, history = false)
+                section == 0 -> HomeScreen(orders, storeInfo, onStore, onNewManual, onSelect)
+                section == 1 -> OrdersScreen(orders, filter, onFilter, onSelect, history = false,
+                    onNewManual = onNewManual)
                 section == 2 -> CatalogScreen(catalog, catalogLoading, catalogError, catalogBusy,
                     catalogOwner, onCatalogRefresh, onCatalogAvailability, onCatalogPrice, onShareCatalog)
                 section == 3 -> Column {
@@ -678,7 +762,10 @@ private fun NativeDashboard(
                     catalogOwner, onStoreRefresh, onStoreOpen, onStoreSave)
                 section == 7 -> FinanceScreen(financeInfo, financeDays, financeLoading,
                     financeError, onFinancePeriod)
-                else -> MoreScreen(onNotify, onLogout, onStore, onFinance)
+                section == 6 -> NativeManualOrderScreen(manualDraft, catalog, catalogLoading,
+                    manualSending, manualError, onManualChange, onManualSubmit,
+                    onCatalogRefresh, onManualDiscard)
+                else -> MoreScreen(onNotify, onLogout, onStore, onFinance, onNewManual)
             }
         }
     }
@@ -697,7 +784,8 @@ private fun bucket(order: Order): String = when (order.status.uppercase(Locale.R
 
 @Composable
 private fun HomeScreen(
-    orders: List<Order>, storeInfo: StoreInfo, onStore: () -> Unit, onSelect: (String) -> Unit
+    orders: List<Order>, storeInfo: StoreInfo, onStore: () -> Unit,
+    onNewManual: () -> Unit, onSelect: (String) -> Unit
 ) {
     val active = orders.filter { bucket(it) !in setOf("Concluídos", "Cancelados") }
     LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -713,6 +801,14 @@ private fun HomeScreen(
                     Text("Acompanhe cada etapa dos seus pedidos.", color = Color(0xFFE8DCF2),
                         style = MaterialTheme.typography.bodySmall)
                 }
+            }
+        }
+        item {
+            Button(onClick = onNewManual, modifier = Modifier.fillMaxWidth().height(54.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Purple)) {
+                Icon(Icons.Default.AddCircle, null)
+                Spacer(Modifier.width(8.dp))
+                Text("Registrar novo pedido")
             }
         }
         item {
@@ -773,7 +869,8 @@ private fun OrdersScreen(
     filter: String,
     onFilter: (String) -> Unit,
     onSelect: (String) -> Unit,
-    history: Boolean
+    history: Boolean,
+    onNewManual: () -> Unit = {}
 ) {
     val tabs = if (history) listOf("Todos", "Concluídos", "Cancelados")
         else listOf("Todos", "Novos", "Aceitos", "Preparo", "Prontos", "Entrega")
@@ -783,8 +880,15 @@ private fun OrdersScreen(
         else group !in setOf("Concluídos", "Cancelados") && (filter == "Todos" || group == filter)
     }
     Column {
-        Text(if (history) "Histórico" else "Pedidos", Modifier.padding(16.dp),
-            fontWeight = FontWeight.Bold, style = MaterialTheme.typography.headlineSmall)
+        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically) {
+            Text(if (history) "Histórico" else "Pedidos", modifier = Modifier.weight(1f),
+                fontWeight = FontWeight.Bold, style = MaterialTheme.typography.headlineSmall)
+            if (!history) FilledTonalButton(onClick = onNewManual) {
+                Icon(Icons.Default.Add, null)
+                Text("Novo")
+            }
+        }
         androidx.compose.foundation.lazy.LazyRow(
             contentPadding = PaddingValues(horizontal = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -1529,7 +1633,8 @@ private fun FinanceScreen(
 
 @Composable
 private fun MoreScreen(onNotify: () -> Unit, onLogout: () -> Unit,
-                       onStore: () -> Unit, onFinance: () -> Unit) {
+                       onStore: () -> Unit, onFinance: () -> Unit,
+                       onNewManual: () -> Unit) {
     val context = LocalContext.current
     var player by remember { mutableStateOf<MediaPlayer?>(null) }
     var ringEnabled by remember { mutableStateOf(AlertPreferences.enabled(context)) }
@@ -1557,6 +1662,15 @@ private fun MoreScreen(onNotify: () -> Unit, onLogout: () -> Unit,
     ) {
         Text("Ferramentas e ajustes", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
         Text("Personalize os avisos, permissões e recursos do aplicativo.", color = Color.Gray)
+        Card(colors = CardDefaults.cardColors(containerColor = Color.White)) {
+            ListItem(
+                headlineContent = { Text("Novo pedido manual", fontWeight = FontWeight.Bold) },
+                supportingContent = { Text("Cliente, produtos, complementos, taxa e pagamento") },
+                leadingContent = { Icon(Icons.Default.AddShoppingCart, null, tint = Purple) },
+                trailingContent = { Icon(Icons.Default.ChevronRight, null) },
+                modifier = Modifier.clickable(onClick = onNewManual)
+            )
+        }
         Card(colors = CardDefaults.cardColors(containerColor = Color.White)) {
             ListItem(
                 headlineContent = { Text("Financeiro", fontWeight = FontWeight.Bold) },
