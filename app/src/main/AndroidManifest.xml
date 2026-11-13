@@ -23,7 +23,7 @@
 
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_channel_id"
-            android:value="pedidos_urgentes_app_v4" />
+            android:value="pedidos_urgentes_nokia_v5" />
 
         <activity
             android:name=".NativeGestorActivity"

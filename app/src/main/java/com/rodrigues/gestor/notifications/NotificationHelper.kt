@@ -18,14 +18,14 @@ import com.rodrigues.gestor.NativeGestorActivity
 import com.rodrigues.gestor.R
 
 object NotificationHelper {
-    const val CHANNEL_ORDERS = "pedidos_urgentes_app_v4"
+    const val CHANNEL_ORDERS = "pedidos_urgentes_nokia_v5"
     const val CHANNEL_SERVICE = "gestor_servico_v1"
     const val CHANNEL_CONNECTION = "gestor_conectado_v1"
     const val CHANNEL_MESSAGES = "mensagens_cliente_app_v2"
     const val CHANNEL_CANCELLATIONS = "pedidos_cancelados_app_v2"
     const val CHANNEL_NEGOTIATION = "negociacao_pedido_app_v1"
     const val CHANNEL_LATE = "pedido_atrasado_app_v1"
-    const val CHANNEL_PENDING = "pendente_aceite_app_v1"
+    const val CHANNEL_PENDING = "pendente_aceite_nokia_v2"
     const val CHANNEL_PAYMENT = "pagamento_app_v1"
     const val CHANNEL_DRIVER = "entregador_app_v1"
 
@@ -42,7 +42,7 @@ object NotificationHelper {
             description = "Novo pedido e ações imediatas da loja"
             enableVibration(true)
             vibrationPattern = longArrayOf(0, 550, 180, 550)
-            setSound(sound("alert_strong"), attrs)
+            setSound(sound("nokia_pedido"), attrs)
             lockscreenVisibility = Notification.VISIBILITY_PUBLIC
         }
         val service = NotificationChannel(CHANNEL_SERVICE, "Gestor ativo", NotificationManager.IMPORTANCE_LOW).apply {
@@ -88,7 +88,7 @@ object NotificationHelper {
             description = "Lembrete de pedido ainda não aceito"
             enableVibration(true)
             vibrationPattern = longArrayOf(0, 300, 140, 300)
-            setSound(sound("old_phone"), attrs)
+            setSound(sound("nokia_pedido"), attrs)
             lockscreenVisibility = Notification.VISIBILITY_PRIVATE
         }
         val payment = NotificationChannel(CHANNEL_PAYMENT, "Pagamentos", NotificationManager.IMPORTANCE_DEFAULT).apply {

@@ -848,8 +848,8 @@ private fun MoreScreen(onNotify: () -> Unit, onLogout: () -> Unit) {
         }
     }
     val sounds = listOf(
-        Triple("Novo pedido", "Toque Nokia escolhido", R.raw.old_phone),
-        Triple("Aguardando aceite", "Toque Nokia escolhido", R.raw.old_phone),
+        Triple("Novo pedido", "Nokia clássico (seu áudio)", R.raw.nokia_pedido),
+        Triple("Aguardando aceite", "Nokia clássico (seu áudio)", R.raw.nokia_pedido),
         Triple("Pedido atrasado", "Alerta forte", R.raw.alert_strong),
         Triple("Mensagem do cliente", "Campainha leve", R.raw.chime),
         Triple("Negociação / alteração", "Telefone de atenção", R.raw.old_phone),
@@ -907,7 +907,7 @@ private fun MoreScreen(onNotify: () -> Unit, onLogout: () -> Unit) {
                 modifier = Modifier.clickable(onClick = onLogout)
             )
         }
-        Text("O toque de pedidos será incorporado nesta versão. Volume e permissões dependem das configurações do Android.",
+        Text("Toque Nokia aplicado aos novos pedidos. Volume e permissões dependem das configurações do Android.",
             style = MaterialTheme.typography.bodySmall, color = Color.Gray)
     }
 }

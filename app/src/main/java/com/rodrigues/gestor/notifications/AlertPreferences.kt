@@ -18,15 +18,16 @@ object AlertPreferences {
     fun vibration(context: Context): Boolean = prefs(context).getBoolean("vibration", true)
     fun setVibration(context: Context, value: Boolean) = prefs(context).edit().putBoolean("vibration", value).apply()
 
-    fun soundPreset(context: Context): String = prefs(context).getString("sound_preset", "old_phone").orEmpty().ifBlank { "old_phone" }
+    fun soundPreset(context: Context): String = prefs(context).getString("sound_preset", "nokia_pedido").orEmpty().ifBlank { "nokia_pedido" }
 
     fun setSoundPreset(context: Context, value: String) {
-        val safe = value.takeIf { it in setOf("old_phone", "chime", "beep_short", "alert_strong", "system") } ?: "old_phone"
+        val safe = value.takeIf { it in setOf("nokia_pedido", "old_phone", "chime", "beep_short", "alert_strong", "system") } ?: "nokia_pedido"
         prefs(context).edit().putString("sound_preset", safe).apply()
     }
 
     fun orderSoundUri(context: Context): Uri {
         val rawId = when (soundPreset(context)) {
+            "nokia_pedido" -> R.raw.nokia_pedido
             "chime" -> R.raw.chime
             "beep_short" -> R.raw.beep_short
             "alert_strong" -> R.raw.alert_strong
@@ -43,6 +44,7 @@ object AlertPreferences {
     }
 
     fun orderSoundTitle(context: Context): String = when (soundPreset(context)) {
+        "nokia_pedido" -> "Nokia clássico • pedido"
         "old_phone" -> "Telefone antigo"
         "chime" -> "Campainha"
         "beep_short" -> "Bipe curto"
