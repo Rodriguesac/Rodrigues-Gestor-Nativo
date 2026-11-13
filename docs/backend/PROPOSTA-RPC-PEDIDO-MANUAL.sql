@@ -1,10 +1,10 @@
--- PROPOSTA DE BACKEND — não executar em produção sem revisão, backup e testes.
+-- SNAPSHOT DA RPC MIGRADA EM 13/11/2026 (migration 20261113175813).
 -- A gestor-app-api chama admin.rpc('submit_whatsapp_builder_order'), mas a função
--- ainda não existe no Supabase rodriguesacaiecia2 (verificado em 13/11/2026).
+-- já foi instalada no Supabase rodriguesacaiecia2; não reaplicar manualmente.
 -- O Edge Function já prefixa a chave idempotente com 'manual-'; não repetir prefixo aqui.
 -- Fonte: schema real de public.orders, order_items, customers. Este arquivo
--- NÃO é uma migration aplicada; é um candidato que deve passar pelo ciclo
--- supabase migration new / revisão / teste em ambiente controlado.
+-- SQL de referência pós-migração, testado em PostgreSQL 17 e pela função implantada.
+-- Não executar diretamente: consulte a migração do Supabase para alterações futuras.
 
 BEGIN;
 
