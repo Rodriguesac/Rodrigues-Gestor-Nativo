@@ -28,8 +28,10 @@ Deno.serve(async (req: Request) => {
   if (!/^[A-Za-z0-9_-]{40,80}$/.test(session))
     return json({ ok: false, error: "session_required" }, 401);
   const type = (req.headers.get("content-type") || "").toLowerCase().split(";")[0].trim();
-  const extension = ({ "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp" }
-    as Record<string,string>)[type];
+  const extensions: Record<string, string> = {
+    "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp"
+  };
+  const extension = extensions[type];
   if (!extension) return json({ ok: false, error: "unsupported_media_type" }, 415);
   const length = Number(req.headers.get("content-length") || "0");
   if (length > 5*1024*1024) return json({ ok: false, error: "image_too_large" }, 413);
