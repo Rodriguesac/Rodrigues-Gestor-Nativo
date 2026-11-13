@@ -43,6 +43,8 @@ import com.rodrigues.gestor.data.GestorCredentials
 import com.rodrigues.gestor.data.OfflineOrderStore
 import com.rodrigues.gestor.data.OfflineOrderSyncWorker
 import com.rodrigues.gestor.data.NativeCatalogApi
+import com.rodrigues.gestor.data.NativeAdminApi
+import com.rodrigues.gestor.data.CatalogDraft
 import com.rodrigues.gestor.data.NativeOperationsApi
 import com.rodrigues.gestor.data.DeliveryProgress
 import com.rodrigues.gestor.data.OrderFlowPolicy
@@ -227,6 +229,7 @@ class NativeGestorActivity : ComponentActivity() {
                         onCatalogRefresh = ::refreshCatalog,
                         onCatalogAvailability = ::updateCatalogAvailability,
                         onCatalogPrice = ::updateCatalogPrice,
+                        onCatalogSave = ::saveCatalogDraft,
                         onShareCatalog = ::shareCatalog,
                         onLogout = ::logout,
                         onNotify = ::requestNotifications
@@ -432,6 +435,23 @@ class NativeGestorActivity : ComponentActivity() {
         }, onError = {
             catalogBusy = false
             catalogError = "Preço não foi alterado: " + (it.message ?: "verifique a conexão")
+        })
+    }
+
+    private fun saveCatalogDraft(draft: CatalogDraft, onComplete: () -> Unit) {
+        if (catalogBusy || !catalogOwner) {
+            catalogError = "Somente o dono pode alterar o cardápio."
+            return
+        }
+        catalogBusy = true
+        catalogError = ""
+        NativeAdminApi.saveCatalog(draft, onSuccess = {
+            catalogBusy = false
+            onComplete()
+            refreshCatalog()
+        }, onError = {
+            catalogBusy = false
+            catalogError = "Não foi possível salvar o item: " + (it.message ?: "falha de conexão")
         })
     }
 
@@ -804,6 +824,7 @@ private fun NativeDashboard(
     onCatalogRefresh: () -> Unit,
     onCatalogAvailability: (CatalogItem, Boolean) -> Unit,
     onCatalogPrice: (CatalogItem, Double) -> Unit,
+    onCatalogSave: (CatalogDraft, () -> Unit) -> Unit,
     onShareCatalog: () -> Unit,
     onLogout: () -> Unit,
     onNotify: () -> Unit
@@ -907,7 +928,8 @@ private fun NativeDashboard(
                 section == 1 -> OrdersScreen(orders, filter, onFilter, onSelect, history = false,
                     onNewManual = onNewManual)
                 section == 2 -> CatalogScreen(catalog, catalogLoading, catalogError, catalogBusy,
-                    catalogOwner, onCatalogRefresh, onCatalogAvailability, onCatalogPrice, onShareCatalog)
+                    catalogOwner, onCatalogRefresh, onCatalogAvailability,
+                    onCatalogPrice, onCatalogSave, onShareCatalog)
                 section == 3 -> Column {
                     androidx.compose.foundation.lazy.LazyRow(
                         contentPadding = PaddingValues(horizontal = 16.dp),
@@ -1624,6 +1646,7 @@ private fun CatalogScreen(
     onRefresh: () -> Unit,
     onAvailability: (CatalogItem, Boolean) -> Unit,
     onPrice: (CatalogItem, Double) -> Unit,
+    onSave: (CatalogDraft, () -> Unit) -> Unit,
     onShare: () -> Unit
 ) {
     val groups = listOf(
@@ -1634,8 +1657,7 @@ private fun CatalogScreen(
     var group by remember { mutableStateOf("products") }
     var search by remember { mutableStateOf("") }
     var confirming by remember { mutableStateOf<Pair<CatalogItem, Boolean>?>(null) }
-    var editing by remember { mutableStateOf<CatalogItem?>(null) }
-    var newPrice by remember { mutableStateOf("") }
+    var catalogDraft by remember { mutableStateOf<CatalogDraft?>(null) }
     val visible = catalog.filter {
         it.collection == group && it.name.contains(search.trim(), ignoreCase = true)
     }
@@ -1653,6 +1675,14 @@ private fun CatalogScreen(
         }
         Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            if (canEdit) {
+                Button(onClick = { catalogDraft = CatalogDraft(collection = group) },
+                    enabled = !busy, modifier = Modifier.weight(1f)) {
+                    Icon(Icons.Default.Add, null)
+                    Spacer(Modifier.width(4.dp))
+                    Text("Novo item")
+                }
+            }
             OutlinedButton(onClick = onShare, modifier = Modifier.weight(1f)) {
                 Icon(Icons.Default.Share, null)
                 Spacer(Modifier.width(8.dp))
@@ -1714,9 +1744,18 @@ private fun CatalogScreen(
                         if (item.description.isNotBlank()) Text(item.description,
                             style = MaterialTheme.typography.bodySmall, color = Color.Gray,
                             maxLines = 2, overflow = TextOverflow.Ellipsis)
-                        if (canEdit && item.collection == "products") {
-                            TextButton(onClick = { editing = item; newPrice = String.format(Locale.US, "%.2f", item.price) },
-                                enabled = !busy) { Text("Alterar preço") }
+                        if (item.imageUrl.isNotBlank()) {
+                            coil.compose.AsyncImage(model = item.imageUrl, contentDescription = null,
+                                modifier = Modifier.fillMaxWidth().height(84.dp),
+                                contentScale = androidx.compose.ui.layout.ContentScale.Fit)
+                        }
+                        if (canEdit) {
+                            TextButton(onClick = { catalogDraft = CatalogDraft.from(item) },
+                                enabled = !busy) {
+                                Icon(Icons.Default.Edit, null)
+                                Spacer(Modifier.width(6.dp))
+                                Text("Editar nome, foto, preço e opções")
+                            }
                         }
                     }
                 }
@@ -1737,22 +1776,9 @@ private fun CatalogScreen(
             }) { Text("Confirmar") } },
             dismissButton = { TextButton(onClick = { confirming = null }) { Text("Voltar") } })
     }
-    editing?.let { item ->
-        AlertDialog(onDismissRequest = { editing = null },
-            title = { Text("Preço de " + item.name) },
-            text = {
-                OutlinedTextField(value = newPrice, onValueChange = { newPrice = it },
-                    label = { Text("Preço em reais") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
-            },
-            confirmButton = { TextButton(onClick = {
-                val value = newPrice.trim().replace(',', '.').toDoubleOrNull()
-                if (value != null && value.isFinite() && value in 0.0..10000.0) {
-                    editing = null
-                    onPrice(item, value)
-                }
-            }) { Text("Salvar") } },
-            dismissButton = { TextButton(onClick = { editing = null }) { Text("Cancelar") } })
+    catalogDraft?.let { draft ->
+        NativeCatalogEditor(initial = draft, busy = busy, error = error,
+            onSave = onSave, onDismiss = { catalogDraft = null })
     }
 
 }
