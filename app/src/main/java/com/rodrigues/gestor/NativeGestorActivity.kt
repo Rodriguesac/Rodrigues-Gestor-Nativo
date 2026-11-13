@@ -75,6 +75,7 @@ import com.rodrigues.gestor.notifications.DeviceRegistrar
 import com.rodrigues.gestor.notifications.NotificationHelper
 import com.rodrigues.gestor.notifications.OrderRingService
 import java.util.Locale
+import org.json.JSONObject
 
 /**
  * Experimento 100% Compose: interface sem WebView, PWA ou iframe.
@@ -1208,7 +1209,7 @@ private fun OrderDetails(
     var upLoading by remember(order.id) { mutableStateOf(false) }
     var upBusy by remember(order.id) { mutableStateOf(false) }
     var upError by remember(order.id) { mutableStateOf("") }
-    val upCouriers = remember(order.id) { mutableStateListOf<CourierChoice>() }
+    var upStatus by remember(order.id) { mutableStateOf<JSONObject?>(null) }
     val group = bucket(order)
     val status = order.status.uppercase(Locale.ROOT)
     val delivery = DeliveryProgress.from(order)
@@ -1435,13 +1436,13 @@ private fun OrderDetails(
                     showUp = true
                     upLoading = true
                     upError = ""
-                    NativeOperationsApi.couriers(onSuccess = {
-                        upCouriers.clear()
-                        upCouriers.addAll(it)
+                    upStatus = null
+                    NativeOperationsApi.checkUpHandoff(order.id, onSuccess = {
+                        upStatus = it
                         upLoading = false
                     }, onError = {
                         upLoading = false
-                        upError = "Falha ao consultar entregadores: " + (it.message ?: "")
+                        upError = "Não foi possível consultar a integração UP: " + (it.message ?: "")
                     })
                 },
                 enabled = !busy,
@@ -1501,44 +1502,56 @@ private fun OrderDetails(
             onDismissRequest = { if (!upBusy) showUp = false },
             title = { Text("Solicitar UP Entregas") },
             text = {
-                Column(Modifier.heightIn(max = 380.dp).verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text("Escolha um entregador. A oferta só será enviada após confirmação no servidor; ele ainda precisará aceitar.",
-                        style = MaterialTheme.typography.bodySmall)
+                Column(Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("Envie a solicitação à central Rodrigues Logística. O UP selecionará um motoboy e enviará a oferta. O entregador precisará aceitar no aplicativo.",
+                        style = MaterialTheme.typography.bodyMedium)
                     if (upLoading || upBusy) LinearProgressIndicator(Modifier.fillMaxWidth())
                     if (upError.isNotBlank()) Text(upError, color = RedAlert)
-                    if (!upLoading && upCouriers.isEmpty()) Text("Nenhum entregador encontrado.")
-                    upCouriers.forEach { courier ->
-                        Card(colors = CardDefaults.cardColors(containerColor =
-                            if (courier.available) Color(0xFFF1E8FF) else Color(0xFFF2F2F2))) {
-                            Row(Modifier.fillMaxWidth().clickable(enabled = courier.available && !upBusy) {
-                                upBusy = true
-                                upError = ""
-                                NativeOperationsApi.offerUp(order.id, courier.id, onSuccess = {
-                                    upBusy = false
-                                    showUp = false
-                                    onDispatchDone()
-                                }, onError = {
-                                    upBusy = false
-                                    upError = "Oferta não enviada: " + (it.message ?: "")
-                                })
-                            }.padding(13.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Default.DeliveryDining, null,
-                                    tint = if (courier.available) Purple else Color.Gray)
-                                Spacer(Modifier.width(10.dp))
-                                Column {
-                                    Text(courier.name, fontWeight = FontWeight.Bold)
-                                    Text(if (courier.available) "Disponível — tocar para enviar oferta"
-                                         else "Indisponível — " + courier.status,
-                                         style = MaterialTheme.typography.labelSmall,
-                                         color = if (courier.available) Green else Color.Gray)
-                                }
-                            }
+                    val result = upStatus
+                    if (!upLoading && result != null) {
+                        val queued = result.optBoolean("queued", false)
+                        val confirmed = result.optString("bridge_state") == "ACKED"
+                        val message = result.optString("message",
+                            if (queued) "Solicitação em processamento." else "Confira o pedido.")
+                        Text(message, color = if (result.optBoolean("bridge_enabled", false))
+                            Green else Color.DarkGray)
+                        if (queued) {
+                            Text(if (confirmed) "O UP já recebeu a corrida. Aguarde a escolha de um entregador."
+                                 else "Aguardando confirmação do UP. Não é necessário solicitar novamente.",
+                                 style = MaterialTheme.typography.labelSmall, color = Color.Gray)
                         }
                     }
                 }
             },
-            confirmButton = { TextButton(onClick = { showUp = false }, enabled = !upBusy) { Text("Voltar") } }
+            confirmButton = {
+                val state = upStatus
+                val canRequest = state != null && state.optBoolean("bridge_enabled", false) &&
+                    state.optBoolean("eligible", false) && !state.optBoolean("queued", false) &&
+                    canOfferUp && !upLoading && !upBusy
+                TextButton(
+                    enabled = canRequest,
+                    onClick = {
+                        if (!canRequest) return@TextButton
+                        upBusy = true
+                        upError = ""
+                        NativeOperationsApi.requestUpHandoff(order.id, onSuccess = {
+                            upBusy = false
+                            upStatus = it
+                            showUp = false
+                            onDispatchDone()
+                        }, onError = {
+                            upBusy = false
+                            upError = "Solicitação não confirmada: " + (it.message ?: "")
+                            NativeOperationsApi.checkUpHandoff(order.id, onSuccess = { status ->
+                                upStatus = status
+                            }, onError = { /* Não repetir automaticamente uma operação incerta. */ })
+                        })
+                    }
+                ) { Text("Solicitar UP") }
+            },
+            dismissButton = { TextButton(onClick = { showUp = false },
+                enabled = !upBusy) { Text("Voltar") } }
         )
     }
 
