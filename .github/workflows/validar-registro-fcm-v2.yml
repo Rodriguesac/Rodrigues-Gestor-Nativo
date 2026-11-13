@@ -24,7 +24,7 @@ jobs:
           URL="https://fdqqwdplprzpqufpgdrm.supabase.co/functions/v1/gestor-device-register-v2"
           TOKEN=$(printf 'a%.0s' {1..80})
           FAKE_SESSION=$(printf 'b%.0s' {1..43})
-          status=$(curl -fsS --max-time 20 -X POST -H 'Content-Type: application/json' \
+          status=$(curl -sS --max-time 20 -X POST -H 'Content-Type: application/json' \
             --data "{\"token\":\"$TOKEN\",\"package\":\"com.rodrigues.gestor\"}" \
             -o /tmp/missing-session.json -w '%{http_code}' "$URL" || true)
           if [ "$status" != "401" ] || ! grep -q 'session_required' /tmp/missing-session.json; then
