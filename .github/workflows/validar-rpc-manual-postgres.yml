@@ -47,6 +47,17 @@ jobs:
         run: psql -X -v ON_ERROR_STOP=1 -f docs/backend/PROPOSTA-RPC-PEDIDO-MANUAL.sql
       - name: Testar permisos, idempotência, valores e erros
         run: psql -X -v ON_ERROR_STOP=1 -f tests/sql/gestor20_manual_smoke.sql
+      - name: Testar 12 pedidos simultâneos com o mesmo submission_id
+        shell: bash
+        run: |
+          set -euo pipefail
+          pids=()
+          for i in $(seq 1 12); do
+            psql -X -v ON_ERROR_STOP=1 -f tests/sql/gestor20_manual_concurrent_call.sql > /dev/null &
+            pids+=("$!")
+          done
+          for pid in "${pids[@]}"; do wait "$pid"; done
+          psql -X -v ON_ERROR_STOP=1 -f tests/sql/gestor20_manual_concurrent_assert.sql
       - name: Conferir que testes não usam dados reais
         run: |
           echo "Testes executados exclusivamente no PostgreSQL service local."
