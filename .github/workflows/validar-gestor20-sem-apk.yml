@@ -13,6 +13,11 @@ on:
 permissions:
   contents: read
 
+# Economiza cotas: uma nova versão substitui a compilação antiga da mesma branch.
+concurrency:
+  group: gestor20-validation-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   validate-kotlin:
     runs-on: ubuntu-latest
