@@ -1,6 +1,7 @@
 package com.rodrigues.gestor.notifications
 
 import android.os.Build
+import com.rodrigues.gestor.BuildConfig
 import com.google.firebase.messaging.FirebaseMessaging
 import java.net.HttpURLConnection
 import java.net.URL
@@ -12,6 +13,9 @@ object DeviceRegistrar {
 
     fun register(token: String) {
         if (token.isBlank()) return
+        // A versão de prévia instala separada para não substituir o Gestor.
+        // Nunca registrar seu token como dispositivo da operação real.
+        if (BuildConfig.DEBUG && BuildConfig.APPLICATION_ID.endsWith(".preview")) return
 
         FirebaseMessaging.getInstance().subscribeToTopic("gestor-pedidos")
 

@@ -13,14 +13,18 @@ android {
         applicationId = "com.rodrigues.gestor"
         minSdk = 23
         targetSdk = 36
-        versionCode = 23
-        versionName = "3.4.0-native-preview"
+        versionCode = 24
+        versionName = "3.5.0-native"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
     }
 
     buildTypes {
+        getByName("debug") {
+            applicationIdSuffix = ".preview"
+            versionNameSuffix = "-teste"
+        }
         release {
             isMinifyEnabled = false
             proguardFiles(

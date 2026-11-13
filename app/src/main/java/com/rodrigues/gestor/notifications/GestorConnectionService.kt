@@ -10,6 +10,7 @@ import com.google.firebase.firestore.ListenerRegistration
 import com.google.firebase.messaging.FirebaseMessaging
 import com.rodrigues.gestor.data.GestorCredentials
 import com.rodrigues.gestor.data.Order
+import com.rodrigues.gestor.data.OfflineOrderStore
 import com.rodrigues.gestor.data.StatusGroups
 import com.rodrigues.gestor.data.SupabaseOrdersApi
 import java.text.SimpleDateFormat
@@ -22,6 +23,7 @@ class GestorConnectionService : Service() {
     private val knownPending = mutableSetOf<String>()
     private val knownStatuses = mutableMapOf<String, String>()
     private var activeRingOrderId = ""
+    private val persistentCache by lazy { OfflineOrderStore(this) }
 
     override fun onCreate() {
         super.onCreate()
@@ -53,6 +55,9 @@ class GestorConnectionService : Service() {
     }
 
     private fun handleOrders(orders: List<Order>) {
+        // Salva o pedido ANTES de acionar o toque. Assim ele está disponível
+        // mesmo se a conexão cair depois de aparecer a notificação.
+        try { persistentCache.storeOrders(orders) } catch (_: Throwable) { }
         val currentStatuses = orders.associate { it.id to it.status.uppercase(Locale.ROOT) }
 
         if (!firstSnapshot) {
@@ -168,6 +173,7 @@ class GestorConnectionService : Service() {
     override fun onDestroy() {
         orderListener?.remove()
         orderListener = null
+        try { persistentCache.close() } catch (_: Throwable) { }
         super.onDestroy()
     }
 
