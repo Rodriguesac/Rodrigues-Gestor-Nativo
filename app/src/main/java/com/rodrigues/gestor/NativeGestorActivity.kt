@@ -44,6 +44,7 @@ import com.rodrigues.gestor.data.OfflineOrderStore
 import com.rodrigues.gestor.data.OfflineOrderSyncWorker
 import com.rodrigues.gestor.data.NativeCatalogApi
 import com.rodrigues.gestor.data.NativeOperationsApi
+import com.rodrigues.gestor.data.DeliveryProgress
 import com.rodrigues.gestor.data.NativeOrdersHistoryApi
 import com.rodrigues.gestor.data.HistoryWindow
 import com.rodrigues.gestor.data.HistoryPagination
@@ -198,6 +199,7 @@ class NativeGestorActivity : ComponentActivity() {
                         onRetry = { startListening() },
                         onAction = ::updateOrder,
                         onOwnDispatch = ::dispatchOwn,
+                        onRecallOffer = ::recallUpOffer,
                         onCancel = ::cancelOrderWithReason,
                         onStore = { section = 5; chosenOrder = null; refreshStore() },
                         onStoreBack = { section = 4 },
@@ -494,6 +496,23 @@ class NativeGestorActivity : ComponentActivity() {
     }
 
 
+    private fun recallUpOffer(order: Order) {
+        if (pendingAction || !DeliveryProgress.from(order).canRecallOffer) return
+        pendingAction = true
+        connectionError = ""
+        NativeOperationsApi.recallUpOffer(order.id, onSuccess = {
+            pendingAction = false
+            chosenOrder = null
+            section = 1
+            connectionError = "Oferta UP recolhida pelo servidor. Pedido continua ativo."
+            startListening()
+        }, onError = {
+            pendingAction = false
+            connectionError = "Não foi possível recolher a oferta: " +
+                (it.message ?: "atualize o pedido e confira se o motoboy já aceitou")
+        })
+    }
+
     private fun cancelOrderWithReason(order: Order, reason: String) {
         if (pendingAction || isClosedStatus(order.status)) return
         pendingAction = true
@@ -730,6 +749,7 @@ private fun NativeDashboard(
     onRetry: () -> Unit,
     onAction: (Order, String) -> Unit,
     onOwnDispatch: (Order) -> Unit,
+    onRecallOffer: (Order) -> Unit,
     onCancel: (Order, String) -> Unit,
     onStore: () -> Unit,
     onStoreBack: () -> Unit,
@@ -839,6 +859,7 @@ private fun NativeDashboard(
                     busy = busy,
                     onAction = { action -> onAction(selected, action) },
                     onOwnDispatch = { onOwnDispatch(selected) },
+                    onRecallOffer = { onRecallOffer(selected) },
                     onCancel = { reason -> onCancel(selected, reason) },
                     onDispatchDone = onRetry
                 )
@@ -1094,8 +1115,8 @@ private fun OrderCard(order: Order, onSelect: (String) -> Unit) {
 @Composable
 private fun OrderDetails(
     order: Order, busy: Boolean, onAction: (String) -> Unit,
-    onOwnDispatch: () -> Unit, onCancel: (String) -> Unit,
-    onDispatchDone: () -> Unit
+    onOwnDispatch: () -> Unit, onRecallOffer: () -> Unit,
+    onCancel: (String) -> Unit, onDispatchDone: () -> Unit
 ) {
     val context = LocalContext.current
     var printingError by remember(order.id) { mutableStateOf("") }
@@ -1125,13 +1146,9 @@ private fun OrderDetails(
     val upCouriers = remember(order.id) { mutableStateListOf<CourierChoice>() }
     val group = bucket(order)
     val status = order.status.uppercase(Locale.ROOT)
-    val upState = order.raw["up_state"]?.toString().orEmpty().uppercase(Locale.ROOT)
-    val hasUpMission = !order.raw["courier_id"]?.toString().isNullOrBlank() ||
-        !order.raw["up_target_courier_id"]?.toString().isNullOrBlank() ||
-        !order.raw["up_pickup_at"]?.toString().isNullOrBlank() ||
-        upState in setOf("OFFER_PENDING", "OFFER_ACCEPTED", "ACCEPTED", "TO_STORE",
-            "AT_STORE", "TO_CUSTOMER", "AT_CUSTOMER")
-    val storeDispatch = order.raw["delivery_dispatch_mode"]?.toString() == "STORE"
+    val delivery = DeliveryProgress.from(order)
+    val hasUpMission = delivery.hasUpMission
+    val storeDispatch = delivery.isOwn
     val canChooseDispatch = !order.pickup && !hasUpMission &&
         status in setOf("PRONTO", "AGUARDANDO_DECISAO_GESTOR", "BUSCANDO_ENTREGADOR")
     val canOfferUp = !order.pickup && !hasUpMission &&
@@ -1151,6 +1168,7 @@ private fun OrderDetails(
         "PRONTO" to "Marcar como pronto",
         "RETIRADO" to "Confirmar retirada",
         "MANUAL_DISPATCH" to "Despachar (entrega própria)",
+        "RECALL_UP" to "Recolher oferta UP ainda pendente",
         "CONCLUIDO" to "Finalizar entrega"
     )
     LazyColumn(
@@ -1172,6 +1190,46 @@ private fun OrderDetails(
                     if (order.phone.isNotBlank()) Text("Telefone: ${order.phone}")
                     if (!order.pickup) Text("Endereço: ${order.address}")
                     Text("Pagamento: ${order.payment.form}")
+                }
+            }
+        }
+        if (!order.pickup) item {
+            Card(colors = CardDefaults.cardColors(containerColor = Color.White),
+                shape = RoundedCornerShape(16.dp)) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Acompanhamento da entrega", fontWeight = FontWeight.Bold,
+                        style = MaterialTheme.typography.titleMedium)
+                    Text(delivery.label, color = when {
+                        delivery.canRecallOffer -> Amber
+                        delivery.isUp -> Blue
+                        delivery.isOwn -> Green
+                        else -> Purple
+                    }, fontWeight = FontWeight.SemiBold)
+                    Text(delivery.detail, style = MaterialTheme.typography.bodySmall,
+                        color = Color.DarkGray)
+                    if (delivery.isUp) {
+                        val trackingEnabled = order.raw["tracking_enabled"] == true
+                        Text(if (trackingEnabled) "Rastreamento autorizado no pedido."
+                            else "Rastreamento não habilitado neste pedido.",
+                            style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+                        Text("Este painel acompanha os status confirmados. " +
+                            "Não exibe localização do motoboy sem dados de GPS atualizados.",
+                            style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+                    }
+                    OutlinedButton(onClick = onDispatchDone, enabled = !busy,
+                        modifier = Modifier.fillMaxWidth()) {
+                        Icon(Icons.Default.Refresh, null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Atualizar andamento")
+                    }
+                    if (delivery.canRecallOffer) {
+                        OutlinedButton(onClick = { confirmation = "RECALL_UP" },
+                            enabled = !busy, modifier = Modifier.fillMaxWidth()) {
+                            Icon(Icons.Default.Undo, null)
+                            Spacer(Modifier.width(8.dp))
+                            Text("Recolher oferta ainda não aceita", color = RedAlert)
+                        }
+                    }
                 }
             }
         }
@@ -1341,7 +1399,11 @@ private fun OrderDetails(
             confirmButton = {
                 TextButton(onClick = {
                     confirmation = null
-                    if (target == "MANUAL_DISPATCH") onOwnDispatch() else onAction(target)
+                    when (target) {
+                        "MANUAL_DISPATCH" -> onOwnDispatch()
+                        "RECALL_UP" -> onRecallOffer()
+                        else -> onAction(target)
+                    }
                 }) { Text("Confirmar") }
             },
             dismissButton = { TextButton(onClick = { confirmation = null }) { Text("Voltar") } }
