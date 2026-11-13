@@ -44,6 +44,8 @@ import com.rodrigues.gestor.data.Order
 import com.rodrigues.gestor.data.StatusGroups
 import com.rodrigues.gestor.data.SupabaseOrdersApi
 import com.rodrigues.gestor.data.money
+import com.rodrigues.gestor.printing.OrderPrinter
+import com.rodrigues.gestor.notifications.AlertPreferences
 import com.rodrigues.gestor.notifications.GestorConnectionService
 import com.rodrigues.gestor.notifications.NotificationHelper
 import com.rodrigues.gestor.notifications.OrderRingService
@@ -599,6 +601,8 @@ private fun OrderCard(order: Order, onSelect: (String) -> Unit) {
 
 @Composable
 private fun OrderDetails(order: Order, busy: Boolean, onAction: (String) -> Unit) {
+    val context = LocalContext.current
+    var printingError by remember(order.id) { mutableStateOf("") }
     val group = bucket(order)
     var confirmation by remember(order.id) { mutableStateOf<String?>(null) }
     val action: String? = when (group) {
@@ -659,6 +663,51 @@ private fun OrderDetails(order: Order, busy: Boolean, onAction: (String) -> Unit
                     Text(money(order.total), color = Purple, fontWeight = FontWeight.Bold)
                 }
             }
+        }
+        item {
+            Text("Cupom e compartilhamento", style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold)
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedButton(onClick = {
+                    try {
+                        OrderPrinter.print(context, order,
+                            AlertPreferences.printCopies(context), AlertPreferences.paperWidth(context))
+                    } catch (error: Throwable) {
+                        printingError = error.message ?: "Impressão indisponível neste aparelho."
+                    }
+                }, modifier = Modifier.weight(1f)) {
+                    Icon(Icons.Default.Print, null)
+                    Spacer(Modifier.width(6.dp))
+                    Text("Imprimir")
+                }
+                OutlinedButton(onClick = {
+                    val text = buildString {
+                        append("RODRIGUES AÇAÍ E CIA\nPEDIDO #" + order.number + "\n")
+                        append("Cliente: " + order.clientName + "\n")
+                        order.items.forEach { item ->
+                            append("\n" + item.quantity + "× " + item.name)
+                            item.details.forEach { append("\n- " + it) }
+                        }
+                        if (order.observation.isNotBlank()) append("\nObs.: " + order.observation)
+                        append("\n\nTotal: " + money(order.total))
+                        if (order.address.isNotBlank() && !order.pickup) append("\nEndereço: " + order.address)
+                        append("\nPagamento: " + order.payment.form)
+                    }
+                    val share = Intent(Intent.ACTION_SEND).apply {
+                        type = "text/plain"
+                        putExtra(Intent.EXTRA_TEXT, text)
+                    }
+                    context.startActivity(Intent.createChooser(share, "Enviar resumo do pedido"))
+                }, modifier = Modifier.weight(1f)) {
+                    Icon(Icons.Default.Share, null)
+                    Spacer(Modifier.width(6.dp))
+                    Text("Compartilhar")
+                }
+            }
+            if (printingError.isNotBlank()) Text(printingError, color = RedAlert,
+                style = MaterialTheme.typography.bodySmall)
+            Text("O cupom funciona também com os dados de pedidos salvos no celular.",
+                color = Color.Gray, style = MaterialTheme.typography.labelSmall)
         }
         if (action != null) item {
             Button(
@@ -841,6 +890,9 @@ private fun CatalogScreen(
 private fun MoreScreen(onNotify: () -> Unit, onLogout: () -> Unit) {
     val context = LocalContext.current
     var player by remember { mutableStateOf<MediaPlayer?>(null) }
+    var ringEnabled by remember { mutableStateOf(AlertPreferences.enabled(context)) }
+    var vibrationEnabled by remember { mutableStateOf(AlertPreferences.vibration(context)) }
+    var interval by remember { mutableFloatStateOf(AlertPreferences.repeatSeconds(context).toFloat()) }
     DisposableEffect(Unit) {
         onDispose {
             try { player?.stop(); player?.release() } catch (_: Throwable) {}
@@ -863,6 +915,31 @@ private fun MoreScreen(onNotify: () -> Unit, onLogout: () -> Unit) {
     ) {
         Text("Ferramentas e ajustes", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
         Text("Personalize os avisos, permissões e recursos do aplicativo.", color = Color.Gray)
+        Card(colors = CardDefaults.cardColors(containerColor = Color.White)) {
+            Column(Modifier.padding(16.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Repetir alerta de novo pedido", modifier = Modifier.weight(1f),
+                        fontWeight = FontWeight.SemiBold)
+                    Switch(checked = ringEnabled, onCheckedChange = {
+                        ringEnabled = it
+                        AlertPreferences.setEnabled(context, it)
+                    })
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Vibrar ao receber pedido", modifier = Modifier.weight(1f))
+                    Switch(checked = vibrationEnabled, onCheckedChange = {
+                        vibrationEnabled = it
+                        AlertPreferences.setVibration(context, it)
+                    })
+                }
+                Text("Intervalo entre toques: " + interval.toInt() + " segundos",
+                    style = MaterialTheme.typography.labelMedium)
+                Slider(value = interval, onValueChange = {
+                    interval = it
+                    AlertPreferences.setRepeatSeconds(context, it.toInt())
+                }, valueRange = 5f..60f, steps = 10)
+            }
+        }
         Text("Sons próprios do Gestor 20", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
         Text("Cada situação usa um som adequado. Toque para ouvir a prévia.",
             style = MaterialTheme.typography.bodySmall, color = Color.Gray)
