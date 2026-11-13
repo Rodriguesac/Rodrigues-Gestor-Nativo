@@ -37,8 +37,7 @@ object SupabaseOrdersApi {
         val lastRefreshAt = AtomicLong(0L)
         // Cada reconexão ganha uma geração. Eventos antigos não podem iniciar
         // várias conexões nem alterar a UI depois da substituição do socket.
-        val connectionGeneration = AtomicInteger(0)
-        val reconnectQueued = AtomicBoolean(false)
+        val reconnectGate = RealtimeReconnectGate()
         var joinRef = ""
         var socket: WebSocket? = null
 
@@ -86,19 +85,18 @@ object SupabaseOrdersApi {
 
         fun connect() {
             if (stopped.get()) return
-            val generation = connectionGeneration.incrementAndGet()
+            val generation = reconnectGate.newConnection()
             val request = Request.Builder().url(REALTIME_URL).build()
             socket = realtimeClient.newWebSocket(request, object : WebSocketListener() {
                 private fun isCurrent(): Boolean =
-                    !stopped.get() && generation == connectionGeneration.get()
+                    !stopped.get() && reconnectGate.isCurrent(generation)
 
                 private fun scheduleReconnect() {
-                    if (!isCurrent() || !reconnectQueued.compareAndSet(false, true)) return
+                    if (!reconnectGate.requestReconnect(generation)) return
                     realtimeReady.set(false)
                     mainHandler.removeCallbacks(heartbeat)
                     mainHandler.postDelayed({
-                        reconnectQueued.set(false)
-                        if (isCurrent()) connect()
+                        if (reconnectGate.consumeReconnect(generation) && !stopped.get()) connect()
                     }, 3_500L)
                 }
 
@@ -178,7 +176,7 @@ object SupabaseOrdersApi {
         return object : ListenerRegistration {
             override fun remove() {
                 stopped.set(true)
-                connectionGeneration.incrementAndGet()
+                reconnectGate.stop()
                 mainHandler.removeCallbacks(refreshSignal)
                 mainHandler.removeCallbacks(watchdog)
                 mainHandler.removeCallbacks(heartbeat)
