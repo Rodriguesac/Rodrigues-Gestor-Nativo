@@ -24,7 +24,7 @@ Branch atual: `feature/gestor20-completo-sem-apk`. Workflow de validação compi
 1. **Compilação de todas as mudanças** no workflow sem geração de APK. Qualquer falha de dependência ou compilação deve ser investigada e resolvida.
 2. **Testes automatizados** para serialização, estados de pedidos, autenticação, tempos, idempotência e concorrência entre gestores. Ainda insuficientes.
 3. **Validação do fluxo UP fim-a-fim**, com entrega, recusa, desistência, falha, cancelamento, pagamento e conflito concorrente. Não acionar pedidos de produção sem cenário controlado autorizado.
-4. **Pedido manual e montagem completa** no aplicativo, incluindo preço correto, endereço, forma de pagamento, confirmação e prevenção de duplicidade.
+4. **Pedido manual:** tela e rascunho AES implementados, preços e dados obrigatórios testados na JVM. O backend ainda precisa de `submit_whatsapp_builder_order` (não existe no banco consultado). A proposta está em `docs/backend/PROPOSTA-RPC-PEDIDO-MANUAL.sql` e não foi aplicada. Falta teste de criação e deduplicação em ambiente seguro e validação no celular.
 5. **Histórico paginado e relatórios filtráveis** com valores reconciliados com o backend.
 6. **Cliente e mensagens**: confirmar comunicação cliente↔gestor e notificações push funcionando também com o app fechado.
 7. **Login/sessões**: avaliar renovação de sessão sem exigir PIN para cada chamada e permissões granulares por funcionário.
@@ -43,3 +43,11 @@ Branch atual: `feature/gestor20-completo-sem-apk`. Workflow de validação compi
 ## Decisão de entrega
 
 A versão de desenvolvimento **não é um aplicativo final** e **nenhum APK deve ser gerado para o usuário até os gates acima**. A produção permanece intocada.
+
+## Rodada 13/11/2026 — pedido manual
+
+- UI nativa: cliente, telefone, retirada/entrega, endereço, taxa, Pix/dinheiro/crédito/débito, lista editável de produtos, seleção de produtos e complementos ativos, cálculo de total e confirmação final.
+- Rascunho criptografado com Android Keystore, inclusive chave de submissão estável em caso de resposta ambígua da rede. Não há envio offline automático.
+- Servidor existente chama a RPC inexistente `submit_whatsapp_builder_order`; a proposta de função SQL foi documentada sem aplicar alterações.
+- GitHub Actions `43467810641`: `compileDebugKotlin`, `testDebugUnitTest` e **verificação de ausência de APK** concluídos com sucesso. Não substitui testes reais do aplicativo.
+- Nenhum pedido de produção foi criado/cancelado nesta rodada. Nenhum APK produzido ou distribuído.
