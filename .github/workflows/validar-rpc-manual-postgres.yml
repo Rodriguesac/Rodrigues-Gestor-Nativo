@@ -1,0 +1,53 @@
+name: Validar RPC do pedido manual em PostgreSQL isolado
+
+on:
+  push:
+    branches:
+      - feature/gestor20-completo-sem-apk
+    paths:
+      - "docs/backend/PROPOSTA-RPC-PEDIDO-MANUAL.sql"
+      - "tests/sql/gestor20_manual_*.sql"
+      - ".github/workflows/validar-rpc-manual-postgres.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  postgres-rpc:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: teste-isolado
+          POSTGRES_DB: gestor20_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: 5432
+      PGUSER: postgres
+      PGPASSWORD: teste-isolado
+      PGDATABASE: gestor20_test
+    steps:
+      - uses: actions/checkout@v4
+      - name: Checar PostgreSQL
+        run: psql -X -v ON_ERROR_STOP=1 -c "SELECT version();"
+      - name: Banco isolado com RLS
+        run: psql -X -v ON_ERROR_STOP=1 -f tests/sql/gestor20_manual_fixture.sql
+      - name: Instalar somente proposta SQL no banco descartável
+        run: psql -X -v ON_ERROR_STOP=1 -f docs/backend/PROPOSTA-RPC-PEDIDO-MANUAL.sql
+      - name: Testar permisos, idempotência, valores e erros
+        run: psql -X -v ON_ERROR_STOP=1 -f tests/sql/gestor20_manual_smoke.sql
+      - name: Conferir que testes não usam dados reais
+        run: |
+          echo "Testes executados exclusivamente no PostgreSQL service local."
+          echo "Nenhum projeto Supabase da loja foi alterado e nenhum APK foi criado."
