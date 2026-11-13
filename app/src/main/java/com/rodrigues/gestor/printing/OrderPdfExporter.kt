@@ -23,38 +23,38 @@ object OrderPdfExporter {
 
     fun proposedFileName(order: Order): String {
         val safe = order.number.filter { it.isLetterOrDigit() || it == '-' }.take(25)
-        return "Rodrigues-Pedido-\${safe.ifBlank { "comanda" }}.pdf"
+        return "Rodrigues-Pedido-${safe.ifBlank { "comanda" }}.pdf"
     }
 
     fun receiptLines(order: Order): List<String> = buildList {
         add("RODRIGUES AÇAÍ E CIA")
-        add("COMANDA DE PEDIDO #\${order.number}")
+        add("COMANDA DE PEDIDO #${order.number}")
         add("DOCUMENTO NÃO FISCAL")
         add("--------------------------------------------")
-        add("Cliente: \${order.clientName}")
-        if (order.phone.isNotBlank()) add("Telefone: \${order.phone}")
-        add("Modalidade: \${if (order.pickup) "RETIRADA" else "ENTREGA"}")
-        if (!order.pickup && order.address.isNotBlank()) add("Endereço: \${order.address}")
-        add("Status do pedido: \${order.status.uppercase(Locale.ROOT)}")
+        add("Cliente: ${order.clientName}")
+        if (order.phone.isNotBlank()) add("Telefone: ${order.phone}")
+        add("Modalidade: ${if (order.pickup) "RETIRADA" else "ENTREGA"}")
+        if (!order.pickup && order.address.isNotBlank()) add("Endereço: ${order.address}")
+        add("Status do pedido: ${order.status.uppercase(Locale.ROOT)}")
         add("--------------------------------------------")
         add("ITENS")
         order.items.forEach { item ->
-            add("\${item.quantity}x \${item.name}" +
-                (if (item.price > 0) " — \${money(item.price)}" else ""))
+            add("${item.quantity}x ${item.name}" +
+                (if (item.price > 0) " — ${money(item.price)}" else ""))
             item.details.forEach { add("   + $it") }
         }
         if (order.observation.isNotBlank()) {
             add("--------------------------------------------")
-            add("OBSERVAÇÃO: \${order.observation}")
+            add("OBSERVAÇÃO: ${order.observation}")
         }
         add("--------------------------------------------")
-        if (order.subtotal > 0) add("Subtotal: \${money(order.subtotal)}")
-        if (order.freight > 0) add("Entrega: \${money(order.freight)}")
-        if (order.discount > 0) add("Desconto: - \${money(order.discount)}")
-        add("TOTAL: \${money(order.total)}")
-        add("Pagamento: \${order.payment.form}")
-        add("Situação: \${PaymentStatusDisplay.label(order.payment.status)}")
-        if (order.payment.needsChange) add("Troco para: \${money(order.payment.changeFor)}")
+        if (order.subtotal > 0) add("Subtotal: ${money(order.subtotal)}")
+        if (order.freight > 0) add("Entrega: ${money(order.freight)}")
+        if (order.discount > 0) add("Desconto: - ${money(order.discount)}")
+        add("TOTAL: ${money(order.total)}")
+        add("Pagamento: ${order.payment.form}")
+        add("Situação: ${PaymentStatusDisplay.label(order.payment.status)}")
+        if (order.payment.needsChange) add("Troco para: ${money(order.payment.changeFor)}")
         add("--------------------------------------------")
         add("Este documento não comprova pagamento nem substitui nota fiscal.")
     }
