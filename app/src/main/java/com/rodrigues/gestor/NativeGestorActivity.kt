@@ -41,6 +41,9 @@ import com.rodrigues.gestor.data.OfflineOrderSyncWorker
 import com.rodrigues.gestor.data.NativeCatalogApi
 import com.rodrigues.gestor.data.NativeOperationsApi
 import com.rodrigues.gestor.data.NativeOrdersHistoryApi
+import com.rodrigues.gestor.data.NativeChatApi
+import com.rodrigues.gestor.data.NativeChatMessage
+import kotlinx.coroutines.delay
 import com.rodrigues.gestor.data.StoreInfo
 import com.rodrigues.gestor.data.CourierChoice
 import com.rodrigues.gestor.data.CatalogItem
@@ -150,6 +153,7 @@ class NativeGestorActivity : ComponentActivity() {
                         onRetry = { startListening() },
                         onAction = ::updateOrder,
                         onOwnDispatch = ::dispatchOwn,
+                        onCancel = ::cancelOrderWithReason,
                         onStore = { section = 5; chosenOrder = null; refreshStore() },
                         onStoreBack = { section = 4 },
                         onStoreRefresh = ::refreshStore,
@@ -383,6 +387,23 @@ class NativeGestorActivity : ComponentActivity() {
         })
     }
 
+
+    private fun cancelOrderWithReason(order: Order, reason: String) {
+        if (pendingAction || isClosedStatus(order.status)) return
+        pendingAction = true
+        connectionError = ""
+        NativeOperationsApi.cancelOrder(order.id, reason, onSuccess = {
+            pendingAction = false
+            chosenOrder = null
+            connectionError = "Cancelamento confirmado pelo servidor."
+            startListening()
+            loadHistory()
+        }, onError = {
+            pendingAction = false
+            connectionError = "Não foi possível cancelar: " + (it.message ?: "confira o status e tente novamente")
+        })
+    }
+
     private fun logout() {
         // Pendências de versões antigas não são mais enviadas automaticamente.
         registered?.remove()
@@ -514,6 +535,7 @@ private fun NativeDashboard(
     onRetry: () -> Unit,
     onAction: (Order, String) -> Unit,
     onOwnDispatch: (Order) -> Unit,
+    onCancel: (Order, String) -> Unit,
     onStore: () -> Unit,
     onStoreBack: () -> Unit,
     onStoreRefresh: () -> Unit,
@@ -599,6 +621,7 @@ private fun NativeDashboard(
                     busy = busy,
                     onAction = { action -> onAction(selected, action) },
                     onOwnDispatch = { onOwnDispatch(selected) },
+                    onCancel = { reason -> onCancel(selected, reason) },
                     onDispatchDone = onRetry
                 )
                 selectedOrderId != null -> EmptyScreen("Pedido não encontrado ou indisponível.")
@@ -786,10 +809,14 @@ private fun OrderCard(order: Order, onSelect: (String) -> Unit) {
 @Composable
 private fun OrderDetails(
     order: Order, busy: Boolean, onAction: (String) -> Unit,
-    onOwnDispatch: () -> Unit, onDispatchDone: () -> Unit
+    onOwnDispatch: () -> Unit, onCancel: (String) -> Unit,
+    onDispatchDone: () -> Unit
 ) {
     val context = LocalContext.current
     var printingError by remember(order.id) { mutableStateOf("") }
+    var showChat by remember(order.id) { mutableStateOf(false) }
+    var showCancel by remember(order.id) { mutableStateOf(false) }
+    var cancelReason by remember(order.id) { mutableStateOf("") }
     var showUp by remember(order.id) { mutableStateOf(false) }
     var upLoading by remember(order.id) { mutableStateOf(false) }
     var upBusy by remember(order.id) { mutableStateOf(false) }
@@ -901,6 +928,28 @@ private fun OrderDetails(
             Text("O cupom funciona também com os dados de pedidos salvos no celular.",
                 color = Color.Gray, style = MaterialTheme.typography.labelSmall)
         }
+        item {
+            Card(colors = CardDefaults.cardColors(containerColor = Color.White),
+                shape = RoundedCornerShape(18.dp)) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                    Text("Atendimento ao cliente", fontWeight = FontWeight.Bold,
+                        style = MaterialTheme.typography.titleMedium)
+                    OutlinedButton(onClick = { showChat = true }, modifier = Modifier.fillMaxWidth()) {
+                        Icon(Icons.Default.Chat, null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Conversar sobre este pedido")
+                    }
+                    if (group !in setOf("Concluídos", "Cancelados")) {
+                        OutlinedButton(onClick = { showCancel = true },
+                            modifier = Modifier.fillMaxWidth(), enabled = !busy) {
+                            Icon(Icons.Default.Cancel, null, tint = RedAlert)
+                            Spacer(Modifier.width(8.dp))
+                            Text("Cancelar pedido", color = RedAlert)
+                        }
+                    }
+                }
+            }
+        }
         if (action != null) item {
             Button(
                 onClick = { confirmation = action },
@@ -946,6 +995,31 @@ private fun OrderDetails(
                 }) { Text("Confirmar") }
             },
             dismissButton = { TextButton(onClick = { confirmation = null }) { Text("Voltar") } }
+        )
+    }
+    if (showChat) {
+        OrderChatDialog(order, onClose = { showChat = false })
+    }
+    if (showCancel) {
+        AlertDialog(onDismissRequest = { if (!busy) showCancel = false },
+            title = { Text("Cancelar pedido #" + order.number + "?") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("Esta ação modifica o pedido real. Se a entrega já estiver no UP, o cancelamento deve seguir o fluxo próprio do UP.",
+                        style = MaterialTheme.typography.bodySmall)
+                    OutlinedTextField(value = cancelReason, onValueChange = { cancelReason = it.take(500) },
+                        label = { Text("Motivo obrigatório") }, minLines = 2)
+                    Text("Se o pedido já foi pago, confira também a necessidade de reembolso.",
+                        style = MaterialTheme.typography.labelSmall, color = RedAlert)
+                }
+            },
+            confirmButton = { TextButton(onClick = {
+                showCancel = false
+                onCancel(cancelReason.trim())
+            }, enabled = cancelReason.trim().length >= 3 && !busy) {
+                Text("Confirmar cancelamento", color = RedAlert)
+            } },
+            dismissButton = { TextButton(onClick = { showCancel = false }) { Text("Voltar") } }
         )
     }
     if (showUp) {
@@ -996,6 +1070,101 @@ private fun OrderDetails(
 
 }
 
+
+
+@Composable
+private fun OrderChatDialog(order: Order, onClose: () -> Unit) {
+    var conversationId by remember(order.id) { mutableStateOf("") }
+    var loading by remember(order.id) { mutableStateOf(true) }
+    var sending by remember(order.id) { mutableStateOf(false) }
+    var error by remember(order.id) { mutableStateOf("") }
+    var draft by remember(order.id) { mutableStateOf("") }
+    val messages = remember(order.id) { mutableStateListOf<NativeChatMessage>() }
+
+    fun refresh() {
+        if (conversationId.isBlank()) return
+        NativeChatApi.messages(conversationId, onSuccess = {
+            messages.clear()
+            messages.addAll(it)
+            loading = false
+            error = ""
+        }, onError = {
+            loading = false
+            error = "Não foi possível carregar mensagens: " + (it.message ?: "")
+        })
+    }
+
+    LaunchedEffect(order.id) {
+        NativeChatApi.openConversation(order, onSuccess = {
+            conversationId = it
+            refresh()
+        }, onError = {
+            loading = false
+            error = "Conversa indisponível: " + (it.message ?: "")
+        })
+    }
+    LaunchedEffect(conversationId) {
+        if (conversationId.isNotBlank()) {
+            while (true) {
+                delay(12_000L)
+                refresh()
+            }
+        }
+    }
+
+    AlertDialog(onDismissRequest = { if (!sending) onClose() },
+        title = { Text("Conversa • pedido #" + order.number) },
+        text = {
+            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                if (loading) LinearProgressIndicator(Modifier.fillMaxWidth())
+                if (error.isNotBlank()) Text(error, color = RedAlert,
+                    style = MaterialTheme.typography.bodySmall)
+                Column(Modifier.heightIn(max = 260.dp).verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (messages.isEmpty() && !loading) Text("Nenhuma mensagem nesta conversa.",
+                        color = Color.Gray, style = MaterialTheme.typography.bodySmall)
+                    messages.forEach { message ->
+                        Surface(
+                            color = if (message.senderType == "staff") Color(0xFFF0E7FC) else Color(0xFFEEF2F4),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(Modifier.padding(10.dp)) {
+                                Text(if (message.senderType == "staff") "Loja" else "Cliente",
+                                    color = Purple, fontWeight = FontWeight.Bold,
+                                    style = MaterialTheme.typography.labelSmall)
+                                Text(message.body, style = MaterialTheme.typography.bodyMedium)
+                            }
+                        }
+                    }
+                }
+                OutlinedTextField(value = draft, onValueChange = { draft = it.take(2000) },
+                    modifier = Modifier.fillMaxWidth(), label = { Text("Escrever mensagem") },
+                    minLines = 2, maxLines = 4, enabled = !loading && !sending && conversationId.isNotBlank())
+                Button(onClick = {
+                    if (sending || draft.isBlank() || conversationId.isBlank()) return@Button
+                    sending = true
+                    error = ""
+                    val body = draft
+                    NativeChatApi.send(conversationId, body, onSuccess = {
+                        draft = ""
+                        sending = false
+                        refresh()
+                    }, onError = {
+                        sending = false
+                        error = "Mensagem não enviada: " + (it.message ?: "")
+                    })
+                }, enabled = !loading && !sending && conversationId.isNotBlank() && draft.isNotBlank(),
+                    modifier = Modifier.fillMaxWidth()) {
+                    Text(if (sending) "Enviando…" else "Enviar mensagem")
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onClose, enabled = !sending) { Text("Fechar") } },
+        dismissButton = { TextButton(onClick = { refresh() }, enabled = !loading && !sending) {
+            Text("Atualizar") } }
+    )
+}
 
 @Composable
 private fun CatalogScreen(
