@@ -40,3 +40,13 @@ aparelhos ativos migraram para a v2:
 4. auditar e desativar tokens de origem não reconhecida, preservando os ativos legítimos.
 
 A rota antiga permanece um risco até a conclusão dessa transição.
+
+## Teste HTTP externo da v2
+
+GitHub Actions `43495421742` **aprovado**: a rota implantada respondeu com
+401 sem sessão, 401 para sessão inventada, 403 para nome de app incorreto
+e 405 para acesso por GET. Nenhum token de FCM real foi usado.
+Consulta posterior em `fcm_devices` confirmou 0 registros v2 (esperado).
+A rota antiga não foi alterada e continua atendendo a base existente.
+**Ainda não testado:** registro positivo com sessão de funcionário real,
+recebimento da mensagem no Android e desativação segura do endpoint legado.
