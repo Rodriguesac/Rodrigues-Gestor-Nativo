@@ -1024,6 +1024,30 @@ private fun OrdersScreen(
                     color = Color.Gray, style = MaterialTheme.typography.bodySmall) }
             }
             items(visible, key = { it.id }) { order -> OrderCard(order, onSelect) }
+            if (history) item {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (historyHasMore) {
+                        Button(onClick = onLoadMore, enabled = !historyLoading,
+                            modifier = Modifier.fillMaxWidth()) {
+                            Icon(Icons.Default.ExpandMore, contentDescription = null)
+                            Spacer(Modifier.width(8.dp))
+                            Text(if (historyLoading) "Carregando…" else "Carregar mais pedidos")
+                        }
+                        Text("Buscados: " + historyNextOffset + " registros do período. " +
+                            "Os filtros são aplicados aos pedidos já carregados.",
+                            color = Color.Gray, style = MaterialTheme.typography.labelSmall)
+                    } else if (historyNextOffset > 0) {
+                        Text("Você chegou ao fim dos registros deste período.",
+                            style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+                    }
+                    OutlinedButton(onClick = onHistoryRefresh, enabled = !historyLoading,
+                        modifier = Modifier.fillMaxWidth()) {
+                        Icon(Icons.Default.Refresh, null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Atualizar histórico")
+                    }
+                }
+            }
         }
     }
 }
