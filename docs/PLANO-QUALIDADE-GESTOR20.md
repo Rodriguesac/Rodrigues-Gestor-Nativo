@@ -59,3 +59,14 @@ A versão de desenvolvimento **não é um aplicativo final** e **nenhum APK deve
 - Testes CI no PostgreSQL 17, incluindo 12 tentativas simultâneas, concluídos com sucesso: https://github.com/Rodriguesac/Rodrigues-Gestor-Nativo/actions/runs/43477851672
 - Teste real reversível executou a função e confirmou `persisted_test_orders=0` após `ROLLBACK`.
 - A aplicação Android atual segue intacta. A conclusão da funcionalidade exige teste autenticado na interface; **ainda não gerar APK final**.
+
+## Rodada 13/11/2026 — pagamento, PDF e avisos
+
+- A normalização de pedidos prioriza `orders.payment_status` (fonte canônica) sobre `payment_details.status` e o `raw_payload` histórico.
+- A interface de pedido separa pagamento pago, pendente, recusado e reembolsado; nenhum clique marca Pix/cartão como pago automaticamente. **Ainda não há conciliação financeira completa.**
+- A comanda pode ser salva em um PDF real por meio do Storage Access Framework (`ACTION_CREATE_DOCUMENT`) e impressa pela interface Android existente. Documento identificado como **não fiscal**. Ainda falta validar renderização, paginação e impressoras térmicas em aparelho.
+- FCM corrigido: deduplicação usa ID de evento/mensagem quando disponível, com fallback tipo+pedido+estado para evitar descartar pagamentos/mensagens de um pedido que já gerou alerta de pedido novo.
+- Diagnóstico de notificações consulta permissões e canal de pedidos, com atalho às configurações Android. **Isso não prova recebimento de push com o aplicativo fechado**, especialmente porque a prévia não registra seu token como dispositivo de produção.
+- Testes JVM adicionados para status canônico, conteúdo da comanda e deduplicação dos avisos.
+- **Validação GitHub Actions:** run `43483987160` em 13/11/2026: compilação Kotlin, testes JVM e verificação de ausência de APK **todas aprovadas**.
+- Nenhum APK gerado/distribuído e nenhum pedido real alterado nesta rodada.
