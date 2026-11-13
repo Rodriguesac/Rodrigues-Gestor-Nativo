@@ -67,6 +67,7 @@ import com.rodrigues.gestor.printing.OrderPdfExporter
 import com.rodrigues.gestor.data.PaymentStatusDisplay
 import com.rodrigues.gestor.notifications.AlertPreferences
 import com.rodrigues.gestor.notifications.GestorConnectionService
+import com.rodrigues.gestor.notifications.DeviceRegistrar
 import com.rodrigues.gestor.notifications.NotificationHelper
 import com.rodrigues.gestor.notifications.OrderRingService
 import java.util.Locale
@@ -1979,6 +1980,19 @@ private fun MoreScreen(onNotify: () -> Unit, onLogout: () -> Unit,
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
                 Text("Diagnóstico das notificações", fontWeight = FontWeight.Bold,
                     style = MaterialTheme.typography.titleMedium)
+                Text("Registro push: " + remember(notificationCheck) {
+                    DeviceRegistrar.status(context)
+                }, style = MaterialTheme.typography.bodySmall,
+                    color = if (DeviceRegistrar.lastRegisteredAt(context) > 0) Green else Amber)
+                val lastRegistered = remember(notificationCheck) {
+                    DeviceRegistrar.lastRegisteredAt(context)
+                }
+                if (lastRegistered > 0L) {
+                    Text("Último cadastro no servidor: " +
+                        java.text.SimpleDateFormat("dd/MM HH:mm", Locale("pt", "BR"))
+                            .format(java.util.Date(lastRegistered)),
+                        style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+                }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(if (notificationAllowed) Icons.Default.CheckCircle else Icons.Default.Warning,
                         null, tint = if (notificationAllowed) Green else RedAlert)
