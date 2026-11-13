@@ -14,7 +14,7 @@ class GestorMessagingService : FirebaseMessagingService() {
         super.onMessageReceived(message)
         NotificationHelper.createChannels(this)
         val data = message.data
-        val type = NotificationEventPolicy.type(data["type"] ?: data["tipo"] ?: "")
+        val type = NotificationEventPolicy.normalizeType(data["type"] ?: data["tipo"] ?: "")
         val orderId = data["orderId"] ?: data["pedidoId"] ?: ""
         val eventKey = NotificationEventPolicy.key(
             data["eventId"], message.messageId, type, orderId,
