@@ -23,6 +23,27 @@ data class PaymentInfo(
     val amountToCollect: Double = 0.0,
 )
 
+/** Classificação SOMENTE informativa. Nunca autoriza marcar um Pix como pago. */
+object PaymentStatusDisplay {
+    val paidStates = setOf("PAGO", "PAID", "CONFIRMADO", "CONFIRMED", "APROVADO", "APPROVED")
+    val rejectedStates = setOf("RECUSADO", "REJEITADO", "FAILED", "REJECTED", "FALHOU")
+    val reversedStates = setOf("ESTORNADO", "REEMBOLSADO", "REFUNDED", "CHARGEBACK")
+
+    fun isPaid(status: String): Boolean = status.trim().uppercase(Locale.ROOT) in paidStates
+
+    fun label(status: String): String {
+        val s = status.trim().uppercase(Locale.ROOT)
+        return when {
+            s in paidStates -> "Pago no sistema"
+            s in reversedStates -> "Estornado ou reembolsado"
+            s in rejectedStates -> "Pagamento recusado"
+            s in setOf("PENDENTE", "AGUARDANDO_PAGAMENTO", "PENDING", "WAITING") -> "Pagamento pendente"
+            s.isBlank() || s in setOf("NÃO INFORMADO", "NAO_INFORMADO") -> "Pagamento não confirmado"
+            else -> "Em verificação: " + s.replace('_',' ')
+        }
+    }
+}
+
 data class OrderItem(
     val name: String,
     val quantity: Int = 1,
@@ -275,7 +296,11 @@ fun normalizeOrder(id: String, raw: Map<String, Any?>): Order {
     }
     val payment = PaymentInfo(
         form = paymentForm,
-        status = firstString(paymentMap, "status").ifBlank { firstString(raw, "pagamentoStatus") },
+        // A coluna canônica payment_status prevalece sobre raw_payload/payment_details
+        // porque o pedido pode ter sido pago depois de criado.
+        status = if (raw.containsKey("payment_status"))
+            firstString(raw, "payment_status").ifBlank { "PENDENTE" }
+        else firstString(paymentMap, "status").ifBlank { firstString(raw, "pagamentoStatus") },
         needsMachine = paymentMap["precisaMaquininha"] == true || raw["precisaMaquininha"] == true,
         needsChange = paymentMap["precisaTroco"] == true || raw["precisaTroco"] == true,
         changeFor = asDouble(paymentMap["trocoPara"] ?: raw["trocoPara"]),

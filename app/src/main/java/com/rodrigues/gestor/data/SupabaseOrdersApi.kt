@@ -253,7 +253,8 @@ object SupabaseOrdersApi {
                 raw.put("tipoPedido", row.optString("fulfillment_type", raw.optString("tipoPedido")))
                 raw.put("customer_id", row.optString("customer_id"))
                 raw.put("courier_id", row.optString("courier_id"))
-                raw.put("payment_status", row.optString("payment_status"))
+                raw.put("payment_status", row.optString("payment_status", "PENDENTE"))
+                raw.put("payment_method", row.optString("payment_method"))
                 raw.put("subtotal", row.optDouble("subtotal", raw.optDouble("subtotal", 0.0)))
                 raw.put("frete", row.optDouble("delivery_fee", raw.optDouble("frete", 0.0)))
                 raw.put("desconto", row.optDouble("discount", raw.optDouble("desconto", 0.0)))
@@ -269,7 +270,16 @@ object SupabaseOrdersApi {
                         put("uid", customer.optString("auth_user_id", customer.optString("uid")))
                     })
                 }
-                row.optJSONObject("payment_details")?.let { raw.put("pagamento", it) }
+                row.optJSONObject("payment_details")?.let { details ->
+                    val canonical = JSONObject(details.toString())
+                    canonical.put("status", row.optString("payment_status", "PENDENTE"))
+                    if (!canonical.has("forma")) canonical.put("forma", row.optString("payment_method"))
+                    raw.put("pagamento", canonical)
+                }
+                if (!raw.has("pagamento")) raw.put("pagamento", JSONObject().apply {
+                    put("forma", row.optString("payment_method"))
+                    put("status", row.optString("payment_status", "PENDENTE"))
+                })
 
                 val enrichedItems = row.optJSONArray("items")
                 if (enrichedItems != null && enrichedItems.length() > 0) {

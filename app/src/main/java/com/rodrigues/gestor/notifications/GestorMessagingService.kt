@@ -14,10 +14,13 @@ class GestorMessagingService : FirebaseMessagingService() {
         super.onMessageReceived(message)
         NotificationHelper.createChannels(this)
         val data = message.data
-        val type = (data["type"] ?: data["tipo"] ?: "").uppercase()
+        val type = NotificationEventPolicy.type(data["type"] ?: data["tipo"] ?: "")
         val orderId = data["orderId"] ?: data["pedidoId"] ?: ""
-        val eventId = data["eventId"] ?: if (orderId.isNotBlank()) "novo_$orderId" else message.messageId.orEmpty()
-        if (eventId.isNotBlank() && isDuplicate(eventId)) return
+        val eventKey = NotificationEventPolicy.key(
+            data["eventId"], message.messageId, type, orderId,
+            data["status"] ?: data["paymentStatus"] ?: data["statusPedido"]
+        )
+        if (eventKey.isNotBlank() && isDuplicate(eventKey)) return
         val number = data["number"] ?: data["numeroPedido"] ?: orderId.takeLast(6).uppercase()
         val client = data["clientName"] ?: data["clienteNome"] ?: "Cliente"
         val body = data["body"] ?: data["mensagem"] ?: message.notification?.body ?: "Abra o Gestor para ver."
