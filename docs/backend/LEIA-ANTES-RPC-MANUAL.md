@@ -1,26 +1,18 @@
-# Bloqueio encontrado no pedido manual
+# Gestor20 — implantação da função do pedido manual
 
-A Edge Function `gestor-app-api` já possui a ação `manual_order` e chama
-`admin.rpc('submit_whatsapp_builder_order', {p_payload: ...})`.
+**Situação em 13/11/2026:** a função `public.submit_whatsapp_builder_order(jsonb)` já foi instalada no projeto Supabase `fdqqwdplprzpqufpgdrm`.
 
-Uma consulta **somente leitura** ao projeto Supabase `fdqqwdplprzpqufpgdrm`,
-em 13/11/2026, confirmou que não existe a função Postgres com esse nome.
+Migração Supabase: `20261113175813_gestor20_manual_order_rpc_idempotent_v1`.
 
-`PROPOSTA-RPC-PEDIDO-MANUAL.sql` é um candidato à correção e **não foi executado**,
-não modificou o banco e não criou pedidos. Requer auditoria e testes controlados
-antes de migrar para produção; não executar diretamente como arquivo improvisado.
+- GitHub Actions PostgreSQL 17: testes de parâmetros, totais, itens, permissões e idempotência passaram.
+- Teste com **12 solicitações simultâneas** e a mesma chave resultou em **um único pedido**, sem itens ou clientes duplicados.
+- A função é `SECURITY INVOKER`; execução liberada apenas para `service_role`.
+- `anon` e `authenticated` **não** têm permissão para executar a função diretamente.
+- Teste técnico no banco da loja executado em uma transação e revertido (`ROLLBACK`). Verificação posterior confirmou **0 pedidos de teste persistidos**.
+- Nenhum APK foi gerado nesta etapa.
 
-O candidato inclui:
-- deduplicação por `submission_id` persistente, transação e chave de concorrência;
-- índice exclusivo para fonte GESTOR20_MANUAL;
-- validador de telefone, endereço, preço, itens e totais no servidor;
-- permissão de execução reservada ao role `service_role` e `SECURITY INVOKER`;
-- código numérico de pedido com sequência separada;
-- criação do cliente manual separado do usuário autenticado;
-- criação transacional de `orders` e `order_items`, aproveitando triggers existentes.
+**Ainda não está validado:** criação completa do pedido pela interface Android autenticada com um operador real, sinal de notificação no aparelho, pagamento, impressão e conexão com o Gestor Web. Não inventar aprovação de produção por causa dos testes SQL.
 
-**Bloqueios antes de ativar:** revisar função SQL; teste rollback sem alterar pedido
-real; validar idempotência, triggers, códigos e formatação com app Android;
-implementar atualização de pagamento e estorno conforme fluxo; conferir permissões
-e logs sem expor dados pessoais. A API não deve ser anunciada como funcional até
-a função estar instalada e os testes passarem.
+O SQL em `PROPOSTA-RPC-PEDIDO-MANUAL.sql` representa a lógica implantada. Não reaplicar manualmente; o histórico de migração já está no Supabase.
+
+CI isolada: https://github.com/Rodriguesac/Rodrigues-Gestor-Nativo/actions/runs/43477851672
