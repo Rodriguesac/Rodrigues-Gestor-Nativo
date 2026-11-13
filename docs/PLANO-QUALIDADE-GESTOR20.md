@@ -82,3 +82,17 @@ A versão de desenvolvimento **não é um aplicativo final** e **nenhum APK deve
 - O app em produção, banco Supabase e pedidos reais não foram modificados por estas mudanças. Ainda não há comprovação de teste Android em aparelho, entrega UP ponta a ponta ou push com aplicativo fechado.
 
 **Próximo gate:** testes instrumentados em ambiente Android seguro, validar PIN e reconexão após perda de rede, SMS/FCM, som Nokia sob restrições de Android e pedido manual por interface. Não distribuir APK final até concluir.
+
+## Rodada — histórico paginado, entrega UP e FCM autenticado (13/11/2026)
+
+Implementações salvas na branch **feature/gestor20-completo-sem-apk**:
+
+- **Histórico real paginado**: filtro hoje/7/30/90 dias, janela temporal estável por busca, busca de páginas de 200 linhas usando `offset` do backend e botão Carregar mais; pedidos com IDs repetidos são mesclados sem duplicidade. Não inventar total de registros ainda não consultados.
+- **Acompanhamento de despacho**: status UP/entrega própria, oferta ainda pendente e botão Recolher oferta somente antes do aceite. Todas as ações continuam sujeitas à validação do servidor, e não há localização GPS fictícia.
+- **Regra de status centralizada**: aceite, preparo, pronto, retirada, despacho próprio e bloqueio de finalização de entrega UP controlados por `OrderFlowPolicy` com testes JVM.
+- **Correção de dados nulos**: `courier_id` SQL NULL não pode virar texto `null` e bloquear despacho.
+- **Registro FCM v2**: rota nova e aditiva `gestor-device-register-v2` criada e confirmada ACTIVE no Supabase; exige sessão da `gestor-app-api` e conta de operador válida. O app novo usa a v2, não a rota antiga sem autenticação. Diagnóstico de cadastro na tela de alertas.
+- **Compatibilidade com produção**: `gestor-device-register` legado não foi desativado; nenhuma alteração aos pedidos reais ou instalações atuais. A retirada do legado deve ocorrer após a atualização dos aparelhos autorizados.
+- CI base da etapa anterior aprovado em `43492071662` (Kotlin, JUnit e nenhum APK). Última rodada com autenticação FCM e políticas de fluxo em `43493839198`: consultar resultado antes de declarar validada.
+
+**Ainda bloqueia o APK final:** teste no celular/emulador dos fluxos principais, impressão 58/80mm e PDF, teste de push com app aberto/fechado, som Nokia com economia de bateria, sessão e PIN, integração com UP com um entregador aprovado, pagamentos e reconciliação, cenário de perda/volta de internet, revisão de acesso de funcionários, assinatura e distribuição de release. Unidade Kotlin/CI verde não equivale a essa validação.
