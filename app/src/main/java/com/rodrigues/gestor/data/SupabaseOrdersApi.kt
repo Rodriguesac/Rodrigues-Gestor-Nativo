@@ -35,6 +35,10 @@ object SupabaseOrdersApi {
         val realtimeReady = AtomicBoolean(false)
         val reference = AtomicInteger(0)
         val lastRefreshAt = AtomicLong(0L)
+        // Cada reconexão ganha uma geração. Eventos antigos não podem iniciar
+        // várias conexões nem alterar a UI depois da substituição do socket.
+        val connectionGeneration = AtomicInteger(0)
+        val reconnectQueued = AtomicBoolean(false)
         var joinRef = ""
         var socket: WebSocket? = null
 
@@ -82,9 +86,27 @@ object SupabaseOrdersApi {
 
         fun connect() {
             if (stopped.get()) return
+            val generation = connectionGeneration.incrementAndGet()
             val request = Request.Builder().url(REALTIME_URL).build()
             socket = realtimeClient.newWebSocket(request, object : WebSocketListener() {
+                private fun isCurrent(): Boolean =
+                    !stopped.get() && generation == connectionGeneration.get()
+
+                private fun scheduleReconnect() {
+                    if (!isCurrent() || !reconnectQueued.compareAndSet(false, true)) return
+                    realtimeReady.set(false)
+                    mainHandler.removeCallbacks(heartbeat)
+                    mainHandler.postDelayed({
+                        reconnectQueued.set(false)
+                        if (isCurrent()) connect()
+                    }, 3_500L)
+                }
+
                 override fun onOpen(webSocket: WebSocket, response: Response) {
+                    if (!isCurrent()) {
+                        webSocket.cancel()
+                        return
+                    }
                     val ref = reference.incrementAndGet().toString()
                     joinRef = ref
                     realtimeReady.set(false)
@@ -112,6 +134,7 @@ object SupabaseOrdersApi {
                 }
 
                 override fun onMessage(webSocket: WebSocket, text: String) {
+                    if (!isCurrent()) return
                     try {
                         val message = JSONObject(text)
                         val event = message.optString("event")
@@ -137,18 +160,14 @@ object SupabaseOrdersApi {
                 }
 
                 override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-                    if (stopped.get()) return
-                    realtimeReady.set(false)
-                    mainHandler.post { onError(t) }
-                    mainHandler.removeCallbacks(heartbeat)
-                    mainHandler.postDelayed({ if (!stopped.get()) connect() }, 3_500L)
+                    if (!isCurrent()) return
+                    mainHandler.post { if (isCurrent()) onError(t) }
+                    scheduleReconnect()
                 }
 
                 override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
-                    if (stopped.get()) return
-                    realtimeReady.set(false)
-                    mainHandler.removeCallbacks(heartbeat)
-                    mainHandler.postDelayed({ if (!stopped.get()) connect() }, 3_500L)
+                    if (!isCurrent()) return
+                    scheduleReconnect()
                 }
             })
         }
@@ -159,6 +178,7 @@ object SupabaseOrdersApi {
         return object : ListenerRegistration {
             override fun remove() {
                 stopped.set(true)
+                connectionGeneration.incrementAndGet()
                 mainHandler.removeCallbacks(refreshSignal)
                 mainHandler.removeCallbacks(watchdog)
                 mainHandler.removeCallbacks(heartbeat)
