@@ -74,13 +74,13 @@ BEGIN
     IF v_payment NOT IN ('PIX','DINHEIRO','CREDITO','DEBITO') THEN
         RAISE EXCEPTION 'invalid_payment';
     END IF;
-    IF jsonb_typeof(v_items) <> 'array' THEN
+    IF v_items IS NULL OR jsonb_typeof(v_items) IS DISTINCT FROM 'array' THEN
         RAISE EXCEPTION 'invalid_items';
     END IF;
     IF jsonb_array_length(v_items) NOT BETWEEN 1 AND 20 THEN
         RAISE EXCEPTION 'invalid_item_count';
     END IF;
-    IF jsonb_typeof(v_address) <> 'object' THEN
+    IF v_address IS NULL OR jsonb_typeof(v_address) IS DISTINCT FROM 'object' THEN
         RAISE EXCEPTION 'invalid_address';
     END IF;
     IF v_fulfillment = 'ENTREGA' AND
@@ -120,6 +120,7 @@ BEGIN
             RAISE EXCEPTION 'invalid_item_amount';
         END IF;
         v_subtotal := v_subtotal + round(v_qty * v_unit,2);
+        IF v_subtotal > 1000000 THEN RAISE EXCEPTION 'order_total_too_large'; END IF;
         v_raw_items := v_raw_items || jsonb_build_array(jsonb_build_object(
             'nome',v_item_name,'quantidade',v_qty,
             'total',round(v_qty*v_unit,2),
@@ -129,12 +130,13 @@ BEGIN
     END LOOP;
 
     v_total := round(v_subtotal + v_fee, 2);
+    IF v_total > 1000000 THEN RAISE EXCEPTION 'order_total_too_large'; END IF;
     -- Não vincular apenas pelo telefone a uma conta Firebase existente.
     INSERT INTO public.customers(name,phone,address,metadata)
     VALUES(v_name,v_phone,v_address,jsonb_build_object('origin','GESTOR20_MANUAL'))
     RETURNING id INTO v_customer_id;
 
-    v_code := nextval('public.gestor20_manual_code_seq'::regclass)::text;
+    v_code := '9' || nextval('public.gestor20_manual_code_seq'::regclass)::text;
     v_id := gen_random_uuid();
 
     INSERT INTO public.orders(
