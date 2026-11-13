@@ -104,6 +104,29 @@ object NativeOperationsApi {
     }
 
     /**
+     * Consulta o estado real da integração Rodrigues -> UP independente.
+     * A lista antiga de couriers da loja NÃO representa a disponibilidade do UP.
+     */
+    fun checkUpHandoff(orderId: String,
+                       onSuccess: (JSONObject) -> Unit, onError: (Throwable) -> Unit) {
+        NativeCatalogApi.execute("up_handoff_check",
+            JSONObject().put("order_id", orderId),
+            onSuccess = onSuccess, onError = onError)
+    }
+
+    /**
+     * Enfileira uma única corrida no backend da loja. O worker assinado entrega a
+     * solicitação ao Supabase UP, e só o UP poderá escolher/oferecer a um entregador.
+     * Não atribui motoboy, não inicia rota nem registra recebimento.
+     */
+    fun requestUpHandoff(orderId: String,
+                         onSuccess: (JSONObject) -> Unit, onError: (Throwable) -> Unit) {
+        NativeCatalogApi.execute("up_handoff_independent",
+            JSONObject().put("order_id", orderId),
+            onSuccess = onSuccess, onError = onError)
+    }
+
+    /**
      * Recolhe apenas oferta que ainda aguarda aceite.
      * A função UP do servidor também valida status e atualização concorrente.
      */
