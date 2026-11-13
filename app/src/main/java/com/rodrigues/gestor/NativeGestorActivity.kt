@@ -1,6 +1,9 @@
 package com.rodrigues.gestor
 
 import android.Manifest
+import android.app.NotificationManager
+import android.provider.Settings
+import androidx.core.app.NotificationManagerCompat
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
@@ -1692,6 +1695,16 @@ private fun MoreScreen(onNotify: () -> Unit, onLogout: () -> Unit,
     var ringEnabled by remember { mutableStateOf(AlertPreferences.enabled(context)) }
     var vibrationEnabled by remember { mutableStateOf(AlertPreferences.vibration(context)) }
     var interval by remember { mutableFloatStateOf(AlertPreferences.repeatSeconds(context).toFloat()) }
+    var notificationCheck by remember { mutableIntStateOf(0) }
+    val notificationAllowed = remember(notificationCheck) {
+        NotificationManagerCompat.from(context).areNotificationsEnabled()
+    }
+    val orderChannelEnabled = remember(notificationCheck) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) true
+        else (context.getSystemService(NotificationManager::class.java)
+            ?.getNotificationChannel(NotificationHelper.CHANNEL_ORDERS)?.importance
+            ?: NotificationManager.IMPORTANCE_NONE) != NotificationManager.IMPORTANCE_NONE
+    }
     DisposableEffect(Unit) {
         onDispose {
             try { player?.stop(); player?.release() } catch (_: Throwable) {}
@@ -1764,6 +1777,57 @@ private fun MoreScreen(onNotify: () -> Unit, onLogout: () -> Unit,
                     interval = it
                     AlertPreferences.setRepeatSeconds(context, it.toInt())
                 }, valueRange = 5f..60f, steps = 10)
+            }
+        }
+        Card(colors = CardDefaults.cardColors(containerColor = Color.White)) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                Text("Diagnóstico das notificações", fontWeight = FontWeight.Bold,
+                    style = MaterialTheme.typography.titleMedium)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(if (notificationAllowed) Icons.Default.CheckCircle else Icons.Default.Warning,
+                        null, tint = if (notificationAllowed) Green else RedAlert)
+                    Spacer(Modifier.width(8.dp))
+                    Text(if (notificationAllowed) "Notificações autorizadas no Android"
+                         else "Notificações bloqueadas nas permissões")
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(if (orderChannelEnabled) Icons.Default.CheckCircle else Icons.Default.Warning,
+                        null, tint = if (orderChannelEnabled) Green else RedAlert)
+                    Spacer(Modifier.width(8.dp))
+                    Text(if (orderChannelEnabled) "Canal de novos pedidos habilitado"
+                         else "Canal de pedidos silenciado ou desativado")
+                }
+                if (BuildConfig.DEBUG && BuildConfig.APPLICATION_ID.endsWith(".preview")) {
+                    Text("Versão de testes: o token de push não substitui o da loja. " +
+                        "O recebimento remoto precisa ser validado separadamente.",
+                        color = Amber, style = MaterialTheme.typography.bodySmall)
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = { notificationCheck++ },
+                        modifier = Modifier.weight(1f)) {
+                        Icon(Icons.Default.Refresh, null)
+                        Spacer(Modifier.width(5.dp))
+                        Text("Verificar")
+                    }
+                    OutlinedButton(onClick = {
+                        val intent = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
+                            putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+                        }
+                        try {
+                            context.startActivity(intent)
+                        } catch (_: Throwable) {
+                            context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                                android.net.Uri.parse("package:" + context.packageName)))
+                        }
+                    }, modifier = Modifier.weight(1f)) {
+                        Icon(Icons.Default.Settings, null)
+                        Spacer(Modifier.width(5.dp))
+                        Text("Configurar")
+                    }
+                }
+                Text("Esse diagnóstico verifica permissões e canais. Não confirma " +
+                    "o recebimento de push com o app fechado.",
+                    color = Color.Gray, style = MaterialTheme.typography.labelSmall)
             }
         }
         Text("Sons próprios do Gestor 20", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
