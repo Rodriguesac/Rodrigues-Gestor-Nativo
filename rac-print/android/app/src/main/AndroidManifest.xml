@@ -26,5 +26,15 @@
                 <data android:mimeType="application/pdf" />
             </intent-filter>
         </activity>
+        <service android:name=".RacPrintService"
+            android:label="RAC Print"
+            android:permission="android.permission.BIND_PRINT_SERVICE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.printservice.PrintService" />
+            </intent-filter>
+            <meta-data android:name="android.printservice"
+                android:resource="@xml/printservice" />
+        </service>
     </application>
 </manifest>
