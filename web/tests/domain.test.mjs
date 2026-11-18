@@ -41,3 +41,14 @@ test('reconhece base separada quando não está no nome do copo',()=>{
  const o=normalize({id:'solo',items:[{name:'Copo 500ml',detalhes:{baseNome:'Açaí Origem'}}]});
  assert.ok(o.items[0].details.includes('Açaí Origem'));
 });
+
+test('preserva adicional pago separado do acompanhamento de mesmo nome',()=>{
+ const lines=[
+  {nome:'Cobertura de Morango',tipo:'COBERTURA',qtd:1},
+  {nome:'Leite em Pó',tipo:'ACOMPANHAMENTO'},
+  {nome:'Leite em Pó',tipo:'ADICIONAL',qtd:1,preco:4.5}
+ ];
+ const o=normalize({id:'real-400',raw_payload:{itens:[{nome:'Copo 400ml',linhas,linhasMontagem:lines,detalhes:{linhas}}]}});
+ assert.deepEqual(o.items[0].details,['Cobertura de Morango','Leite em Pó','ADICIONAL: Leite em Pó']);
+ assert.equal((receiptHtml(o).match(/Leite em Pó/g)||[]).length,2);
+});
