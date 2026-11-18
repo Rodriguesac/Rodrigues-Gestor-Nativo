@@ -15,9 +15,9 @@
 
     <application
         android:allowBackup="true"
-        android:icon="@drawable/app_logo"
+        android:icon="@drawable/gestor_acai_icon"
         android:label="@string/app_name"
-        android:roundIcon="@drawable/app_logo"
+        android:roundIcon="@drawable/gestor_acai_icon"
         android:supportsRtl="true"
         android:theme="@style/AppTheme">
 

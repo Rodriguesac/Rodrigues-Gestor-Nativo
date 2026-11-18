@@ -7,6 +7,41 @@ const upper=v=>String(v||'').trim().toUpperCase()
 const dig=v=>String(v||'').replace(/\D/g,'')
 const esc=v=>String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))
 
+// O backend pode enviar itens resumidos e a montagem completa no raw_payload.
+// Reunimos os dois formatos, preservando nomes, quantidades e adicionais de cada item.
+const DETAIL_KEYS=['linhasMontagem','linhas','linhasIncluido','linhasIncluidas','cobertura_detalhes','coberturas_detalhes','acompanhamentos_detalhes','adicionais_detalhes','coberturas','cobertura','acompanhamentos','adicionais','extras','complementos','opcoes','opções','options','toppings','frutas','selecoes','seleções','montagem','sabor','baseNome','base_nome','base'];
+const asObj=v=>v&&typeof v==='object'&&!Array.isArray(v)?v:{};
+const itemName=i=>String(i?.name||i?.nome||i?.titulo||i?.produtoNome||i?.baseNome||i?.produto||'Item');
+function extractDetails(...sources){
+ const result=[],seen=new Set();
+ const add=s=>{
+  for(const part of String(s||'').split(/[\n;]+/)){
+   const value=part.trim().replace(/^[-+•]\s*/, '');
+   const key=value.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+   if(value&&!seen.has(key)){seen.add(key);result.push(value)}
+  }
+ };
+ const scan=(value,depth=0)=>{
+  if(value==null||depth>5||value===false)return;
+  if(typeof value==='string'){add(value);return}
+  if(Array.isArray(value)){value.forEach(x=>scan(x,depth+1));return}
+  if(typeof value!=='object')return;
+  const m=asObj(value);
+  const label=m.nome||m.name||m.titulo||m.label||m.texto||m.descricao;
+  if(typeof label==='string'&&label.trim()){
+   const qty=Number(m.quantidade||m.quantity||m.qtd||1);
+   add((qty>1&&Number.isFinite(qty)?qty+'× ':'')+label);
+  }
+  // Somente campos de montagem: não imprime campos técnicos como ids e valores.
+  DETAIL_KEYS.forEach(key=>{if(m[key]!=null)scan(m[key],depth+1)});
+ };
+ sources.forEach(source=>{
+  const v=asObj(source);
+  if(Array.isArray(source)||typeof source==='string')scan(source);
+  else DETAIL_KEYS.forEach(key=>{if(v[key]!=null)scan(v[key])});
+ });
+ return sortDetails(result);
+}
 function normalize(row){
   const raw=row?.raw_payload&&typeof row.raw_payload==='object'
     ? row.raw_payload
@@ -18,9 +53,32 @@ function normalize(row){
   const pay=row?.payment_details||raw.pagamento||{}
   const status=upper(row.status||raw.status||raw.statusPedido||'PENDENTE')
   const created=row.created_at||raw.createdAt||raw.criadoEm||raw.created_at||''
-  const items=Array.isArray(row?.items)&&row.items.length?row.items:Array.isArray(raw.itens)?raw.itens:Array.isArray(raw.items)?raw.items:[]
+  const rawItems=[raw.itens,raw.items,raw.produtos,raw.carrinho].find(x=>Array.isArray(x)&&x.length)||[]
+  const enrichedItems=Array.isArray(row?.items)&&row.items.length?row.items:[]
+  const items=enrichedItems.length?enrichedItems:rawItems
   const address=row?.delivery_address||raw.endereco||{}
   const type0=upper(row?.fulfillment_type||raw.tipoPedido||raw.tipo_pedido||raw.fulfillment||'ENTREGA');const type=({DELIVERY:'ENTREGA',PICKUP:'RETIRADA',DINE_IN:'BALCAO'})[type0]||type0
+  const normalizedItems=items.map((source,index)=>{
+    const i=asObj(source);
+    // O enriquecimento pode substituir o item, mas omitir sua montagem.
+    const rawCandidate=asObj(rawItems[index]);
+    const rawItem=enrichedItems.length&&
+      rawItems.length===enrichedItems.length&&
+      upper(itemName(i))===upper(itemName(rawCandidate))?rawCandidate:{};
+    const modifiers=asObj(i.modifiers),details=asObj(i.detalhes);
+    const originalModifiers=asObj(rawItem.modifiers),originalDetails=asObj(rawItem.detalhes);
+    const name=itemName(i);
+    const found=extractDetails(i,modifiers,details,rawItem,originalModifiers,originalDetails,
+      Array.isArray(i.detalhes)?i.detalhes:null,Array.isArray(rawItem.detalhes)?rawItem.detalhes:null);
+    const detailsList=found.filter(d=>upper(d)!==upper(name));
+    return {
+      qty:Math.max(1,Number(i.quantity||i.quantidade||i.qtd||rawItem.quantidade||1)||1),
+      name,
+      price:Number(i.total_price??i.total??i.precoTotal??i.preco??i.valor??rawItem.total??i.unit_price??0)||0,
+      notes:String(i.notes||i.observacao||i.observação||rawItem.notes||rawItem.observacao||''),
+      details:detailsList
+    };
+  })
   return {
     sourceRow:row,
     cancellationReason:row.cancellation_reason||raw.motivoCancelamento||'',
@@ -40,20 +98,7 @@ function normalize(row){
     paymentStatus:upper(row.payment_status||pay.status||raw.statusPagamento||''),
     observation:String(row.customer_note||raw.observacao||raw.observação||''),
     address:[address.rua||address.street,address.numero||address.number,address.bairro||address.district].filter(Boolean).join(', '),
-    items:items.map(i=>{
-      const modifiers=i.modifiers||i.detalhes||{}
-      const lines=Array.isArray(modifiers.linhasMontagem)?modifiers.linhasMontagem:
-        Array.isArray(modifiers.linhas)?modifiers.linhas:
-        Array.isArray(i.linhasMontagem)?i.linhasMontagem:
-        Array.isArray(i.detalhes)?i.detalhes:[]
-      return {
-        qty:Number(i.quantity||i.quantidade||i.qtd||1),
-        name:String(i.name||i.nome||i.titulo||i.produtoNome||i.baseNome||i.produto||'Item'),
-        price:Number(i.total_price||i.total||i.preco||i.valor||i.unit_price||0),
-        notes:String(i.notes||i.observacao||''),
-        details:sortDetails(lines.map(x=>typeof x==='string'?x:x?.nome).filter(Boolean))
-      }
-    }),
+    items:normalizedItems,
     raw
   }
 }
@@ -73,9 +118,29 @@ function isLate(o){return !DONE.has(o.status)&&ageMin(o)>=(NEW.has(o.status)?5:3
 function duplicateIds(orders){const ids=new Set();for(let i=0;i<orders.length;i++)for(let j=i+1;j<orders.length;j++){const a=orders[i],b=orders[j];if(!a.phone||a.phone!==b.phone||a.total!==b.total||Math.abs(Date.parse(a.created)-Date.parse(b.created))>300000)continue;const items=o=>JSON.stringify(o.items.map(i=>[i.name,i.qty,i.details]));if(items(a)===items(b)){ids.add(a.id);ids.add(b.id)}}return ids}
 const timeLabel=v=>new Date(v).toLocaleString('pt-BR',{timeZone:'America/Campo_Grande',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
 function receiptHtml(o){
-  const items=o.items.map(i=>`<div class="item"><b>${i.qty}x</b><span>${esc(i.name)}</span><b>${i.price?money(i.price):''}</b></div>${i.notes?`<div class="detail">Obs: ${esc(i.notes)}</div>`:''}${i.details.map(d=>`<div class="detail">• ${esc(d)}</div>`).join('')}`).join('')
-  return `<!doctype html><html><head><meta charset="utf-8"><style>@page{margin:2mm}body{font-family:monospace;color:#000;margin:0}.ticket{width:80mm;max-width:100%;padding:2mm;box-sizing:border-box}h1,h2{text-align:center;margin:4px}.rule{border-top:1px dashed #000;margin:9px 0}.item{display:grid;grid-template-columns:auto 1fr auto;gap:8px;margin:7px 0}.detail{padding-left:26px}.total{font-size:1.35em;display:flex;justify-content:space-between;margin:12px 0}</style></head><body><section class="ticket"><h1>RODRIGUES AÇAÍ E CIA</h1><h2>PEDIDO #${esc(o.number)}</h2><div class="rule"></div><p><b>Cliente:</b> ${esc(o.clientName)}</p><p><b>Tipo:</b> ${esc(o.type)}</p>${o.address?`<p><b>Endereço:</b> ${esc(o.address)}</p>`:''}<div class="rule"></div>${items}${o.observation?`<div class="rule"></div><p><b>OBS:</b> ${esc(o.observation)}</p>`:''}<div class="rule"></div><div class="total"><span>TOTAL</span><b>${money(o.total)}</b></div><p><b>Pagamento:</b> ${esc(o.payment)}</p></section></body></html>`
+  const items=o.items.map(i=>`<div class="item"><span>${esc(i.qty)}x ${esc(i.name)}</span>${i.price? `<b>${money(i.price)}</b>`:''}</div>${i.details.map(d=>`<div class="detail">+ ${esc(d)}</div>`).join('')}${i.notes?`<div class="detail">Obs: ${esc(i.notes)}</div>`:''}`).join('')
+  return `<!doctype html><html><head><meta charset="utf-8"><style>
+  @page{margin:0}*{box-sizing:border-box}
+  body{font-family:Arial,Helvetica,sans-serif;font-size:13px;font-weight:700;color:#000;background:#fff;margin:0}
+  .ticket{width:76mm;max-width:100%;margin:0;padding:2mm 1mm;overflow-wrap:anywhere}
+  h1{text-align:center;font-size:15px;margin:0 0 5px;font-weight:900}
+  h2{text-align:center;font-size:19px;margin:0 0 6px;font-weight:900}
+  p{margin:5px 0;line-height:1.35}.rule{border-top:1px dashed #000;margin:8px 0}
+  .heading{font-size:13px;font-weight:900}.item{display:flex;justify-content:space-between;align-items:flex-start;gap:5px;margin:8px 0 1px;break-inside:avoid}
+  .item span{flex:1;min-width:0}.item b{white-space:nowrap}.detail{padding-left:9px;font-size:13px;line-height:1.4;font-weight:700;break-inside:avoid}
+  .total{font-size:19px;font-weight:900;display:flex;justify-content:space-between;gap:6px;margin:12px 0}
+  </style></head><body><section class="ticket">
+  <h1>RODRIGUES AÇAÍ E CIA</h1><h2>PEDIDO #${esc(o.number)}</h2>
+  <div class="rule"></div><p><b>Cliente:</b> ${esc(o.clientName)}</p>${o.phone?`<p>Telefone: ${esc(o.phone)}</p>`:''}
+  <p><b>Tipo:</b> ${esc(o.type)}</p>${o.address?`<p><b>Endereço:</b> ${esc(o.address)}</p>`:''}
+  <div class="rule"></div><p class="heading">ITENS DO PEDIDO</p>${items||'<p>Itens ainda não informados pela central.</p>'}
+  ${o.observation?`<div class="rule"></div><p><b>OBS:</b> ${esc(o.observation)}</p>`:''}
+  <div class="rule"></div>${o.subtotal>0?`<p>Subtotal: ${money(o.subtotal)}</p>`:''}
+  ${o.freight>0?`<p>Entrega: ${money(o.freight)}</p>`:''}
+  ${o.discount>0?`<p>Desconto: -${money(o.discount)}</p>`:''}
+  <div class="total"><span>TOTAL</span><span>${money(o.total)}</span></div>
+  <p>Pagamento: ${esc(o.payment||'Não informado')} ${esc(o.paymentStatus||'')}</p>
+  </section></body></html>`;
 }
-
 
 export {NEW,DONE,PREP,DELIVERY,money,upper,dig,esc,normalize,ageMin,statusLabel,bucket,sortDetails,acceptanceRemaining,isLate,duplicateIds,timeLabel,receiptHtml};

@@ -103,7 +103,7 @@ object OrderPrinter {
         val bodyCss = if (a4) {
             "font-family:Arial,sans-serif;font-size:14px;background:#fff;padding:0;color:#171117"
         } else {
-            "font-family:monospace;font-size:${if (width == 58) "11px" else "13px"};color:#000"
+            "font-family:Arial,sans-serif;font-weight:700;font-size:${if (width == 58) "12px" else "14px"};color:#000"
         }
         val ticketCss = if (a4) {
             "width:100%;max-width:185mm;margin:0 auto;border:1px solid #ddd;border-radius:12px;padding:10mm;box-sizing:border-box"
@@ -114,7 +114,7 @@ object OrderPrinter {
             <!doctype html><html><head><meta charset='utf-8'>
             <style>
             $pageCss *{box-sizing:border-box}body{margin:0;$bodyCss}.ticket{$ticketCss}.ticket h1{text-align:center;font-size:1.15em;margin:0 0 3px}.ticket h2{text-align:center;font-size:1.55em;margin:0 0 6px}
-            p{margin:4px 0;line-height:1.35}.rule{border-top:1px dashed #000;margin:9px 0}.item{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:8px;align-items:start;margin:8px 0;font-size:1.04em}.detail{padding-left:28px;margin:-3px 0 4px;line-height:1.35}.obs{font-size:1.08em;border:1px solid #000;padding:8px}.summary p{display:flex;justify-content:space-between}.total{display:flex;justify-content:space-between;font-size:1.45em;margin:10px 0}.break{page-break-after:always}
+            p{margin:4px 0;line-height:1.35}.rule{border-top:1px dashed #000;margin:9px 0}.item{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:5px;align-items:start;margin:8px 0;font-size:1.04em}.detail{padding-left:10px;margin:0 0 4px;line-height:1.35;font-weight:700}.obs{font-size:1.08em;border:1px solid #000;padding:8px}.summary p{display:flex;justify-content:space-between}.total{display:flex;justify-content:space-between;font-size:1.45em;margin:10px 0}.break{page-break-after:always}
             ${if (a4) ".customer{display:grid;grid-template-columns:1fr 1fr;column-gap:18px}.items{font-size:1.06em}.detail{padding-left:34px}" else ""}
             </style></head><body>$pages</body></html>
         """.trimIndent()

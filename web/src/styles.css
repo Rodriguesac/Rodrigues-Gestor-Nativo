@@ -162,3 +162,5 @@ main{padding:22px 18px 112px}
 .manual-dispatch-choices>button.secondary{background:#f5ebfa;color:#521176;border:1px solid #dac6e7}
 .manual-dispatch-choices>button:disabled{opacity:.48;cursor:default}
 .manual-dispatch-choices .error{font-size:12px;line-height:1.5;padding:11px;border-radius:12px}
+
+.card-print{display:inline-flex;align-items:center;justify-content:center;gap:7px;min-height:37px;padding:6px 12px;margin-top:7px;border:1px solid #6d3886;border-radius:9px;background:#fff;color:#592879;font-size:12px;font-weight:850}.card-print svg{width:15px;height:15px}.card-print:focus-visible{outline:2px solid #592879}
