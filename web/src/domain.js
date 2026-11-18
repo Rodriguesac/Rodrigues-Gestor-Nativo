@@ -71,7 +71,17 @@ function normalize(row){
     const name=itemName(i);
     const found=extractDetails(i,modifiers,details,rawItem,originalModifiers,originalDetails,
       Array.isArray(i.detalhes)?i.detalhes:null,Array.isArray(rawItem.detalhes)?rawItem.detalhes:null);
-    const detailsList=found.filter(d=>upper(d)!==upper(name));
+    // Não repetir a base se ela já faz parte do nome completo do copo.
+    // Ex.: "COPO 500ML - AÇAÍ ORIGEM" não precisa de "+ AÇAÍ ORIGEM".
+    const folded=v=>upper(v).normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^A-Z0-9]+/g,' ').trim();
+    const productKey=folded(name);
+    const detailsList=found.filter(d=>{
+      const detailKey=folded(d);
+      if(!detailKey||detailKey===productKey)return false;
+      const simpleBase=detailKey.replace(/^(BASE|SABOR) /,'');
+      return !(simpleBase.length>3 && productKey.endsWith(' '+simpleBase)
+        && /(?:ACAI|CUPUACU|CASADINHO|ORIGEM)/.test(simpleBase));
+    });
     return {
       qty:Math.max(1,Number(i.quantity||i.quantidade||i.qtd||rawItem.quantidade||1)||1),
       name,
@@ -127,8 +137,8 @@ function receiptHtml(o){
   h1{text-align:center;font-size:16px;margin:0 0 5px;font-weight:900}
   h2{text-align:center;font-size:22px;margin:0 0 6px;font-weight:900}
   p{margin:5px 0;line-height:1.35}.rule{border-top:1px dashed #000;margin:8px 0}
-  .heading{font-size:15px;font-weight:900}.item{display:flex;justify-content:space-between;align-items:flex-start;gap:6px;margin:10px 0 2px;font-size:16px;font-weight:900;line-height:1.4;break-inside:avoid}
-  .item span{flex:1;min-width:0}.item b{white-space:nowrap;font-weight:900}.detail{padding-left:9px;font-size:14px;line-height:1.45;font-weight:800;break-inside:avoid}
+  .heading{font-size:15px;font-weight:900}.item{display:block;margin:10px 0 2px;font-size:16px;font-weight:900;line-height:1.35;break-inside:avoid}
+  .item span{display:block;min-width:0;overflow-wrap:anywhere}.item b{display:block;text-align:right;white-space:nowrap;font-weight:900}.detail{padding-left:9px;font-size:14px;line-height:1.45;font-weight:800;break-inside:avoid}
   .total{font-size:19px;font-weight:900;display:flex;justify-content:space-between;gap:6px;margin:12px 0}
   </style></head><body><section class="ticket">
   <h1>RODRIGUES AÇAÍ E CIA</h1><h2>PEDIDO #${esc(o.number)}</h2>

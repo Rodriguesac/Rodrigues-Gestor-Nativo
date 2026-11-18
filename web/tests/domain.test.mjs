@@ -29,3 +29,15 @@ test('comanda térmica usa caixa alta visual e fontes reforçadas',()=>{
  assert.ok(html.includes('Ovomaltine'));
  assert.ok(html.includes('Banana'));
 });
+
+test('não repete Açaí Origem como complemento se consta no nome do copo',()=>{
+ const o=normalize({id:'381408',items:[{name:'Copo 500ml - Açaí Origem',quantity:1,detalhes:{baseNome:'Açaí Origem',cobertura_detalhes:[{nome:'Chocolate'}],acompanhamentos_detalhes:['Leite condensado','Banana']}}]});
+ assert.deepEqual(o.items[0].details,['Cobertura: Chocolate','Leite condensado','Banana']);
+ const html=receiptHtml(o);
+ assert.ok(!html.includes('+ Açaí Origem'));
+ assert.ok(html.includes('Copo 500ml - Açaí Origem'));
+});
+test('reconhece base separada quando não está no nome do copo',()=>{
+ const o=normalize({id:'solo',items:[{name:'Copo 500ml',detalhes:{baseNome:'Açaí Origem'}}]});
+ assert.ok(o.items[0].details.includes('Açaí Origem'));
+});
