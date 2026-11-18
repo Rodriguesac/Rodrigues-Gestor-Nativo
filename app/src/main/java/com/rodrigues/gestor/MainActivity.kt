@@ -140,6 +140,14 @@ class MainActivity : ComponentActivity() {
         )
     }
 
+
+    fun onDirectPrintResult(detail: org.json.JSONObject) {
+        webView?.evaluateJavascript(
+            "window.dispatchEvent(new CustomEvent('gestor:print-result',{detail:" + detail.toString() + "}));",
+            null
+        )
+    }
+
     override fun onResume() {
         super.onResume()
         if (appStarted) {
