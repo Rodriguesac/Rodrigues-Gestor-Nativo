@@ -164,6 +164,70 @@ class HybridBridge(
     @JavascriptInterface
     fun isVoiceAssistantRunning(): Boolean = VoiceAssistantService.isRunning
 
+
+    @JavascriptInterface
+    fun getDirectPrinterSettings(): String = JSONObject().apply {
+        put("configured", com.rodrigues.gestor.printing.DirectReceiptPrinter.configured(activity))
+        put("host", com.rodrigues.gestor.printing.DirectReceiptPrinter.address(activity))
+        put("mode", com.rodrigues.gestor.printing.DirectReceiptPrinter.mode(activity))
+    }.toString()
+
+    @JavascriptInterface
+    fun setDirectPrinterMode(value: String) {
+        com.rodrigues.gestor.printing.DirectReceiptPrinter.setMode(activity, value)
+    }
+
+    @JavascriptInterface
+    fun printDirect(html: String, id: String) {
+        com.rodrigues.gestor.printing.DirectReceiptPrinter.print(activity, html, id)
+    }
+
+    @JavascriptInterface
+    fun configureDirectPrinter() {
+        activity.runOnUiThread {
+            val layout = android.widget.LinearLayout(activity).apply {
+                orientation = android.widget.LinearLayout.VERTICAL
+                val pad = (20 * resources.displayMetrics.density).toInt()
+                setPadding(pad, pad / 2, pad, 0)
+            }
+            val ip = android.widget.EditText(activity).apply {
+                hint = "IP do PC (ex.: 192.168.1.50)"
+                setSingleLine(true)
+                setText(com.rodrigues.gestor.printing.DirectReceiptPrinter.address(activity))
+            }
+            val token = android.widget.EditText(activity).apply {
+                hint = "Chave de conexão do receptor Windows"
+                setSingleLine(true)
+                inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD
+            }
+            layout.addView(ip)
+            layout.addView(token)
+            val dialog = android.app.AlertDialog.Builder(activity)
+                .setTitle("RAC Print — conexão direta")
+                .setMessage("Use o mesmo IP e a chave exibidos no RAC Print do computador. O celular precisa estar na mesma rede Wi-Fi.")
+                .setView(layout)
+                .setNegativeButton("Cancelar", null)
+                .setPositiveButton("Salvar", null)
+                .create()
+            dialog.setOnShowListener {
+                dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                    if (com.rodrigues.gestor.printing.DirectReceiptPrinter.save(
+                            activity, ip.text.toString(), token.text.toString()
+                        )) {
+                        (activity as? MainActivity)?.onDirectPrintResult(
+                            JSONObject().put("id", "").put("ok", true).put("settings", true)
+                                .put("message", "Conexão direta configurada.")
+                        )
+                        dialog.dismiss()
+                    } else {
+                        ip.error = "Informe um IPv4 privado válido e a chave hexadecimal do RAC Print (32 ou mais caracteres)."
+                    }
+                }
+            }
+            dialog.show()
+        }
+    }
+
     @JavascriptInterface
     fun printHtml(html: String) {
         if (html.isBlank()) return
