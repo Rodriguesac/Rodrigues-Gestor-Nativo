@@ -8,7 +8,7 @@ test('receipt escapes customer-controlled fields',()=>{const o=normalize({id:'x'
 
 test('exibe montagem salva no payload mesmo quando a API retorna itens resumidos',()=>{
  const o=normalize({id:'441014',items:[{name:'Copo 500ml',quantity:2,total_price:46}],raw_payload:{itens:[{nome:'Copo 500ml',quantidade:2,detalhes:{baseNome:'Açaí Origem',cobertura_detalhes:[{nome:'Chocolate'}],acompanhamentos_detalhes:[{nome:'Leite condensado'},{nome:'Morango'}],adicionais_detalhes:[{nome:'Nutella',quantidade:2}]}}]}});
- assert.deepEqual(o.items[0].details,['Chocolate','Leite condensado','2× Nutella','Morango','Açaí Origem']);
+ assert.deepEqual(o.items[0].details,['Cobertura: Chocolate','Leite condensado','2× Nutella','Açaí Origem','Morango']);
  const html=receiptHtml(o);for(const x of o.items[0].details)assert.ok(html.includes(x),'Comanda deve incluir '+x);
 });
 test('não mistura complementos de produtos de nomes diferentes',()=>{
