@@ -2,17 +2,18 @@ package com.rodrigues.gestor.printing
 
 import android.app.Activity
 import android.content.Context
-import android.os.CancellationSignal
-import android.os.ParcelFileDescriptor
-import android.print.PageRange
-import android.print.PrintAttributes
-import android.print.PrintDocumentAdapter
-import android.print.PrintDocumentInfo
-import android.webkit.WebView
-import android.webkit.WebViewClient
+import android.graphics.Color
+import android.graphics.Typeface
+import android.graphics.pdf.PdfDocument
+import android.os.Build
+import android.text.Html
+import android.text.Layout
+import android.text.StaticLayout
+import android.text.TextPaint
 import com.rodrigues.gestor.MainActivity
 import org.json.JSONObject
 import java.io.File
+import java.io.FileOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.concurrent.Executors
@@ -68,6 +69,11 @@ object DirectReceiptPrinter {
         }
     }
 
+    /**
+     * Gera o PDF por uma página nativa e imprime pela LAN.
+     * O driver da impressora recebe o PDF completo e decide quando cortar a bobina.
+     * Não requer PrintManager, serviço de impressão Android nem confirmação em tela.
+     */
     fun print(activity: Activity, html: String, orderId: String) {
         if (!configured(activity)) {
             report(activity, orderId, false, "Configure o IP e a chave do RAC Print em Mais > Configurações.")
@@ -79,96 +85,71 @@ object DirectReceiptPrinter {
         }
         val host = address(activity)
         val token = preferences(activity).getString("token", "").orEmpty()
-        activity.runOnUiThread {
-            val file = File.createTempFile("rac-gestor-", ".pdf", activity.cacheDir)
-            val view = WebView(activity)
-            view.settings.javaScriptEnabled = true
-            view.settings.allowFileAccess = false
-            view.settings.allowContentAccess = false
-            var launched = false
-            fun fail(reason: String) {
-                view.destroy()
-                file.delete()
-                report(activity, orderId, false, reason)
+        worker.execute {
+            val file = try {
+                File.createTempFile("rac-gestor-", ".pdf", activity.cacheDir)
+            } catch (e: Exception) {
+                report(activity, orderId, false, e.message ?: "Falha ao preparar arquivo de impressão.")
+                return@execute
             }
-            view.webViewClient = object : WebViewClient() {
-                override fun onPageFinished(w: WebView, url: String?) {
-                    if (launched) return
-                    launched = true
-                    w.evaluateJavascript(
-                        "(function(){return Math.ceil(Math.max(document.body.scrollHeight,document.documentElement.scrollHeight));})()"
-                    ) { answer ->
-                        val cssHeight = answer.trim('"').toDoubleOrNull()?.coerceIn(120.0, 2500.0) ?: 650.0
-                        // 96 CSS pixels per inch. A pequena margem adicional evita cortar a última linha.
-                        val heightMils = ((cssHeight + 24.0) * 1000.0 / 96.0).toInt().coerceIn(2000, 29000)
-                        val adapter = w.createPrintDocumentAdapter("Comanda-$orderId")
-                        val attrs = PrintAttributes.Builder()
-                            .setMediaSize(PrintAttributes.MediaSize("RAC_ROLL_80", "Bobina 80 mm", 3150, heightMils))
-                            .setColorMode(PrintAttributes.COLOR_MODE_MONOCHROME)
-                            .setMinMargins(PrintAttributes.Margins.NO_MARGINS)
-                            .build()
-                        try {
-                            adapter.onStart()
-                            adapter.onLayout(null, attrs, CancellationSignal(),
-                                object : PrintDocumentAdapter.LayoutResultCallback() {
-                                    override fun onLayoutFinished(info: PrintDocumentInfo?, changed: Boolean) {
-                                        var descriptor: ParcelFileDescriptor? = null
-                                        try {
-                                            descriptor = ParcelFileDescriptor.open(
-                                                file,
-                                                ParcelFileDescriptor.MODE_CREATE or
-                                                    ParcelFileDescriptor.MODE_TRUNCATE or
-                                                    ParcelFileDescriptor.MODE_READ_WRITE
-                                            )
-                                            adapter.onWrite(arrayOf(PageRange.ALL_PAGES), descriptor,
-                                                CancellationSignal(),
-                                                object : PrintDocumentAdapter.WriteResultCallback() {
-                                                    override fun onWriteFinished(pages: Array<out PageRange>?) {
-                                                        try {
-                                                            descriptor?.close()
-                                                            adapter.onFinish()
-                                                            w.destroy()
-                                                            worker.execute {
-                                                                try {
-                                                                    val data = file.readBytes()
-                                                                    if (data.size < 5 || data.size > 15 * 1024 * 1024 ||
-                                                                        !data.copyOfRange(0, 5).contentEquals("%PDF-".toByteArray())) {
-                                                                        throw IllegalStateException("Falha na geração do PDF da comanda.")
-                                                                    }
-                                                                    sendToWindows(host, token, data)
-                                                                    report(activity, orderId, true, "Comanda enviada à fila da Bematech.")
-                                                                } catch (e: Exception) {
-                                                                    report(activity, orderId, false, e.message ?: "Falha no RAC Print.")
-                                                                } finally { file.delete() }
-                                                            }
-                                                        } catch (e: Exception) { fail(e.message ?: "Erro ao imprimir.") }
-                                                    }
-                                                    override fun onWriteFailed(error: CharSequence?) {
-                                                        descriptor?.close()
-                                                        fail(error?.toString() ?: "Falha ao produzir a comanda.")
-                                                    }
-                                                    override fun onWriteCancelled() {
-                                                        descriptor?.close()
-                                                        fail("Impressão cancelada.")
-                                                    }
-                                                })
-                                        } catch (e: Exception) {
-                                            descriptor?.close()
-                                            fail(e.message ?: "Falha ao gerar o PDF.")
-                                        }
-                                    }
-                                    override fun onLayoutFailed(error: CharSequence?) {
-                                        fail(error?.toString() ?: "Falha no layout da comanda.")
-                                    }
-                                    override fun onLayoutCancelled() {
-                                        fail("Preparação da comanda cancelada.")
-                                    }
-                                }, null)
-                        } catch (e: Exception) { fail(e.message ?: "Falha ao preparar a comanda.") }
-                    }
+            try {
+                createReceiptPdf(html, file)
+                val data = file.readBytes()
+                if (data.size < 5 || data.size > 15 * 1024 * 1024 ||
+                    !data.copyOfRange(0, 5).contentEquals("%PDF-".toByteArray())) {
+                    throw IllegalStateException("Falha na geração do PDF da comanda.")
                 }
+                sendToWindows(host, token, data)
+                report(activity, orderId, true, "Comanda enviada à fila da Bematech.")
+            } catch (e: Exception) {
+                report(activity, orderId, false, e.message ?: "Falha na impressão direta.")
+            } finally {
+                file.delete()
             }
-            view.loadDataWithBaseURL(null, html, "text/html", "UTF-8", null)
+        }
+    }
+
+    private fun createReceiptPdf(html: String, output: File) {
+        // O cupom é HTML criado pelo Gestor; somente o corpo vira texto.
+        // A folha tem largura exata de 80 mm (227 pontos PDF), sem imagem intermediária.
+        val body = html.replace(Regex("(?is)<head\\b[^>]*>.*?</head>"), "")
+        @Suppress("DEPRECATION")
+        val parsed = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            Html.fromHtml(body, Html.FROM_HTML_MODE_COMPACT)
+        } else {
+            Html.fromHtml(body)
+        }
+        // Manter linhas e negritos do HTML evita cortar nomes longos e complementos.
+        val clean = parsed.trim()
+        if (clean.isEmpty()) throw IllegalArgumentException("Comanda sem dados para imprimir.")
+        val paperWidth = 227 // pontos (80 mm)
+        val margin = 8
+        val paint = TextPaint().apply {
+            color = Color.BLACK
+            textSize = 13.5f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            isAntiAlias = true
+            isFakeBoldText = true
+        }
+        val layout = StaticLayout.Builder.obtain(clean, 0, clean.length, paint, paperWidth - margin * 2)
+            .setAlignment(Layout.Alignment.ALIGN_NORMAL)
+            .setIncludePad(false)
+            .setLineSpacing(3f, 1.0f)
+            .build()
+        val paperHeight = (layout.height + margin * 2).coerceAtLeast(90)
+        if (paperHeight > 16000) throw IllegalArgumentException("Comanda excede o limite de tamanho.")
+        val document = PdfDocument()
+        try {
+            val info = PdfDocument.PageInfo.Builder(paperWidth, paperHeight, 1).create()
+            val page = document.startPage(info)
+            page.canvas.save()
+            page.canvas.translate(margin.toFloat(), margin.toFloat())
+            layout.draw(page.canvas)
+            page.canvas.restore()
+            document.finishPage(page)
+            FileOutputStream(output).use { document.writeTo(it) }
+        } finally {
+            document.close()
         }
     }
 
