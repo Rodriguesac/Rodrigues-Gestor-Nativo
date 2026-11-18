@@ -90,7 +90,7 @@ public final class RacPrintService extends PrintService {
 
     @Override protected void onPrintJobQueued(PrintJob job) {
         if (!job.isQueued() || !job.start()) return;
-        final String id = job.getId().flattenToString();
+        final String id = job.getId().toString();
         final int copies = job.getInfo().getCopies();
         final ParcelFileDescriptor descriptor = job.getDocument().getData();
         final String host = preferences().getString("ip", "");
@@ -141,7 +141,7 @@ public final class RacPrintService extends PrintService {
     }
 
     @Override protected void onRequestCancelPrintJob(PrintJob job) {
-        String id = job.getId().flattenToString();
+        String id = job.getId().toString();
         cancelled.add(id);
         if (job.isQueued() || job.isStarted()) job.cancel();
     }
