@@ -23,6 +23,6 @@ test('80mm receipt highlights delivery address, complete items and totals',()=>{
  assert.ok(html.includes('RUA SIMÕES, 88, ESTRELA DALVA'))
  assert.ok(html.includes('LEITE CONDENSADO'))
  assert.equal((html.match(/AÇAÍ ORIGEM/g)||[]).length,1)
- assert.ok(html.includes('@page{size:80mm'))
+ assert.ok(html.includes('.ticket{width:76mm'))
  assert.ok(html.includes('TOTAL'))
 })
