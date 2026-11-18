@@ -33,8 +33,9 @@ jobs:
           java-version: '17'
       - name: Preparar SDK Android
         run: |
-          echo "SDK: $ANDROID_HOME"
-          sdkmanager "platforms;android-35" "build-tools;35.0.0"
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | head -n 1)"
+          test -n "$SDKMANAGER"
+          "$SDKMANAGER" "platforms;android-35" "build-tools;35.0.0"
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
@@ -75,3 +76,38 @@ jobs:
           path: pacote/*
           if-no-files-found: error
           retention-days: 30
+
+  release:
+    name: Downloads diretos RAC Print
+    runs-on: ubuntu-latest
+    needs: [android, windows]
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: RAC-Print-Android-APK
+          path: release/android
+      - uses: actions/download-artifact@v4
+        with:
+          name: RAC-Print-Receptor-Windows
+          path: release/windows
+      - name: Preparar arquivos de instalação
+        run: |
+          mkdir -p release/dist
+          cp release/android/app-debug.apk release/dist/RAC-Print-Android-v0.1.0.apk
+          cd release/windows
+          zip -j ../dist/RAC-Print-Windows-v0.1.0.zip RAC-Print-Windows.exe INSTALAR-WINDOWS.bat COMECE-AQUI.md
+      - name: Publicar downloads na versão RAC Print
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view rac-print-v0.1.0 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload rac-print-v0.1.0 release/dist/* --repo "$GITHUB_REPOSITORY" --clobber
+          else
+            gh release create rac-print-v0.1.0 release/dist/* \
+              --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+              --title "RAC Print v0.1.0 — Android e Windows" \
+              --notes "Versão inicial para testes reais com impressoras Windows. Instale o receptor no PC e o APK no Android. Não validado ainda em impressora física." \
+              --prerelease
+          fi
