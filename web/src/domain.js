@@ -21,24 +21,25 @@ function extractDetails(...sources){
    if(value&&!seen.has(key)){seen.add(key);result.push(value)}
   }
  };
- const scan=(value,depth=0)=>{
+ const category=key=>/^cobertura/i.test(key)?'Cobertura: ':''; 
+ const scan=(value,depth=0,prefix='')=>{
   if(value==null||depth>5||value===false)return;
-  if(typeof value==='string'){add(value);return}
-  if(Array.isArray(value)){value.forEach(x=>scan(x,depth+1));return}
+  if(typeof value==='string'){add(prefix+value);return}
+  if(Array.isArray(value)){value.forEach(x=>scan(x,depth+1,prefix));return}
   if(typeof value!=='object')return;
   const m=asObj(value);
   const label=m.nome||m.name||m.titulo||m.label||m.texto||m.descricao;
   if(typeof label==='string'&&label.trim()){
    const qty=Number(m.quantidade||m.quantity||m.qtd||1);
-   add((qty>1&&Number.isFinite(qty)?qty+'× ':'')+label);
+   add(prefix+(qty>1&&Number.isFinite(qty)?qty+'× ':'')+label);
   }
   // Somente campos de montagem: não imprime campos técnicos como ids e valores.
-  DETAIL_KEYS.forEach(key=>{if(m[key]!=null)scan(m[key],depth+1)});
+  DETAIL_KEYS.forEach(key=>{if(m[key]!=null)scan(m[key],depth+1,category(key)||prefix)});
  };
  sources.forEach(source=>{
   const v=asObj(source);
   if(Array.isArray(source)||typeof source==='string')scan(source);
-  else DETAIL_KEYS.forEach(key=>{if(v[key]!=null)scan(v[key])});
+  else DETAIL_KEYS.forEach(key=>{if(v[key]!=null)scan(v[key],0,category(key))});
  });
  return sortDetails(result);
 }
