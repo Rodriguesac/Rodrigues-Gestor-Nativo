@@ -122,13 +122,13 @@ function receiptHtml(o){
   const items=o.items.map(i=>`<div class="item"><span>${esc(i.qty)}x ${esc(i.name)}</span>${i.price? `<b>${money(i.price)}</b>`:''}</div>${i.details.map(d=>`<div class="detail">+ ${esc(d)}</div>`).join('')}${i.notes?`<div class="detail">Obs: ${esc(i.notes)}</div>`:''}`).join('')
   return `<!doctype html><html><head><meta charset="utf-8"><style>
   @page{margin:0}*{box-sizing:border-box}
-  body{font-family:Arial,Helvetica,sans-serif;font-size:13px;font-weight:700;color:#000;background:#fff;margin:0}
-  .ticket{width:76mm;max-width:100%;margin:0;padding:2mm 1mm;overflow-wrap:anywhere}
-  h1{text-align:center;font-size:15px;margin:0 0 5px;font-weight:900}
-  h2{text-align:center;font-size:19px;margin:0 0 6px;font-weight:900}
+  body{font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:800;color:#000;background:#fff;margin:0;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .ticket{width:76mm;max-width:100%;margin:0;padding:2mm 1mm;overflow-wrap:anywhere;text-transform:uppercase;font-weight:800;line-height:1.4}
+  h1{text-align:center;font-size:16px;margin:0 0 5px;font-weight:900}
+  h2{text-align:center;font-size:22px;margin:0 0 6px;font-weight:900}
   p{margin:5px 0;line-height:1.35}.rule{border-top:1px dashed #000;margin:8px 0}
-  .heading{font-size:13px;font-weight:900}.item{display:flex;justify-content:space-between;align-items:flex-start;gap:5px;margin:8px 0 1px;break-inside:avoid}
-  .item span{flex:1;min-width:0}.item b{white-space:nowrap}.detail{padding-left:9px;font-size:13px;line-height:1.4;font-weight:700;break-inside:avoid}
+  .heading{font-size:15px;font-weight:900}.item{display:flex;justify-content:space-between;align-items:flex-start;gap:6px;margin:10px 0 2px;font-size:16px;font-weight:900;line-height:1.4;break-inside:avoid}
+  .item span{flex:1;min-width:0}.item b{white-space:nowrap;font-weight:900}.detail{padding-left:9px;font-size:14px;line-height:1.45;font-weight:800;break-inside:avoid}
   .total{font-size:19px;font-weight:900;display:flex;justify-content:space-between;gap:6px;margin:12px 0}
   </style></head><body><section class="ticket">
   <h1>RODRIGUES AÇAÍ E CIA</h1><h2>PEDIDO #${esc(o.number)}</h2>

@@ -19,3 +19,13 @@ test('montagem presente em array de detalhes aparece na tela e impressão',()=>{
  const o=normalize({id:'3',items:[{name:'Açaí',detalhes:[{nome:'Ovomaltine'},{nome:'Banana'}]}]});
  assert.deepEqual(o.items[0].details,['Ovomaltine','Banana']);assert.ok(receiptHtml(o).includes('Ovomaltine'));
 });
+
+test('comanda térmica usa caixa alta visual e fontes reforçadas',()=>{
+ const o=normalize({id:'l',order_code:'123',customer:{name:'Ana'},items:[{name:'Copo 500ml',quantity:1,detalhes:{adicionais:['Ovomaltine','Banana']}}]});
+ const html=receiptHtml(o);
+ assert.match(html,/text-transform:uppercase/);
+ assert.match(html,/font-size:16px;font-weight:900/);
+ assert.match(html,/font-size:14px;line-height:1\.45;font-weight:800/);
+ assert.ok(html.includes('Ovomaltine'));
+ assert.ok(html.includes('Banana'));
+});

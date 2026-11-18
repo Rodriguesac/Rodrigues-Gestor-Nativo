@@ -181,6 +181,8 @@ class HybridBridge(
                         view.createPrintDocumentAdapter("Rodrigues-Pedido"),
                         PrintAttributes.Builder()
                             .setColorMode(PrintAttributes.COLOR_MODE_MONOCHROME)
+                            .setMediaSize(PrintAttributes.MediaSize("RAC_RECEIPT_80MM", "Comanda 80 mm", 3150, 11693))
+                            .setMinMargins(PrintAttributes.Margins.NO_MARGINS)
                             .build(),
                     )
                 }

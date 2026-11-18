@@ -164,3 +164,10 @@ main{padding:22px 18px 112px}
 .manual-dispatch-choices .error{font-size:12px;line-height:1.5;padding:11px;border-radius:12px}
 
 .card-print{display:inline-flex;align-items:center;justify-content:center;gap:7px;min-height:37px;padding:6px 12px;margin-top:7px;border:1px solid #6d3886;border-radius:9px;background:#fff;color:#592879;font-size:12px;font-weight:850}.card-print svg{width:15px;height:15px}.card-print:focus-visible{outline:2px solid #592879}
+
+/* Montagem: itens, coberturas, adicionais e observações legíveis em caixa alta. */
+.clean-item b{font-size:17px;font-weight:900;text-transform:uppercase;color:#17101b;line-height:1.45}
+.clean-item span,.clean-item em{font-size:15px;font-weight:800;text-transform:uppercase;color:#23162b;line-height:1.5;overflow-wrap:anywhere}
+.detail-note span{font-weight:800;text-transform:uppercase;color:#23162b;overflow-wrap:anywhere}
+.board-items b{font-size:16px;font-weight:900;text-transform:uppercase;overflow-wrap:anywhere}
+.board-items small{font-size:15px;font-weight:800;color:#23162b;text-transform:uppercase;line-height:1.45;overflow-wrap:anywhere}
