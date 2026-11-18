@@ -39,7 +39,7 @@ function normalize(row){
     payment:String(row.payment_method||pay.forma||pay.metodo||raw.formaPagamento||raw.pagamentoMetodo||''),
     paymentStatus:upper(row.payment_status||pay.status||raw.statusPagamento||''),
     observation:String(row.customer_note||raw.observacao||raw.observação||''),
-    address:[address.rua||address.street,address.numero||address.number,address.bairro||address.district].filter(Boolean).join(', '),
+    address:typeof address==='string'?address:[address.completo||address.texto||address.rua||address.street,address.completo||address.texto?'':address.numero||address.number,address.completo||address.texto?'':address.bairro||address.district].filter(Boolean).join(', ')||String(raw.enderecoEntrega||raw.enderecoCliente||''),
     items:items.map(i=>{
       const modifiers=i.modifiers||i.detalhes||{}
       const lines=Array.isArray(modifiers.linhasMontagem)?modifiers.linhasMontagem:
@@ -84,8 +84,34 @@ function isLate(o){return !DONE.has(o.status)&&ageMin(o)>=(NEW.has(o.status)?5:3
 function duplicateIds(orders){const ids=new Set();for(let i=0;i<orders.length;i++)for(let j=i+1;j<orders.length;j++){const a=orders[i],b=orders[j];if(!a.phone||a.phone!==b.phone||a.total!==b.total||Math.abs(Date.parse(a.created)-Date.parse(b.created))>300000)continue;const items=o=>JSON.stringify(o.items.map(i=>[i.name,i.qty,i.details]));if(items(a)===items(b)){ids.add(a.id);ids.add(b.id)}}return ids}
 const timeLabel=v=>new Date(v).toLocaleString('pt-BR',{timeZone:'America/Campo_Grande',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
 function receiptHtml(o){
-  const items=o.items.map(i=>`<div class="item"><b>${i.qty}x</b><span>${esc(i.name)}</span><b>${i.price?money(i.price):''}</b></div>${i.notes?`<div class="detail">Obs: ${esc(i.notes)}</div>`:''}${i.details.map(d=>`<div class="detail">• ${esc(d)}</div>`).join('')}`).join('')
-  return `<!doctype html><html><head><meta charset="utf-8"><style>@page{margin:2mm}body{font-family:monospace;color:#000;margin:0}.ticket{width:80mm;max-width:100%;padding:2mm;box-sizing:border-box}h1,h2{text-align:center;margin:4px}.rule{border-top:1px dashed #000;margin:9px 0}.item{display:grid;grid-template-columns:auto 1fr auto;gap:8px;margin:7px 0}.detail{padding-left:26px}.total{font-size:1.35em;display:flex;justify-content:space-between;margin:12px 0}</style></head><body><section class="ticket"><h1>RODRIGUES AÇAÍ E CIA</h1><h2>PEDIDO #${esc(o.number)}</h2><div class="rule"></div><p><b>Cliente:</b> ${esc(o.clientName)}</p><p><b>Tipo:</b> ${esc(o.type)}</p>${o.address?`<p><b>Endereço:</b> ${esc(o.address)}</p>`:''}<div class="rule"></div>${items}${o.observation?`<div class="rule"></div><p><b>OBS:</b> ${esc(o.observation)}</p>`:''}<div class="rule"></div><div class="total"><span>TOTAL</span><b>${money(o.total)}</b></div><p><b>Pagamento:</b> ${esc(o.payment)}</p></section></body></html>`
+ const label=value=>esc(upper(value))
+ const meta=(key,value)=>'<div class="meta"><b>'+key+'</b> '+label(value)+'</div>'
+ const items=(o.items||[]).map(i=>{
+  const details=(i.details||[]).map(x=>'<div class="detail">+ '+label(x)+'</div>').join('')
+  return '<section class="item"><div class="item-title">'+label(i.qty)+'X '+label(i.name)+'</div>'+
+   (i.price>0?'<div class="item-price">'+money(i.price)+'</div>':'')+
+   details+(i.notes?'<div class="obs">OBS: '+label(i.notes)+'</div>':'')+'</section>'
+ }).join('')
+ const moneyRow=(text,value)=>'<div class="money-row"><span>'+text+'</span><b>'+money(value)+'</b></div>'
+ const address=o.type==='RETIRADA'?'RETIRADA NA LOJA':o.address||'ENDEREÇO NÃO INFORMADO'
+ return '<!doctype html><html><head><meta charset="utf-8"><style>'+
+  '@page{size:80mm 200mm;margin:0}*{box-sizing:border-box}html,body{margin:0;padding:0;background:#fff;color:#000;font:700 13px/1.28 Arial,Helvetica,sans-serif}'+
+  '.ticket{width:76mm;margin:0 auto;padding:2mm 1mm 3mm}h1{font-size:16px;margin:0;text-align:center;font-weight:900}h2{font-size:21px;margin:3px 0 5px;text-align:center;font-weight:900}'+
+  '.rule{border-top:1px dashed #000;margin:7px 0}.meta{margin:3px 0;overflow-wrap:anywhere}.address{border:1px solid #000;padding:5px;margin:6px 0;overflow-wrap:anywhere}.address b{display:block;margin-bottom:2px}'+
+  '.heading{font-size:14px;margin:0 0 5px;font-weight:900}.item{margin:7px 0 9px;break-inside:avoid;page-break-inside:avoid}.item-title{font-size:16px;line-height:1.25;font-weight:900;overflow-wrap:anywhere}.item-price{text-align:right;margin:1px 0 4px;font-size:14px}.detail{font-size:14px;line-height:1.3;margin:2px 0 2px 5px;overflow-wrap:anywhere}.obs{border:1px solid #000;margin:5px 0;padding:5px;overflow-wrap:anywhere}'+
+  '.money-row{display:flex;justify-content:space-between;gap:5px;margin:3px 0}.total{border-top:2px solid #000;padding-top:6px;font-size:18px;font-weight:900;margin:7px 0}.payment{margin:8px 0 0;overflow-wrap:anywhere}'+
+  '</style></head><body><main class="ticket"><h1>RODRIGUES AÇAÍ E CIA</h1><h2>PEDIDO #'+label(o.number)+'</h2>'+
+  '<div class="rule"></div>'+meta('CLIENTE:',o.clientName)+(o.phone?meta('TELEFONE:',o.phone):'')+meta('TIPO:',o.type)+
+  '<div class="address"><b>'+(o.type==='RETIRADA'?'RETIRADA':'ENDEREÇO DE ENTREGA')+'</b>'+label(address)+'</div>'+
+  '<div class="rule"></div><h3 class="heading">ITENS DO PEDIDO</h3>'+items+
+  (o.observation?'<div class="obs">OBS DO PEDIDO: '+label(o.observation)+'</div>':'')+
+  '<div class="rule"></div>'+
+  (o.subtotal>0&&o.subtotal!==o.total?moneyRow('SUBTOTAL',o.subtotal):'')+
+  (o.freight>0?moneyRow('ENTREGA',o.freight):'')+
+  (o.discount>0?moneyRow('DESCONTO',-o.discount):'')+
+  '<div class="money-row total"><span>TOTAL</span><b>'+money(o.total)+'</b></div>'+
+  '<div class="payment">PAGAMENTO: '+label(o.payment||'NÃO INFORMADO')+(o.paymentStatus?' - '+label(o.paymentStatus):'')+'</div>'+
+  '</main></body></html>'
 }
 
 
