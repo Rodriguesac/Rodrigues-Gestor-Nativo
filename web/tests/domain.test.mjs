@@ -15,3 +15,14 @@ test('açaí origem remains visible when it is the only base identification',()=
  const o=normalize({id:'test',raw_payload:{itens:[{nome:'Copo 300ml',detalhes:{linhasMontagem:['Açaí Origem','Banana']}}]}})
  assert.ok(o.items[0].details.includes('Açaí Origem'))
 })
+
+test('80mm receipt highlights delivery address, complete items and totals',()=>{
+ const o=normalize({id:'523',raw_payload:{numeroPedido:'523',tipoPedido:'ENTREGA',endereco:{rua:'Rua Simões',numero:'88',bairro:'Estrela Dalva'},itens:[{nome:'Copo 300ml - Açaí Origem',preco:13,detalhes:{linhasMontagem:['Açaí Origem','Leite condensado','Ovomaltine','Abacaxi']}}],total:13,pagamento:{forma:'debito'}}})
+ const html=receiptHtml(o)
+ assert.ok(html.includes('ENDEREÇO DE ENTREGA'))
+ assert.ok(html.includes('RUA SIMÕES, 88, ESTRELA DALVA'))
+ assert.ok(html.includes('LEITE CONDENSADO'))
+ assert.equal((html.match(/AÇAÍ ORIGEM/g)||[]).length,1)
+ assert.ok(html.includes('@page{size:80mm'))
+ assert.ok(html.includes('TOTAL'))
+})
