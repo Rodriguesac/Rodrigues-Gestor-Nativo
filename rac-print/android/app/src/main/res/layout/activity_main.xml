@@ -23,6 +23,14 @@
         android:singleLine="true" android:inputType="textVisiblePassword" android:hint="Chave de conexão"/>
       <Button android:id="@+id/connect" android:layout_width="match_parent" android:layout_height="48dp"
         android:background="@drawable/button_secondary" android:text="Verificar conexão" android:textColor="@color/purple"/>
+      <Button android:id="@+id/openPrintSettings" android:layout_width="match_parent"
+        android:layout_height="48dp" android:layout_marginTop="8dp"
+        android:background="@drawable/button_secondary"
+        android:text="Ativar RAC Print nas impressoras do Android"
+        android:textColor="@color/purple"/>
+      <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:text="Depois, no iFood, toque em Imprimir e escolha RAC Print, sem salvar o PDF."
+        android:textColor="@color/muted" android:textSize="13sp" android:paddingTop="6dp"/>
       <TextView android:id="@+id/connectionStatus" android:layout_width="match_parent" android:layout_height="wrap_content"
         android:text="Aguardando conexão" android:textColor="@color/muted" android:paddingTop="8dp"/>
     </LinearLayout>
@@ -49,7 +57,7 @@
         android:background="@drawable/button_secondary" android:text="Imprimir cupom de teste" android:textColor="@color/purple"/>
     </LinearLayout>
     <TextView android:id="@+id/jobStatus" android:layout_width="match_parent" android:layout_height="wrap_content"
-      android:text="Versão 0.1 • Rede Wi-Fi local • Sem assinatura" android:textColor="@color/muted"
+      android:text="Versão 0.2 • Impressão Android + Wi-Fi local • Sem assinatura" android:textColor="@color/muted"
       android:gravity="center" android:padding="18dp"/>
   </LinearLayout>
 </ScrollView>
