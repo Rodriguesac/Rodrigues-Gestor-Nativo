@@ -54,10 +54,16 @@ public class MainActivity extends Activity {
         copies = findViewById(R.id.copies);
         copies.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item,
                 new String[]{"1", "2", "3"}));
-        ip.setText(getPreferences(MODE_PRIVATE).getString("ip", ""));
-        token.setText(getPreferences(MODE_PRIVATE).getString("token", ""));
+        android.content.SharedPreferences settings = getSharedPreferences("rac_print_settings", MODE_PRIVATE);
+        // Migração da v0.1.1 para que o serviço Android encontre a conexão existente.
+        ip.setText(settings.getString("ip", getPreferences(MODE_PRIVATE).getString("ip", "")));
+        token.setText(settings.getString("token", getPreferences(MODE_PRIVATE).getString("token", "")));
         findViewById(R.id.selectFile).setOnClickListener(v -> chooseFile());
         findViewById(R.id.connect).setOnClickListener(v -> runCheck());
+        findViewById(R.id.openPrintSettings).setOnClickListener(v -> {
+            saveConnection();
+            startActivity(new Intent("android.settings.ACTION_PRINT_SETTINGS"));
+        });
         findViewById(R.id.print).setOnClickListener(v -> print(false));
         findViewById(R.id.test).setOnClickListener(v -> print(true));
         acceptIntent(getIntent());
@@ -115,7 +121,8 @@ public class MainActivity extends Activity {
     }
 
     private void saveConnection() {
-        getPreferences(MODE_PRIVATE).edit().putString("ip", ip.getText().toString().trim())
+        getSharedPreferences("rac_print_settings", MODE_PRIVATE).edit()
+                .putString("ip", ip.getText().toString().trim())
                 .putString("token", token.getText().toString().trim()).apply();
     }
 
