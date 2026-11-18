@@ -6,7 +6,16 @@ import unittest
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'bridge'))
-from rac_print_bridge import PrintService, run_server
+from rac_print_bridge import PrintService, run_server, thermal_black_and_white
+
+
+class MonochromeTest(unittest.TestCase):
+    def test_thermal_receives_pure_black_and_white(self):
+        from PIL import Image
+        img = Image.new("L", (5, 1))
+        img.putdata([0, 60, 185, 215, 255])
+        output = thermal_black_and_white(img)
+        self.assertEqual(list(output.convert("L").getdata()), [0, 0, 0, 255, 255])
 
 
 class BridgeTest(unittest.TestCase):

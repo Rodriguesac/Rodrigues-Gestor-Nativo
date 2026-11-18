@@ -1,4 +1,10 @@
-# RAC Print 0.2.0 — imprimir pelo iFood sem salvar PDF
+# Atualização para impressão com mais contraste (v0.2.1)
+
+A foto da Bematech comprovou que a impressão funciona, mas está muito clara. O receptor Windows foi atualizado para converter tons de cinza em **preto puro e branco puro** antes de enviar ao driver. Isso melhora o contraste de PDFs térmicos, sem garantia de corrigir cabeçote, papel ou ajuste físico de densidade.
+
+**É preciso atualizar somente o receptor Windows** para obter esta correção de contraste; o RAC Print Android v0.2.0 continua compatível. Pare o receptor em execução no PC, substitua o executável na mesma pasta e abra novamente. O IP, a chave e a impressora selecionada ficam preservados na configuração de usuário em `%APPDATA%\\RAC Print\\config.json`. Não deixe duas instâncias executando. Se o cupom permanecer claro, aumente a **densidade/escuridão/energia** no driver da Bematech e confira a qualidade do papel e cabeçote. A versão 0.2.1 da impressão pode alterar a aparência de fotos e logotipos, pois prioriza preto e branco para texto.
+
+# RAC Print 0.2.1 — impressão mais escura no receptor Windows
 
 O aplicativo agora declara um **serviço de impressão do Android**. Quando o iFood abrir a tela de impressão do Android (mesmo se a opção inicial for "Salvar como PDF"), a impressora **RAC Print — impressora do PC** poderá aparecer na lista.
 

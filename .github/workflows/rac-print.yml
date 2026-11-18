@@ -19,6 +19,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+      - run: python -m pip install Pillow==11.3.0
       - run: python -m unittest discover -s rac-print/tests -v
 
   android:
@@ -103,19 +104,19 @@ jobs:
       - name: Preparar arquivos de instalação
         run: |
           mkdir -p release/dist
-          cp release/android/app-debug.apk release/dist/RAC-Print-Android-v0.2.0.apk
+          cp release/android/app-debug.apk release/dist/RAC-Print-Android-v0.2.1.apk
           cd release/windows
-          zip -j ../dist/RAC-Print-Windows-v0.2.0.zip RAC-Print-Windows.exe INSTALAR-WINDOWS.bat COMECE-AQUI.md
+          zip -j ../dist/RAC-Print-Windows-v0.2.1.zip RAC-Print-Windows.exe INSTALAR-WINDOWS.bat COMECE-AQUI.md
       - name: Publicar downloads na versão RAC Print
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if gh release view rac-print-v0.2.0 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release upload rac-print-v0.2.0 release/dist/* --repo "$GITHUB_REPOSITORY" --clobber
+          if gh release view rac-print-v0.2.1 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload rac-print-v0.2.1 release/dist/* --repo "$GITHUB_REPOSITORY" --clobber
           else
-            gh release create rac-print-v0.2.0 release/dist/* \
+            gh release create rac-print-v0.2.1 release/dist/* \
               --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
-              --title "RAC Print v0.2.0 — Android e Windows" \
-              --notes "RAC Print com serviço nativo de impressão Android, integração com seletor de impressora do sistema e receptor Windows. Impressão física ainda depende de validação na Bematech." \
+              --title "RAC Print v0.2.1 — impressao mais escura" \
+              --notes "Receptor Windows ajustado para converter cada pixel do cupom em preto sólido ou branco sólido, reduzindo impressão cinza; Android mantém serviço nativo de impressão. Teste a densidade final na Bematech." \
               --prerelease
           fi

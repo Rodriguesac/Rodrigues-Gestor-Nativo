@@ -19,7 +19,7 @@ import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-APP_VERSION = "0.1.0"
+APP_VERSION = "0.2.1"
 PORT = 8765
 MAX_BYTES = 15 * 1024 * 1024
 CONFIG_DIR = Path(os.environ.get("APPDATA", str(Path.home()))) / "RAC Print"
@@ -70,6 +70,16 @@ def default_printer():
     return win32print.GetDefaultPrinter()
 
 
+def thermal_black_and_white(image, threshold: int = 205):
+    """Converte tons de cinza em preto sólido para drivers de impressora térmica.
+
+    Pixels abaixo do limiar viram preto puro; acima, branco puro.
+    A densidade térmica física continua sendo configurada no driver/impressora.
+    """
+    gray = image.convert("L")
+    return gray.point(lambda level: 0 if level < threshold else 255).convert("RGB")
+
+
 def spool_pdf(data: bytes, printer: str, copies: int):
     """Recebe PDF intacto; desenha cada página diretamente no GDI da impressora.
 
@@ -103,8 +113,11 @@ def spool_pdf(data: bytes, printer: str, copies: int):
                 # Resolução calculada exatamente para a largura do driver Windows.
                 scale = device_w / max(1, page.rect.width)
                 pixels = page.get_pixmap(matrix=fitz.Matrix(scale, scale),
-                                         colorspace=fitz.csRGB, alpha=False)
-                img = Image.frombytes("RGB", (pixels.width, pixels.height), pixels.samples)
+                                         colorspace=fitz.csGRAY, alpha=False)
+                gray = Image.frombytes("L", (pixels.width, pixels.height), pixels.samples)
+                # A impressora só deve receber preto sólido e branco sólido;
+                # suavização em cinza pode parecer desbotada no papel.
+                img = thermal_black_and_white(gray)
                 # Divide documentos compridos em folhas/bobinas suportadas pelo driver.
                 y = 0
                 while y < img.height:
