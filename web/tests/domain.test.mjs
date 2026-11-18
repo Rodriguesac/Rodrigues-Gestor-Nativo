@@ -4,7 +4,7 @@ test('normalizes raw items when API enrichment is empty',()=>{const o=normalize(
 test('terminal and pickup statuses leave operational queue',()=>{for(const status of ['FINALIZADO','RETIRADO','CANCELADA','CONCLUÍDO','CANCELED'])assert.equal(bucket(normalize({id:status,status})),'done')});
 test('acceptance expires at five minutes without altering status',()=>{const o={created:'2026-09-28T12:00:00Z',status:'PENDENTE'};assert.equal(acceptanceRemaining(o,Date.parse('2026-09-28T12:04:59Z')),1);assert.equal(acceptanceRemaining(o,Date.parse('2026-09-28T12:05:01Z')),0);assert.equal(o.status,'PENDENTE')});
 test('duplicates require phone, items, value and five minute window',()=>{const a={id:'a',phone:'67999999999',total:13,created:'2026-09-28T12:00:00Z',items:[{name:'Açaí',qty:1,details:[]}]};assert.deepEqual([...duplicateIds([a,{...a,id:'b',created:'2026-09-28T12:03:00Z'}])],['a','b']);assert.equal(duplicateIds([a,{...a,id:'b',total:14}]).size,0)});
-test('receipt escapes customer-controlled fields',()=>{const o=normalize({id:'x',customer:{name:'<img onerror=alert(1)>'},items:[{name:'<script>x</script>'}]});const html=receiptHtml(o);assert.ok(!html.includes('<script>x</script>'));assert.ok(html.includes('&lt;img'));});
+test('receipt escapes customer-controlled fields',()=>{const o=normalize({id:'x',customer:{name:'<img onerror=alert(1)>'},items:[{name:'<script>x</script>'}]});const html=receiptHtml(o);assert.ok(!html.includes('<script>x</script>'));assert.ok(html.includes('&lt;IMG'));});
 
 test('açaí origem already named in product is not repeated as topping',()=>{
  const o=normalize({id:'test',raw_payload:{itens:[{nome:'Copo 300ml - Açaí Origem',detalhes:{linhasMontagem:['Leite condensado','Açaí Origem','Ovomaltine','Abacaxi']}}]}})
