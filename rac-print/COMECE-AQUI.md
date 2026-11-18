@@ -1,3 +1,9 @@
+# RAC Print 0.1.1 — instalação no Android 14
+
+Se o Android perguntar "qual app usar" e depois não iniciar a instalação, salve o APK no aparelho e abra em **Gerenciador de arquivos > Downloads**, fora do ChatGPT. Em Configurações > Apps > Acesso especial > Instalar apps desconhecidos, autorize temporariamente o **Gerenciador de arquivos** (ou o navegador que fez o download). Instale apenas o APK publicado no GitHub do projeto. Se tiver tentado instalar uma versão anterior e o Android disser que já existe o aplicativo, desinstale a versão antiga antes de instalar a nova; builds de teste podem ter assinaturas diferentes.
+
+O arquivo de instalação deve terminar em `.apk`, não em `.zip`, `.html` ou `.bin`.
+
 # RAC Print — Android + Windows (v0.1.0)
 
 Alternativa gratuita para imprimir arquivos do Android em impressoras USB instaladas no Windows, incluindo Bematech MP-4200 TH. **Versão inicial: não testada em impressora física.**

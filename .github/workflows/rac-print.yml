@@ -41,6 +41,14 @@ jobs:
           gradle-version: '8.9'
       - name: Gerar APK instalável
         run: gradle --no-daemon -p rac-print/android :app:assembleDebug
+      - name: Verificar APK, assinatura e compatibilidade Android
+        run: |
+          APK="rac-print/android/app/build/outputs/apk/debug/app-debug.apk"
+          test -s "$APK"
+          unzip -t "$APK" | tail -n 1
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | grep -E 'package:|sdkVersion:|targetSdkVersion:|launchable-activity:'
+          sha256sum "$APK"
       - uses: actions/upload-artifact@v4
         with:
           name: RAC-Print-Android-APK
@@ -95,19 +103,19 @@ jobs:
       - name: Preparar arquivos de instalação
         run: |
           mkdir -p release/dist
-          cp release/android/app-debug.apk release/dist/RAC-Print-Android-v0.1.0.apk
+          cp release/android/app-debug.apk release/dist/RAC-Print-Android-v0.1.1.apk
           cd release/windows
-          zip -j ../dist/RAC-Print-Windows-v0.1.0.zip RAC-Print-Windows.exe INSTALAR-WINDOWS.bat COMECE-AQUI.md
+          zip -j ../dist/RAC-Print-Windows-v0.1.1.zip RAC-Print-Windows.exe INSTALAR-WINDOWS.bat COMECE-AQUI.md
       - name: Publicar downloads na versão RAC Print
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if gh release view rac-print-v0.1.0 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release upload rac-print-v0.1.0 release/dist/* --repo "$GITHUB_REPOSITORY" --clobber
+          if gh release view rac-print-v0.1.1 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload rac-print-v0.1.1 release/dist/* --repo "$GITHUB_REPOSITORY" --clobber
           else
-            gh release create rac-print-v0.1.0 release/dist/* \
+            gh release create rac-print-v0.1.1 release/dist/* \
               --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
-              --title "RAC Print v0.1.0 — Android e Windows" \
-              --notes "Versão inicial para testes reais com impressoras Windows. Instale o receptor no PC e o APK no Android. Não validado ainda em impressora física." \
+              --title "RAC Print v0.1.1 — Android e Windows" \
+              --notes "Versão inicial com APK compilado, integridade e assinatura verificadas para Android 14; impressão física ainda não validada. Instale o receptor no PC e o APK no Android." \
               --prerelease
           fi
