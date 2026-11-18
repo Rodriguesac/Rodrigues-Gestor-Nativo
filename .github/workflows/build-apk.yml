@@ -3,7 +3,7 @@ name: Gerar APK Rodrigues Gestor Hybrid
 on:
   workflow_dispatch:
   push:
-    branches: [ "main", "master", "feature/rodrigues-voz-v1", "work/gestor-mobile-refino-2026-09-29" ]
+    branches: [ "main", "master", "feature/rodrigues-voz-v1", "work/gestor-mobile-refino-2026-09-29", "rac-print" ]
 
 permissions:
   contents: read
@@ -25,6 +25,10 @@ jobs:
         run: |
           npm install --no-audit --no-fund
           npm run build
+
+      - name: Testar normalizacao e comandas
+        working-directory: web
+        run: npm test
 
       - name: Embutir React no APK
         run: |
@@ -73,11 +77,50 @@ jobs:
         run: gradle :app:assembleDebug --stacktrace
 
       - name: Renomear APK
-        run: cp app/build/outputs/apk/debug/app-debug.apk Rodrigues-Gestor-v3.3.2-Mobile-debug.apk
+        run: cp app/build/outputs/apk/debug/app-debug.apk Rodrigues-Gestor-v3.3.4-Mobile-debug.apk
+
+      - name: Verificar APK e assinatura
+        run: |
+          APK=Rodrigues-Gestor-v3.3.4-Mobile-debug.apk
+          test -s "$APK"
+          unzip -t "$APK" | tail -n 1
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | grep -E 'package:|sdkVersion:|targetSdkVersion:|launchable-activity:'
+          sha256sum "$APK"
 
       - name: Disponibilizar APK
         uses: actions/upload-artifact@v4
         with:
-          name: Rodrigues-Gestor-3.3.2-Mobile-APK
-          path: Rodrigues-Gestor-v3.3.2-Mobile-debug.apk
+          name: Rodrigues-Gestor-3.3.4-Mobile-APK
+          path: Rodrigues-Gestor-v3.3.4-Mobile-debug.apk
           retention-days: 30
+          if-no-files-found: error
+
+  release:
+    name: Publicar link direto do APK
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.ref == 'refs/heads/rac-print'
+    permissions:
+      contents: write
+    steps:
+      - name: Baixar o APK validado
+        uses: actions/download-artifact@v4
+        with:
+          name: Rodrigues-Gestor-3.3.4-Mobile-APK
+          path: dist
+
+      - name: Publicar APK de teste v3.3.4
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          APK=dist/Rodrigues-Gestor-v3.3.4-Mobile-debug.apk
+          test -s "$APK"
+          if gh release view gestor-acai-v3.3.4-teste --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload gestor-acai-v3.3.4-teste "$APK" --clobber --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create gestor-acai-v3.3.4-teste "$APK" --repo "$GITHUB_REPOSITORY" \
+              --target "$GITHUB_SHA" --title "Rodrigues Gestor v3.3.4 — impressão direta (teste)" \
+              --notes "Versão de teste: comanda de 80 mm em caixa alta e negrito; RAC Print receptor Windows via IP e chave; escolha imprimir manualmente, ao chegar, ou ao aceitar. Ainda requer validação física na Bematech. Não substitui o RAC Print do Windows." \
+              --prerelease
+          fi
