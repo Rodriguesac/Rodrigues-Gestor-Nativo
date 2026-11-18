@@ -7,6 +7,46 @@ const upper=v=>String(v||'').trim().toUpperCase()
 const dig=v=>String(v||'').replace(/\D/g,'')
 const esc=v=>String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))
 
+// O backend pode enviar itens resumidos e a montagem completa no raw_payload.
+// Reunimos os dois formatos, preservando nomes, quantidades e adicionais de cada item.
+const DETAIL_KEYS=['linhasMontagem','linhas','linhasIncluido','linhasIncluidas','cobertura_detalhes','coberturas_detalhes','acompanhamentos_detalhes','adicionais_detalhes','coberturas','cobertura','acompanhamentos','adicionais','extras','complementos','opcoes','opções','options','toppings','frutas','selecoes','seleções','montagem','sabor','baseNome','base_nome','base'];
+const asObj=v=>v&&typeof v==='object'&&!Array.isArray(v)?v:{};
+const itemName=i=>String(i?.name||i?.nome||i?.titulo||i?.produtoNome||i?.baseNome||i?.produto||'Item');
+function extractDetails(...sources){
+ const result=[],seen=new Set();
+ const add=s=>{
+  for(const part of String(s||'').split(/[\n;]+/)){
+   const value=part.trim().replace(/^[-+•]\s*/, '');
+   const key=value.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+   if(value&&!seen.has(key)){seen.add(key);result.push(value)}
+  }
+ };
+ const category=key=>/^cobertura/i.test(key)?'Cobertura: ':''; 
+ const scan=(value,depth=0,prefix='')=>{
+  if(value==null||depth>5||value===false)return;
+  if(typeof value==='string'){add(prefix+value);return}
+  if(Array.isArray(value)){value.forEach(x=>scan(x,depth+1,prefix));return}
+  if(typeof value!=='object')return;
+  const m=asObj(value);
+  const label=m.nome||m.name||m.titulo||m.label||m.texto||m.descricao;
+  if(typeof label==='string'&&label.trim()){
+   const qty=Number(m.quantidade||m.quantity||m.qtd||1);
+   // O mesmo nome pode ser acompanhamento grátis E adicional pago.
+   // Mantém as duas escolhas com indicação de adicional, sem duplicar os espelhos do payload.
+   const type=String(m.tipo||m.kind||'').toUpperCase();
+   const labelPrefix=type==='ADICIONAL'?'ADICIONAL: ':type==='COBERTURA'&&!/^(cobertura|calda)/i.test(label)?'COBERTURA: ':'';
+   add(labelPrefix+prefix+(qty>1&&Number.isFinite(qty)?qty+'× ':'')+label);
+  }
+  // Somente campos de montagem: não imprime campos técnicos como ids e valores.
+  DETAIL_KEYS.forEach(key=>{if(m[key]!=null)scan(m[key],depth+1,category(key)||prefix)});
+ };
+ sources.forEach(source=>{
+  const v=asObj(source);
+  if(Array.isArray(source)||typeof source==='string')scan(source);
+  else DETAIL_KEYS.forEach(key=>{if(v[key]!=null)scan(v[key],0,category(key))});
+ });
+ return sortDetails(result);
+}
 function normalize(row){
   const raw=row?.raw_payload&&typeof row.raw_payload==='object'
     ? row.raw_payload
@@ -18,9 +58,49 @@ function normalize(row){
   const pay=row?.payment_details||raw.pagamento||{}
   const status=upper(row.status||raw.status||raw.statusPedido||'PENDENTE')
   const created=row.created_at||raw.createdAt||raw.criadoEm||raw.created_at||''
-  const items=Array.isArray(row?.items)&&row.items.length?row.items:Array.isArray(raw.itens)?raw.itens:Array.isArray(raw.items)?raw.items:[]
+  const rawItems=[raw.itens,raw.items,raw.produtos,raw.carrinho].find(x=>Array.isArray(x)&&x.length)||[]
+  const enrichedItems=Array.isArray(row?.items)&&row.items.length?row.items:[]
+  const items=enrichedItems.length?enrichedItems:rawItems
   const address=row?.delivery_address||raw.endereco||{}
   const type0=upper(row?.fulfillment_type||raw.tipoPedido||raw.tipo_pedido||raw.fulfillment||'ENTREGA');const type=({DELIVERY:'ENTREGA',PICKUP:'RETIRADA',DINE_IN:'BALCAO'})[type0]||type0
+  const normalizedItems=items.map((source,index)=>{
+    const i=asObj(source);
+    // O enriquecimento pode substituir o item, mas omitir sua montagem.
+    const rawCandidate=asObj(rawItems[index]);
+    const rawItem=enrichedItems.length&&
+      rawItems.length===enrichedItems.length&&
+      upper(itemName(i))===upper(itemName(rawCandidate))?rawCandidate:{};
+    const modifiers=asObj(i.modifiers),details=asObj(i.detalhes);
+    const originalModifiers=asObj(rawItem.modifiers),originalDetails=asObj(rawItem.detalhes);
+    const name=itemName(i);
+    // Prioriza a lista de montagem, pois ela registra cada escolha com seu tipo.
+    // Os demais campos são representações repetidas da mesma montagem.
+    const detailSources=[i,modifiers,details,rawItem,originalModifiers,originalDetails];
+    const fullLines=detailSources.flatMap(s=>[s.linhasMontagem,s.linhas]).find(lines=>Array.isArray(lines)&&lines.length>0);
+    const baseName=detailSources.map(s=>s.baseNome||s.base_nome||s.base).find(Boolean);
+    const found=fullLines
+      ? extractDetails({linhasMontagem:fullLines},baseName?{baseNome:baseName}:null)
+      : extractDetails(i,modifiers,details,rawItem,originalModifiers,originalDetails,
+        Array.isArray(i.detalhes)?i.detalhes:null,Array.isArray(rawItem.detalhes)?rawItem.detalhes:null);
+    // Não repetir a base se ela já faz parte do nome completo do copo.
+    // Ex.: "COPO 500ML - AÇAÍ ORIGEM" não precisa de "+ AÇAÍ ORIGEM".
+    const folded=v=>upper(v).normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^A-Z0-9]+/g,' ').trim();
+    const productKey=folded(name);
+    const detailsList=found.filter(d=>{
+      const detailKey=folded(d);
+      if(!detailKey||detailKey===productKey)return false;
+      const simpleBase=detailKey.replace(/^(BASE|SABOR) /,'');
+      return !(simpleBase.length>3 && productKey.endsWith(' '+simpleBase)
+        && /(?:ACAI|CUPUACU|CASADINHO|ORIGEM)/.test(simpleBase));
+    });
+    return {
+      qty:Math.max(1,Number(i.quantity||i.quantidade||i.qtd||rawItem.quantidade||1)||1),
+      name,
+      price:Number(i.total_price??i.total??i.precoTotal??i.preco??i.valor??rawItem.total??i.unit_price??0)||0,
+      notes:String(i.notes||i.observacao||i.observação||rawItem.notes||rawItem.observacao||''),
+      details:detailsList
+    };
+  })
   return {
     sourceRow:row,
     cancellationReason:row.cancellation_reason||raw.motivoCancelamento||'',
@@ -40,21 +120,7 @@ function normalize(row){
     paymentStatus:upper(row.payment_status||pay.status||raw.statusPagamento||''),
     observation:String(row.customer_note||raw.observacao||raw.observação||''),
     address:typeof address==='string'?address:[address.completo||address.texto||address.rua||address.street,address.completo||address.texto?'':address.numero||address.number,address.completo||address.texto?'':address.bairro||address.district].filter(Boolean).join(', ')||String(raw.enderecoEntrega||raw.enderecoCliente||''),
-    items:items.map(i=>{
-      const modifiers=i.modifiers||i.detalhes||{}
-      const lines=Array.isArray(modifiers.linhasMontagem)?modifiers.linhasMontagem:
-        Array.isArray(modifiers.linhas)?modifiers.linhas:
-        Array.isArray(i.linhasMontagem)?i.linhasMontagem:
-        Array.isArray(i.detalhes)?i.detalhes:[]
-      const name=String(i.name||i.nome||i.titulo||i.produtoNome||i.baseNome||i.produto||'Item')
-      return {
-        qty:Number(i.quantity||i.quantidade||i.qtd||1),
-        name,
-        price:Number(i.total_price||i.total||i.preco||i.valor||i.unit_price||0),
-        notes:String(i.notes||i.observacao||''),
-        details:sortDetails(stripRepeatedBase(name,lines.map(x=>typeof x==='string'?x:x?.nome).filter(Boolean)))
-      }
-    }),
+    items:normalizedItems,
     raw
   }
 }
