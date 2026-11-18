@@ -95,7 +95,7 @@ function receiptHtml(o){
  const moneyRow=(text,value)=>'<div class="money-row"><span>'+text+'</span><b>'+money(value)+'</b></div>'
  const address=o.type==='RETIRADA'?'RETIRADA NA LOJA':o.address||'ENDEREÇO NÃO INFORMADO'
  return '<!doctype html><html><head><meta charset="utf-8"><style>'+
-  '@page{size:80mm 200mm;margin:0}*{box-sizing:border-box}html,body{margin:0;padding:0;background:#fff;color:#000;font:700 13px/1.28 Arial,Helvetica,sans-serif}'+
+  '@page{margin:0}*{box-sizing:border-box}html,body{margin:0;padding:0;background:#fff;color:#000;font:700 13px/1.28 Arial,Helvetica,sans-serif}'+
   '.ticket{width:76mm;margin:0 auto;padding:2mm 1mm 3mm}h1{font-size:16px;margin:0;text-align:center;font-weight:900}h2{font-size:21px;margin:3px 0 5px;text-align:center;font-weight:900}'+
   '.rule{border-top:1px dashed #000;margin:7px 0}.meta{margin:3px 0;overflow-wrap:anywhere}.address{border:1px solid #000;padding:5px;margin:6px 0;overflow-wrap:anywhere}.address b{display:block;margin-bottom:2px}'+
   '.heading{font-size:14px;margin:0 0 5px;font-weight:900}.item{margin:7px 0 9px;break-inside:avoid;page-break-inside:avoid}.item-title{font-size:16px;line-height:1.25;font-weight:900;overflow-wrap:anywhere}.item-price{text-align:right;margin:1px 0 4px;font-size:14px}.detail{font-size:14px;line-height:1.3;margin:2px 0 2px 5px;overflow-wrap:anywhere}.obs{border:1px solid #000;margin:5px 0;padding:5px;overflow-wrap:anywhere}'+
