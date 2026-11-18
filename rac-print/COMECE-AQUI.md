@@ -1,10 +1,32 @@
-# RAC Print 0.1.1 — instalação no Android 14
+# RAC Print 0.2.0 — imprimir pelo iFood sem salvar PDF
+
+O aplicativo agora declara um **serviço de impressão do Android**. Quando o iFood abrir a tela de impressão do Android (mesmo se a opção inicial for "Salvar como PDF"), a impressora **RAC Print — impressora do PC** poderá aparecer na lista.
+
+## Configuração inicial, uma única vez
+
+1. No Windows, com a Bematech MP-4200 TH ligada por USB e driver instalado, execute o receptor RAC Print, escolha a Bematech e configure o início automático (veja o instalador Windows).
+2. No Android, instale o arquivo APK **v0.2.0**. Se o instalador não abrir dentro do ChatGPT ou navegador, abra o APK baixado pelo **Gerenciador de arquivos > Downloads** e autorize a instalação dessa fonte.
+3. Abra RAC Print, informe o **IP local** e a **chave** mostrados no receptor Windows, e toque em **Verificar conexão**.
+4. Toque **Ativar RAC Print nas impressoras do Android**. Na tela do sistema, habilite **RAC Print** (o nome exato do menu varia conforme o aparelho).
+5. No iFood, abra o pedido e escolha **Imprimir**. Na pré-visualização do Android, toque na lista de destinos (talvez comece em **Salvar como PDF**), selecione **RAC Print — impressora do PC**, e confirme a impressão.
+
+Depois da configuração, o PC só precisa permanecer **ligado com o receptor em execução** e o celular deve estar na mesma rede Wi-Fi. Não é necessário abrir o RAC Print para cada pedido.
+
+**Limitação real do iFood:** isto funciona quando o aplicativo aciona a tela de impressão do Android. Caso o iFood ofereça exclusivamente "baixar arquivo", o Android não permite a outro aplicativo substituir silenciosamente esse fluxo; nesse caso use Compartilhar/Abrir com RAC Print.
+
+**Limitação de segurança:** a conexão usa HTTP com chave apenas dentro da rede local privada. Não exponha a porta 8765 à internet. O serviço não imprime automaticamente quando chega pedido: ele executa o trabalho depois que o usuário confirma **Imprimir** no aplicativo de origem.
+
+**Estado:** fonte implementada para 0.2.0; qualquer APK precisa passar pelo GitHub Actions; a saída real da Bematech MP-4200 TH ainda deve ser validada, principalmente formato da bobina e corte do papel.
+
+---
+
+# RAC Print — instalação no Android 14
 
 Se o Android perguntar "qual app usar" e depois não iniciar a instalação, salve o APK no aparelho e abra em **Gerenciador de arquivos > Downloads**, fora do ChatGPT. Em Configurações > Apps > Acesso especial > Instalar apps desconhecidos, autorize temporariamente o **Gerenciador de arquivos** (ou o navegador que fez o download). Instale apenas o APK publicado no GitHub do projeto. Se tiver tentado instalar uma versão anterior e o Android disser que já existe o aplicativo, desinstale a versão antiga antes de instalar a nova; builds de teste podem ter assinaturas diferentes.
 
 O arquivo de instalação deve terminar em `.apk`, não em `.zip`, `.html` ou `.bin`.
 
-# RAC Print — Android + Windows (v0.1.0)
+# RAC Print — Android + Windows (v0.2.0)
 
 Alternativa gratuita para imprimir arquivos do Android em impressoras USB instaladas no Windows, incluindo Bematech MP-4200 TH. **Versão inicial: não testada em impressora física.**
 
