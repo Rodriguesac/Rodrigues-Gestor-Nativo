@@ -26,3 +26,14 @@ test('80mm receipt highlights delivery address, complete items and totals',()=>{
  assert.ok(html.includes('.ticket{width:76mm'))
  assert.ok(html.includes('TOTAL'))
 })
+
+test('preserva adicional pago separado do acompanhamento de mesmo nome',()=>{
+ const lines=[
+  {nome:'Cobertura de Morango',tipo:'COBERTURA',qtd:1},
+  {nome:'Leite em Pó',tipo:'ACOMPANHAMENTO'},
+  {nome:'Leite em Pó',tipo:'ADICIONAL',qtd:1,preco:4.5}
+ ];
+ const o=normalize({id:'real-400',raw_payload:{itens:[{nome:'Copo 400ml',linhas,linhasMontagem:lines,detalhes:{linhas}}]}});
+ assert.deepEqual(o.items[0].details,['Cobertura de Morango','Leite em Pó','ADICIONAL: Leite em Pó']);
+ assert.equal((receiptHtml(o).match(/LEITE EM PÓ/g)||[]).length,2);
+});
