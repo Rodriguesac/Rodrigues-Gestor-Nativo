@@ -31,7 +31,11 @@ function extractDetails(...sources){
   const label=m.nome||m.name||m.titulo||m.label||m.texto||m.descricao;
   if(typeof label==='string'&&label.trim()){
    const qty=Number(m.quantidade||m.quantity||m.qtd||1);
-   add(prefix+(qty>1&&Number.isFinite(qty)?qty+'× ':'')+label);
+   // O mesmo nome pode ser acompanhamento grátis E adicional pago.
+   // Mantém as duas escolhas com indicação de adicional, sem duplicar os espelhos do payload.
+   const type=String(m.tipo||m.kind||'').toUpperCase();
+   const labelPrefix=type==='ADICIONAL'?'ADICIONAL: ':type==='COBERTURA'&&!/^(cobertura|calda)/i.test(label)?'COBERTURA: ':'';
+   add(labelPrefix+prefix+(qty>1&&Number.isFinite(qty)?qty+'× ':'')+label);
   }
   // Somente campos de montagem: não imprime campos técnicos como ids e valores.
   DETAIL_KEYS.forEach(key=>{if(m[key]!=null)scan(m[key],depth+1,category(key)||prefix)});
@@ -69,8 +73,15 @@ function normalize(row){
     const modifiers=asObj(i.modifiers),details=asObj(i.detalhes);
     const originalModifiers=asObj(rawItem.modifiers),originalDetails=asObj(rawItem.detalhes);
     const name=itemName(i);
-    const found=extractDetails(i,modifiers,details,rawItem,originalModifiers,originalDetails,
-      Array.isArray(i.detalhes)?i.detalhes:null,Array.isArray(rawItem.detalhes)?rawItem.detalhes:null);
+    // Prioriza a lista de montagem, pois ela registra cada escolha com seu tipo.
+    // Os demais campos são representações repetidas da mesma montagem.
+    const detailSources=[i,modifiers,details,rawItem,originalModifiers,originalDetails];
+    const fullLines=detailSources.flatMap(s=>[s.linhasMontagem,s.linhas]).find(lines=>Array.isArray(lines)&&lines.length>0);
+    const baseName=detailSources.map(s=>s.baseNome||s.base_nome||s.base).find(Boolean);
+    const found=fullLines
+      ? extractDetails({linhasMontagem:fullLines},baseName?{baseNome:baseName}:null)
+      : extractDetails(i,modifiers,details,rawItem,originalModifiers,originalDetails,
+        Array.isArray(i.detalhes)?i.detalhes:null,Array.isArray(rawItem.detalhes)?rawItem.detalhes:null);
     // Não repetir a base se ela já faz parte do nome completo do copo.
     // Ex.: "COPO 500ML - AÇAÍ ORIGEM" não precisa de "+ AÇAÍ ORIGEM".
     const folded=v=>upper(v).normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^A-Z0-9]+/g,' ').trim();
