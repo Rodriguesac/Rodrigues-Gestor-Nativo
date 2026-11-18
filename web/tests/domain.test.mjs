@@ -9,7 +9,7 @@ test('receipt escapes customer-controlled fields',()=>{const o=normalize({id:'x'
 test('açaí origem already named in product is not repeated as topping',()=>{
  const o=normalize({id:'test',raw_payload:{itens:[{nome:'Copo 300ml - Açaí Origem',detalhes:{linhasMontagem:['Leite condensado','Açaí Origem','Ovomaltine','Abacaxi']}}]}})
  assert.deepEqual(o.items[0].details,['Leite condensado','Ovomaltine','Abacaxi'])
- assert.equal(receiptHtml(o).match(/Açaí Origem/g)?.length,1)
+ assert.equal((receiptHtml(o).match(/AÇAÍ ORIGEM/g)||[]).length,1)
 })
 test('açaí origem remains visible when it is the only base identification',()=>{
  const o=normalize({id:'test',raw_payload:{itens:[{nome:'Copo 300ml',detalhes:{linhasMontagem:['Açaí Origem','Banana']}}]}})
