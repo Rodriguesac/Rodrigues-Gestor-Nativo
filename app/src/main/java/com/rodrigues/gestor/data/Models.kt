@@ -248,7 +248,18 @@ fun normalizeOrder(id: String, raw: Map<String, Any?>): Order {
         collect(detailsMap["cobertura_detalhes"])
         listOf("acompanhamentos_detalhes", "adicionais_detalhes", "acompanhamentos", "adicionais", "extras")
             .forEach { k -> collect(detailsMap[k] ?: item[k]) }
-        OrderItem(name = name, quantity = qty, price = price, details = detailNames.toList())
+        // Não repetir a base no campo de complementos quando o produto já a identifica.
+        fun normalizedKey(value: String): String = java.text.Normalizer.normalize(value, java.text.Normalizer.Form.NFD)
+            .replace(Regex("[\\u0300-\\u036f]"), "")
+            .uppercase(Locale.ROOT)
+            .replace(Regex("[^A-Z0-9]+"), " ")
+            .trim()
+        val repeatedOrigem = normalizedKey(name).contains("ACAI ORIGEM")
+        val filteredDetails = detailNames.filter { detail ->
+            val base = normalizedKey(detail).replace(Regex("^(BASE|TIPO DE BASE|SABOR) "), "")
+            !(repeatedOrigem && base == "ACAI ORIGEM")
+        }
+        OrderItem(name = name, quantity = qty, price = price, details = filteredDetails)
     }
 
     val status = firstString(raw, "status", "statusPedido", "statusLoja", "statusNormalizado", default = "RECEBIDO")
