@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent" android:layout_height="match_parent"
+    android:fillViewport="true" android:background="@color/background">
+  <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+    android:orientation="vertical" android:padding="18dp">
+    <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+      android:text="RAC Print" android:textSize="30sp" android:textStyle="bold"
+      android:textColor="@color/ink" android:paddingTop="12dp"/>
+    <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+      android:text="Imprima do celular • Bematech e outras impressoras do Windows"
+      android:textSize="13sp" android:textColor="@color/muted" android:paddingBottom="20dp"/>
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+      android:background="@drawable/card" android:padding="16dp" android:orientation="vertical">
+      <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:text="1. Conexão com o computador" android:textSize="18sp" android:textStyle="bold" android:textColor="@color/ink"/>
+      <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:text="Use o endereço IP e a chave que aparecem no receptor RAC Print do PC."
+        android:textColor="@color/muted" android:textSize="13sp" android:paddingTop="5dp"/>
+      <EditText android:id="@+id/ip" android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:singleLine="true" android:inputType="textUri" android:hint="IP do PC (ex.: 192.168.1.10)" android:paddingTop="10dp"/>
+      <EditText android:id="@+id/token" android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:singleLine="true" android:inputType="textVisiblePassword" android:hint="Chave de conexão"/>
+      <Button android:id="@+id/connect" android:layout_width="match_parent" android:layout_height="48dp"
+        android:background="@drawable/button_secondary" android:text="Verificar conexão" android:textColor="@color/purple"/>
+      <TextView android:id="@+id/connectionStatus" android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:text="Aguardando conexão" android:textColor="@color/muted" android:paddingTop="8dp"/>
+    </LinearLayout>
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+      android:layout_marginTop="16dp" android:background="@drawable/card" android:padding="16dp" android:orientation="vertical">
+      <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:text="2. Documento" android:textSize="18sp" android:textStyle="bold" android:textColor="@color/ink"/>
+      <Button android:id="@+id/selectFile" android:layout_width="match_parent" android:layout_height="48dp"
+        android:background="@drawable/button_secondary" android:text="Escolher PDF, imagem ou texto" android:textColor="@color/purple"/>
+      <TextView android:id="@+id/fileName" android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:text="Nenhum arquivo selecionado" android:textColor="@color/muted" android:paddingTop="7dp"/>
+      <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:text="Ou digite um cupom para imprimir:" android:textColor="@color/muted" android:paddingTop="12dp"/>
+      <EditText android:id="@+id/receipt" android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:gravity="top" android:minLines="4" android:maxLines="12"
+        android:inputType="textMultiLine" android:hint="RODRIGUES AÇAÍ E CIA\nPedido #001\nAçaí 300 ml   R$ 17,00\nTOTAL         R$ 17,00"/>
+      <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:text="Cópias (1 a 3)" android:textColor="@color/muted" android:paddingTop="7dp"/>
+      <Spinner android:id="@+id/copies" android:layout_width="match_parent" android:layout_height="45dp"/>
+      <Button android:id="@+id/print" android:layout_width="match_parent" android:layout_height="52dp"
+        android:background="@drawable/button_primary" android:text="IMPRIMIR" android:textColor="#FFFFFF"
+        android:textStyle="bold" android:layout_marginTop="12dp"/>
+      <Button android:id="@+id/test" android:layout_width="match_parent" android:layout_height="45dp"
+        android:background="@drawable/button_secondary" android:text="Imprimir cupom de teste" android:textColor="@color/purple"/>
+    </LinearLayout>
+    <TextView android:id="@+id/jobStatus" android:layout_width="match_parent" android:layout_height="wrap_content"
+      android:text="Versão 0.1 • Rede Wi-Fi local • Sem assinatura" android:textColor="@color/muted"
+      android:gravity="center" android:padding="18dp"/>
+  </LinearLayout>
+</ScrollView>

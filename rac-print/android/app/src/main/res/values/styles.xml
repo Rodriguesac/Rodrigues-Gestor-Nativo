@@ -1,0 +1,15 @@
+<resources>
+    <color name="purple">#55319B</color>
+    <color name="background">#F7F7FA</color>
+    <color name="ink">#252038</color>
+    <color name="muted">#6F6B7D</color>
+    <style name="Theme.RacPrint" parent="android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:fontFamily">sans</item>
+        <item name="android:colorAccent">@color/purple</item>
+        <item name="android:statusBarColor">#402078</item>
+        <item name="android:navigationBarColor">@color/background</item>
+        <item name="android:windowLightNavigationBar">true</item>
+        <item name="android:windowActionModeOverlay">true</item>
+        <item name="android:windowBackground">@color/background</item>
+    </style>
+</resources>
