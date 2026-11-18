@@ -46,12 +46,13 @@ function normalize(row){
         Array.isArray(modifiers.linhas)?modifiers.linhas:
         Array.isArray(i.linhasMontagem)?i.linhasMontagem:
         Array.isArray(i.detalhes)?i.detalhes:[]
+      const name=String(i.name||i.nome||i.titulo||i.produtoNome||i.baseNome||i.produto||'Item')
       return {
         qty:Number(i.quantity||i.quantidade||i.qtd||1),
-        name:String(i.name||i.nome||i.titulo||i.produtoNome||i.baseNome||i.produto||'Item'),
+        name,
         price:Number(i.total_price||i.total||i.preco||i.valor||i.unit_price||0),
         notes:String(i.notes||i.observacao||''),
-        details:sortDetails(lines.map(x=>typeof x==='string'?x:x?.nome).filter(Boolean))
+        details:sortDetails(stripRepeatedBase(name,lines.map(x=>typeof x==='string'?x:x?.nome).filter(Boolean)))
       }
     }),
     raw
@@ -63,6 +64,16 @@ function statusLabel(s){
 }
 function bucket(o){if(NEW.has(o.status))return'new';if(PREP.has(o.status))return'prep';if(['CONFIRMADO','ACEITO','FILA'].includes(o.status))return'confirmed';if(o.status==='PRONTO')return'ready';if(DELIVERY.has(o.status))return'delivery';return DONE.has(o.status)?'done':'other'}
 
+
+// A base já descrita no produto não deve aparecer novamente como complemento.
+function stripRepeatedBase(name,details){
+ const key=value=>String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase().replace(/[^A-Z0-9]+/g,' ').trim()
+ const product=key(name)
+ return details.filter(detail=>{
+   const base=key(detail).replace(/^(BASE|TIPO DE BASE|SABOR) /,'')
+   return !(base==='ACAI ORIGEM' && product.includes('ACAI ORIGEM'))
+ })
+}
 
 function sortDetails(lines){
  const rank=s=>{s=s.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();if(/cobertura|calda/.test(s))return 0;if(/leite condensado/.test(s))return 1;if(/leite (em po|ninho)/.test(s))return 2;if(/morango|banana|uva|kiwi|manga|abacaxi|fruta/.test(s))return 9;return 3};
