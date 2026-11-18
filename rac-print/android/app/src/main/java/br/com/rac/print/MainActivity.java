@@ -268,7 +268,8 @@ public class MainActivity extends Activity {
         opts.inJustDecodeBounds = false;
         Bitmap image = BitmapFactory.decodeByteArray(data, 0, data.length, opts);
         if (image == null) throw new Exception("Falha ao abrir imagem.");
-        try (PdfDocument doc = new PdfDocument()) {
+        PdfDocument doc = new PdfDocument();
+        try {
             int pw = 576;
             float scaledHeight = ((float) image.getHeight()) * (pw - 32) / image.getWidth();
             int ph = Math.max(160, Math.min(6500, (int) Math.ceil(scaledHeight + 32)));
@@ -280,11 +281,12 @@ public class MainActivity extends Activity {
             ByteArrayOutputStream stream = new ByteArrayOutputStream();
             doc.writeTo(stream);
             return stream.toByteArray();
-        } finally { image.recycle(); }
+        } finally { doc.close(); image.recycle(); }
     }
 
     private byte[] receiptToPdf(String text) throws Exception {
-        try (PdfDocument pdf = new PdfDocument()) {
+        PdfDocument pdf = new PdfDocument();
+        try {
             final int width = 576, pageHeight = 1600, margin = 27, lineHeight = 34;
             Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
             paint.setColor(Color.BLACK);
@@ -318,7 +320,7 @@ public class MainActivity extends Activity {
             ByteArrayOutputStream out = new ByteArrayOutputStream();
             pdf.writeTo(out);
             return out.toByteArray();
-        }
+        } finally { pdf.close(); }
     }
 
     private void show(TextView view, String message) { runOnUiThread(() -> view.setText(message)); }
