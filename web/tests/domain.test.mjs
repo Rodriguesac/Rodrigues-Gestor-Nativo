@@ -33,7 +33,7 @@ test('preserva adicional pago separado do acompanhamento de mesmo nome',()=>{
   {nome:'Leite em Pó',tipo:'ACOMPANHAMENTO'},
   {nome:'Leite em Pó',tipo:'ADICIONAL',qtd:1,preco:4.5}
  ];
- const o=normalize({id:'real-400',raw_payload:{itens:[{nome:'Copo 400ml',linhas,linhasMontagem:lines,detalhes:{linhas}}]}});
+ const o=normalize({id:'real-400',raw_payload:{itens:[{nome:'Copo 400ml',linhas:lines,linhasMontagem:lines,detalhes:{linhas:lines}}]}});
  assert.deepEqual(o.items[0].details,['Cobertura de Morango','Leite em Pó','ADICIONAL: Leite em Pó']);
  assert.equal((receiptHtml(o).match(/LEITE EM PÓ/g)||[]).length,2);
 });
