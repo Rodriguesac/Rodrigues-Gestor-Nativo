@@ -1,0 +1,37 @@
+name: RAC Etiquetas APK
+on:
+  workflow_dispatch:
+  push:
+    branches: [work/rac-etiquetas-v1]
+    paths:
+      - 'rac-etiquetas/**'
+      - '.github/workflows/rac-etiquetas.yml'
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Android SDK 35
+        run: |
+          SDKROOT="$ANDROID_HOME"
+          yes | "$SDKROOT/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+          "$SDKROOT/cmdline-tools/latest/bin/sdkmanager" "platforms;android-35" "build-tools;35.0.0"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+      - name: Build
+        working-directory: rac-etiquetas
+        run: gradle :app:assembleDebug --no-daemon --stacktrace
+      - name: Rename
+        run: cp rac-etiquetas/app/build/outputs/apk/debug/app-debug.apk RAC-Etiquetas-v1.0.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: RAC-Etiquetas-v1-Android
+          path: RAC-Etiquetas-v1.0.apk
+          retention-days: 30
