@@ -1,0 +1,62 @@
+name: Rodrigues Comandos APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - "fix/rodrigues-comandos-clean"
+  pull_request:
+    branches:
+      - "main"
+
+permissions:
+  contents: write
+
+jobs:
+  build-commands:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Baixar projeto
+        uses: actions/checkout@v4
+
+      - name: Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Instalar SDK necessário
+        run: |
+          SDKROOT="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          SDKMANAGER="$SDKROOT/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$SDKMANAGER" ]; then
+            SDKMANAGER="$SDKROOT/cmdline-tools/16.0/bin/sdkmanager"
+          fi
+          if [ ! -x "$SDKMANAGER" ]; then
+            echo "sdkmanager não encontrado em $SDKROOT"
+            find "$SDKROOT" -maxdepth 5 -type f -name sdkmanager -print || true
+            exit 1
+          fi
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" "platforms;android-36" "build-tools;35.0.0"
+
+      - name: Gradle 8.13
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.13"
+
+      - name: Compilar Rodrigues Comandos
+        run: gradle :commands:assembleDebug --stacktrace
+
+      - name: Renomear APK
+        run: |
+          cp commands/build/outputs/apk/debug/commands-debug.apk \
+            Rodrigues-Comandos-v1.0.0-debug.apk
+
+      - name: Publicar artefato
+        uses: actions/upload-artifact@v4
+        with:
+          name: Rodrigues-Comandos-APK
+          path: Rodrigues-Comandos-v1.0.0-debug.apk
+          retention-days: 30

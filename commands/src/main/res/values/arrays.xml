@@ -1,0 +1,8 @@
+<resources>
+    <string-array name="voice_feature_names">
+        <item>comando de voz</item>
+        <item>comandos</item>
+        <item>controle do cardápio</item>
+        <item>controle da loja</item>
+    </string-array>
+</resources>
