@@ -331,10 +331,12 @@ public class MainActivity extends Activity {
             @Override public void onWrite(PageRange[] pages,ParcelFileDescriptor fd,
                 CancellationSignal signal,WriteResultCallback callback){
                 if(signal.isCanceled()){callback.onWriteCancelled();return;}
-                try(PdfDocument doc=createPdf(l);FileOutputStream stream=new FileOutputStream(fd.getFileDescriptor())){
+                PdfDocument doc=createPdf(l);
+                try(FileOutputStream stream=new FileOutputStream(fd.getFileDescriptor())){
                     doc.writeTo(stream);stream.flush();
                     callback.onWriteFinished(new PageRange[]{PageRange.ALL_PAGES});
                 }catch(Exception ex){callback.onWriteFailed(ex.getMessage());}
+                finally {doc.close();}
             }
         };
         mgr.print("RAC Etiquetas",adapter,new PrintAttributes.Builder()
@@ -352,11 +354,12 @@ public class MainActivity extends Activity {
         super.onActivityResult(request,result,data);
         if(request!=SAVE_PDF||result!=RESULT_OK||data==null||data.getData()==null||jobForSave==null)return;
         Uri uri=data.getData();
-        try(PdfDocument doc=createPdf(jobForSave);
-            OutputStream out=getContentResolver().openOutputStream(uri)){
+        PdfDocument doc=createPdf(jobForSave);
+        try(OutputStream out=getContentResolver().openOutputStream(uri)){
             if(out==null)throw new IllegalStateException("Arquivo indisponível");
             doc.writeTo(out);out.flush();
             Toast.makeText(this,"PDF salvo no celular",Toast.LENGTH_LONG).show();
         }catch(Exception ex){Toast.makeText(this,"Erro ao salvar: "+ex.getMessage(),Toast.LENGTH_LONG).show();}
+        finally {doc.close();}
     }
 }
