@@ -7,7 +7,7 @@ on:
       - 'rac-etiquetas/**'
       - '.github/workflows/rac-etiquetas.yml'
 permissions:
-  contents: read
+  contents: write
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -35,3 +35,10 @@ jobs:
           name: RAC-Etiquetas-v1-Android
           path: RAC-Etiquetas-v1.0.apk
           retention-days: 30
+
+      - name: Publicar APK para download direto
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view rac-etiquetas-v1.0 >/dev/null 2>&1 || gh release create rac-etiquetas-v1.0 --target "$GITHUB_SHA" --title "RAC Etiquetas v1.0" --notes "Editor Android de etiquetas termicas. Versao de testes, instalacao manual."
+          gh release upload rac-etiquetas-v1.0 RAC-Etiquetas-v1.0.apk --clobber
