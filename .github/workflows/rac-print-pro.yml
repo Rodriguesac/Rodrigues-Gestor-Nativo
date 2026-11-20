@@ -1,0 +1,71 @@
+name: RAC Print Pro - APK Android
+on:
+  push:
+    branches: [rac-print-pro]
+    paths:
+      - 'rac-print/android/**'
+      - '.github/workflows/rac-print-pro.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  android:
+    name: Compilar RAC Print Pro
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Preparar Android SDK
+        run: |
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | head -n 1)"
+          test -n "$SDKMANAGER"
+          "$SDKMANAGER" "platforms;android-35" "build-tools;35.0.0"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Compilar Android
+        run: gradle --no-daemon -p rac-print/android :app:assembleDebug
+      - name: Validar APK
+        run: |
+          APK="rac-print/android/app/build/outputs/apk/debug/app-debug.apk"
+          test -s "$APK"
+          unzip -t "$APK" | tail -n 1
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose "$APK"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | grep -E 'package:|sdkVersion:|launchable-activity:'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: RAC-Print-Pro-v1.0.0-Android
+          path: rac-print/android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 30
+
+  release:
+    name: APK para instalar no celular
+    runs-on: ubuntu-latest
+    needs: android
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: RAC-Print-Pro-v1.0.0-Android
+          path: dist
+      - name: Publicar download
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mv dist/app-debug.apk dist/RAC-Print-Pro-v1.0.0.apk
+          if gh release view rac-print-pro-v1.0.0 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload rac-print-pro-v1.0.0 dist/RAC-Print-Pro-v1.0.0.apk --repo "$GITHUB_REPOSITORY" --clobber
+          else
+            gh release create rac-print-pro-v1.0.0 dist/RAC-Print-Pro-v1.0.0.apk \
+              --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+              --title "RAC Print Pro v1.0.0 - editor e bobinas 58/80mm" \
+              --notes "Versão de teste em paralelo ao RAC Print anterior. Inclui editor de etiquetas, modelos, QR Code, codigo de barras, imagem, PDF e bobinas 58/80 mm; usa receptor Windows existente. Configurar IP e chave no novo aplicativo. Para documentos externos, o tamanho fisico depende do driver do Windows." \
+              --prerelease
+          fi
