@@ -67,10 +67,14 @@ public final class RacPrintService extends PrintService {
                 main.post(() -> {
                     if (destroyed || isDestroyed()) return;
                     PrinterId id = generatePrinterId("impressora-do-pc");
-                    PrintAttributes.MediaSize roll = new PrintAttributes.MediaSize(
+                    PrintAttributes.MediaSize roll80 = new PrintAttributes.MediaSize(
                             "rac_80mm", "Bobina 80 mm", 3150, 11000);
+                    PrintAttributes.MediaSize roll58 = new PrintAttributes.MediaSize(
+                            "rac_58mm", "Bobina 58 mm", 2283, 11000);
+                    boolean use58 = preferences().getInt("paper_mm", 80) == 58;
                     PrinterCapabilitiesInfo capabilities = new PrinterCapabilitiesInfo.Builder(id)
-                            .addMediaSize(roll, true)
+                            .addMediaSize(roll58, use58)
+                            .addMediaSize(roll80, !use58)
                             .addResolution(new PrintAttributes.Resolution(
                                     "thermal_203", "Térmica 203 DPI", 203, 203), true)
                             .setColorModes(PrintAttributes.COLOR_MODE_MONOCHROME,
@@ -78,7 +82,7 @@ public final class RacPrintService extends PrintService {
                             .setMinMargins(PrintAttributes.Margins.NO_MARGINS)
                             .build();
                     PrinterInfo printer = new PrinterInfo.Builder(id,
-                            "RAC Print — impressora do PC",
+                            "RAC Print Pro — impressora do PC",
                             available ? PrinterInfo.STATUS_IDLE : PrinterInfo.STATUS_UNAVAILABLE)
                             .setCapabilities(capabilities)
                             .build();
