@@ -5,7 +5,7 @@
   <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
     android:orientation="vertical" android:padding="18dp">
     <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
-      android:text="RAC Print" android:textSize="30sp" android:textStyle="bold"
+      android:text="RAC Print Pro" android:textSize="30sp" android:textStyle="bold"
       android:textColor="@color/ink" android:paddingTop="12dp"/>
     <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
       android:text="Imprima do celular • Bematech e outras impressoras do Windows"
@@ -48,6 +48,12 @@
         android:gravity="top" android:minLines="4" android:maxLines="12"
         android:inputType="textMultiLine" android:hint="RODRIGUES AÇAÍ E CIA\nPedido #001\nAçaí 300 ml   R$ 17,00\nTOTAL         R$ 17,00"/>
       <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:text="Largura da bobina" android:textColor="@color/muted" android:paddingTop="7dp"/>
+      <Spinner android:id="@+id/paper" android:layout_width="match_parent" android:layout_height="48dp" />
+      <Button android:id="@+id/openEditor" android:layout_width="match_parent" android:layout_height="52dp"
+        android:background="@drawable/button_secondary" android:text="ABRIR EDITOR DE ETIQUETAS PRO"
+        android:textColor="@color/purple" android:layout_marginTop="12dp"/>
+      <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
         android:text="Cópias (1 a 3)" android:textColor="@color/muted" android:paddingTop="7dp"/>
       <Spinner android:id="@+id/copies" android:layout_width="match_parent" android:layout_height="45dp"/>
       <Button android:id="@+id/print" android:layout_width="match_parent" android:layout_height="52dp"
@@ -57,7 +63,7 @@
         android:background="@drawable/button_secondary" android:text="Imprimir cupom de teste" android:textColor="@color/purple"/>
     </LinearLayout>
     <TextView android:id="@+id/jobStatus" android:layout_width="match_parent" android:layout_height="wrap_content"
-      android:text="Versão 0.2 • Impressão Android + Wi-Fi local • Sem assinatura" android:textColor="@color/muted"
+      android:text="Versão 1.0 • Impressão Android + Wi-Fi local • Sem assinatura" android:textColor="@color/muted"
       android:gravity="center" android:padding="18dp"/>
   </LinearLayout>
 </ScrollView>
