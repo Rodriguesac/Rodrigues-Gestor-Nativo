@@ -5,11 +5,11 @@ android {
     compileSdk 35
 
     defaultConfig {
-        applicationId 'br.com.rac.print'
+        applicationId 'br.com.rac.print.pro'
         minSdk 26
         targetSdk 34
-        versionCode 3
-        versionName '0.2.0'
+        versionCode 10
+        versionName '1.0.0'
     }
     buildTypes {
         release { minifyEnabled false }
@@ -18,4 +18,9 @@ android {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
     }
+}
+
+
+dependencies {
+    implementation 'com.google.zxing:core:3.5.3'
 }
