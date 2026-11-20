@@ -38,7 +38,7 @@ public class MainActivity extends Activity {
     private static final int MAX_BYTES = 15 * 1024 * 1024;
     private EditText ip, token, receipt;
     private TextView fileName, connectionStatus, jobStatus;
-    private Spinner copies;
+    private Spinner copies, paper;
     private Uri selectedFile;
     private final ExecutorService worker = Executors.newSingleThreadExecutor();
 
@@ -55,6 +55,18 @@ public class MainActivity extends Activity {
         copies.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item,
                 new String[]{"1", "2", "3"}));
         android.content.SharedPreferences settings = getSharedPreferences("rac_print_settings", MODE_PRIVATE);
+        paper = findViewById(R.id.paper);
+        paper.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item,
+                new String[]{"58 mm — bobina pequena", "80 mm — bobina grande"}));
+        paper.setSelection(settings.getInt("paper_mm",80)==58?0:1);
+        paper.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener() {
+            @Override public void onItemSelected(android.widget.AdapterView<?> parent, View view, int index, long id) {
+                settings.edit().putInt("paper_mm", index==0?58:80).apply();
+            }
+            @Override public void onNothingSelected(android.widget.AdapterView<?> parent) { }
+        });
+        findViewById(R.id.openEditor).setOnClickListener(v ->
+                startActivity(new Intent(this, ProEditorActivity.class)));
         // Migração da v0.1.1 para que o serviço Android encontre a conexão existente.
         ip.setText(settings.getString("ip", getPreferences(MODE_PRIVATE).getString("ip", "")));
         token.setText(settings.getString("token", getPreferences(MODE_PRIVATE).getString("token", "")));
@@ -278,12 +290,16 @@ public class MainActivity extends Activity {
         PdfDocument doc = new PdfDocument();
         try {
             int pw = 576;
-            float scaledHeight = ((float) image.getHeight()) * (pw - 32) / image.getWidth();
+            // Receptor Windows 0.2.1 continua com pagina na largura de 80mm.
+            // Conteudo menor ocupa somente a area fisica de 58mm (sem extrapolar o papel).
+            int usable = getSharedPreferences("rac_print_settings", MODE_PRIVATE)
+                    .getInt("paper_mm", 80)==58 ? 418 : pw;
+            float scaledHeight = ((float) image.getHeight()) * (usable - 32) / image.getWidth();
             int ph = Math.max(160, Math.min(6500, (int) Math.ceil(scaledHeight + 32)));
             PdfDocument.Page page = doc.startPage(new PdfDocument.PageInfo.Builder(pw, ph, 1).create());
             page.getCanvas().drawColor(Color.WHITE);
             Paint p = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
-            page.getCanvas().drawBitmap(image, null, new android.graphics.RectF(16, 16, pw - 16, Math.min(ph - 16, 16 + scaledHeight)), p);
+            page.getCanvas().drawBitmap(image, null, new android.graphics.RectF(16, 16, usable - 16, Math.min(ph - 16, 16 + scaledHeight)), p);
             doc.finishPage(page);
             ByteArrayOutputStream stream = new ByteArrayOutputStream();
             doc.writeTo(stream);
@@ -295,6 +311,8 @@ public class MainActivity extends Activity {
         PdfDocument pdf = new PdfDocument();
         try {
             final int width = 576, pageHeight = 1600, margin = 27, lineHeight = 34;
+            final int usable = getSharedPreferences("rac_print_settings", MODE_PRIVATE)
+                    .getInt("paper_mm",80)==58?418:width;
             Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
             paint.setColor(Color.BLACK);
             paint.setTypeface(android.graphics.Typeface.create("monospace", android.graphics.Typeface.NORMAL));
@@ -303,7 +321,7 @@ public class MainActivity extends Activity {
             for (String src : text.replace("\r", "").split("\n", -1)) {
                 if (src.isEmpty()) { lines.add(""); continue; }
                 while (src.length() > 0) {
-                    int n = paint.breakText(src, true, width - 2 * margin, null);
+                    int n = paint.breakText(src, true, usable - 2 * margin, null);
                     if (n <= 0) n = 1;
                     lines.add(src.substring(0, n));
                     src = src.substring(n);
