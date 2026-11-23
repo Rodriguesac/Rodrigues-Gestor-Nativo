@@ -19,7 +19,7 @@ import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-APP_VERSION = "0.2.1"
+APP_VERSION = "0.2.2"
 PORT = 8765
 MAX_BYTES = 15 * 1024 * 1024
 CONFIG_DIR = Path(os.environ.get("APPDATA", str(Path.home()))) / "RAC Print"
@@ -358,5 +358,19 @@ def start_gui():
     app.mainloop()
 
 
+def start_background():
+    """Recebe impressões sem janela e reutiliza a chave salva."""
+    cfg = config_load()
+    service = PrintService(cfg)
+    server = run_server(service)
+    try:
+        server.serve_forever()
+    finally:
+        server.server_close()
+
+
 if __name__ == "__main__":
-    start_gui()
+    if "--background" in sys.argv:
+        start_background()
+    else:
+        start_gui()
