@@ -8,15 +8,18 @@
       android:text="RAC Print" android:textSize="30sp" android:textStyle="bold"
       android:textColor="@color/ink" android:paddingTop="12dp"/>
     <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
-      android:text="Imprima do celular • Bematech e outras impressoras do Windows"
+      android:text="Imprima por USB direto ou Wi-Fi local"
       android:textSize="13sp" android:textColor="@color/muted" android:paddingBottom="20dp"/>
     <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
       android:background="@drawable/card" android:padding="16dp" android:orientation="vertical">
       <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
-        android:text="1. Conexão com o computador" android:textSize="18sp" android:textStyle="bold" android:textColor="@color/ink"/>
+        android:text="1. Conexão da impressora" android:textSize="18sp" android:textStyle="bold" android:textColor="@color/ink"/>
       <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
         android:text="Use o endereço IP e a chave que aparecem no receptor RAC Print do PC."
         android:textColor="@color/muted" android:textSize="13sp" android:paddingTop="5dp"/>
+      <CheckBox android:id="@+id/usbMode" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="USB direto — Bematech MP-4200 TH"/>
+      <CheckBox android:id="@+id/narrow" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Bobina 58 mm (desmarcado: 80 mm)"/>
+      <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Para USB, não preencha IP nem chave. Feche o Serial USB Terminal e autorize a conexão."/>
       <EditText android:id="@+id/ip" android:layout_width="match_parent" android:layout_height="wrap_content"
         android:singleLine="true" android:inputType="textUri" android:hint="IP do PC (ex.: 192.168.1.10)" android:paddingTop="10dp"/>
       <EditText android:id="@+id/token" android:layout_width="match_parent" android:layout_height="wrap_content"
@@ -57,7 +60,7 @@
         android:background="@drawable/button_secondary" android:text="Imprimir cupom de teste" android:textColor="@color/purple"/>
     </LinearLayout>
     <TextView android:id="@+id/jobStatus" android:layout_width="match_parent" android:layout_height="wrap_content"
-      android:text="Versão 0.2 • Impressão Android + Wi-Fi local • Sem assinatura" android:textColor="@color/muted"
+      android:text="Versão 0.3.0 • USB CDC + Wi-Fi local" android:textColor="@color/muted"
       android:gravity="center" android:padding="18dp"/>
   </LinearLayout>
 </ScrollView>

@@ -37,6 +37,8 @@ public class MainActivity extends Activity {
     private static final int PICK_FILE = 110;
     private static final int MAX_BYTES = 15 * 1024 * 1024;
     private EditText ip, token, receipt;
+    private android.widget.CheckBox usbMode, narrow;
+    private android.content.BroadcastReceiver usbReceiver;
     private TextView fileName, connectionStatus, jobStatus;
     private Spinner copies;
     private Uri selectedFile;
@@ -55,6 +57,23 @@ public class MainActivity extends Activity {
         copies.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item,
                 new String[]{"1", "2", "3"}));
         android.content.SharedPreferences settings = getSharedPreferences("rac_print_settings", MODE_PRIVATE);
+        usbMode = findViewById(R.id.usbMode);
+        narrow = findViewById(R.id.narrow);
+        usbMode.setChecked(settings.getBoolean("usb", true));
+        narrow.setChecked(settings.getBoolean("narrow", false));
+        usbMode.setOnCheckedChangeListener((b,v) -> saveConnection());
+        narrow.setOnCheckedChangeListener((b,v) -> saveConnection());
+        usbReceiver = new android.content.BroadcastReceiver() {
+            @Override public void onReceive(android.content.Context c, Intent i) {
+                if (BematechUsb.PERMISSION.equals(i.getAction())) {
+                    connectionStatus.setText(BematechUsb.ready(MainActivity.this) ?
+                        "Bematech USB autorizada. Toque em Imprimir cupom de teste." : "Acesso USB não autorizado.");
+                }
+            }
+        };
+        android.content.IntentFilter filter = new android.content.IntentFilter(BematechUsb.PERMISSION);
+        if (android.os.Build.VERSION.SDK_INT >= 33) registerReceiver(usbReceiver, filter, android.content.Context.RECEIVER_NOT_EXPORTED);
+        else registerReceiver(usbReceiver, filter);
         // Migração da v0.1.1 para que o serviço Android encontre a conexão existente.
         ip.setText(settings.getString("ip", getPreferences(MODE_PRIVATE).getString("ip", "")));
         token.setText(settings.getString("token", getPreferences(MODE_PRIVATE).getString("token", "")));
@@ -122,6 +141,7 @@ public class MainActivity extends Activity {
 
     private void saveConnection() {
         getSharedPreferences("rac_print_settings", MODE_PRIVATE).edit()
+                .putBoolean("usb", usbMode.isChecked()).putBoolean("narrow", narrow.isChecked())
                 .putString("ip", ip.getText().toString().trim())
                 .putString("token", token.getText().toString().trim()).apply();
     }
@@ -155,6 +175,13 @@ public class MainActivity extends Activity {
 
     private void runCheck() {
         saveConnection();
+        if (usbMode.isChecked()) {
+            android.hardware.usb.UsbDevice d = BematechUsb.device(this);
+            if (d == null) { connectionStatus.setText("Conecte a Bematech via OTG."); return; }
+            if (!BematechUsb.ready(this)) { BematechUsb.request(this,d); return; }
+            connectionStatus.setText("Bematech USB autorizada. Faça o teste.");
+            return;
+        }
         String base, secret;
         try { base = serverUrl(); secret = token.getText().toString().trim(); }
         catch (Exception e) { connectionStatus.setText(e.getMessage()); return; }
@@ -170,6 +197,23 @@ public class MainActivity extends Activity {
 
     private void print(boolean test) {
         saveConnection();
+        if (usbMode.isChecked()) {
+            if (!BematechUsb.ready(this)) { runCheck(); jobStatus.setText("Autorize o USB e toque em imprimir novamente."); return; }
+            final Uri file = selectedFile;
+            final String text = receipt.getText().toString();
+            final int count = copies.getSelectedItemPosition()+1;
+            final int width = narrow.isChecked()?384:576;
+            if (!test && file==null && text.trim().isEmpty()) { jobStatus.setText("Escolha um documento ou digite um cupom."); return; }
+            jobStatus.setText("Imprimindo diretamente pelo USB...");
+            worker.execute(() -> {
+                try {
+                    if(test) BematechUsb.test(this);
+                    else BematechUsb.print(this, file!=null?toPdf(file):receiptToPdf(text),count,width,()->false);
+                    show(jobStatus,"Dados enviados à Bematech. Confira o papel.");
+                } catch(Exception e) { show(jobStatus,"Falha USB: "+e.getMessage()); }
+            });
+            return;
+        }
         final String base, secret;
         try { base = serverUrl(); secret = token.getText().toString().trim(); }
         catch (Exception e) { jobStatus.setText(e.getMessage()); return; }
@@ -331,5 +375,5 @@ public class MainActivity extends Activity {
     }
 
     private void show(TextView view, String message) { runOnUiThread(() -> view.setText(message)); }
-    @Override protected void onDestroy() { worker.shutdownNow(); super.onDestroy(); }
+    @Override protected void onDestroy() { if(usbReceiver!=null) unregisterReceiver(usbReceiver); worker.shutdownNow(); super.onDestroy(); }
 }

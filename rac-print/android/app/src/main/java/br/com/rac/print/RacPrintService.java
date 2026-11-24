@@ -53,13 +53,17 @@ public final class RacPrintService extends PrintService {
         private void refresh() {
             String host = preferences().getString("ip", "");
             String key = preferences().getString("token", "");
-            if (host.isEmpty() || key.length() < 16) return;
+            final boolean usb = preferences().getBoolean("usb", true);
+            final boolean narrow = preferences().getBoolean("narrow", false);
+            if (!usb && (host.isEmpty() || key.length() < 16)) return;
             worker.execute(() -> {
                 boolean reachable = false;
                 try {
+                    if(usb) { reachable = BematechUsb.ready(RacPrintService.this); }
+                    else {
                     String base = RacPrintBridgeClient.address(host, key);
                     JSONObject result = RacPrintBridgeClient.request(base + "/status", key, null, 1);
-                    reachable = result.optBoolean("ok", false);
+                    reachable = result.optBoolean("ok", false); }
                 } catch (Exception ignored) {
                     // Exibir a impressora cadastrada como indisponível em vez de ocultá-la.
                 }
@@ -68,7 +72,7 @@ public final class RacPrintService extends PrintService {
                     if (destroyed || isDestroyed()) return;
                     PrinterId id = generatePrinterId("impressora-do-pc");
                     PrintAttributes.MediaSize roll = new PrintAttributes.MediaSize(
-                            "rac_80mm", "Bobina 80 mm", 3150, 11000);
+                            narrow ? "rac_58mm" : "rac_80mm", narrow ? "Bobina 58 mm" : "Bobina 80 mm", narrow ? 2283 : 3150, 11000);
                     PrinterCapabilitiesInfo capabilities = new PrinterCapabilitiesInfo.Builder(id)
                             .addMediaSize(roll, true)
                             .addResolution(new PrintAttributes.Resolution(
@@ -78,7 +82,7 @@ public final class RacPrintService extends PrintService {
                             .setMinMargins(PrintAttributes.Margins.NO_MARGINS)
                             .build();
                     PrinterInfo printer = new PrinterInfo.Builder(id,
-                            "RAC Print — impressora do PC",
+                            usb ? "RAC Print — Bematech USB" : "RAC Print — impressora do PC",
                             available ? PrinterInfo.STATUS_IDLE : PrinterInfo.STATUS_UNAVAILABLE)
                             .setCapabilities(capabilities)
                             .build();
@@ -92,6 +96,8 @@ public final class RacPrintService extends PrintService {
         if (!job.isQueued() || !job.start()) return;
         final String id = job.getId().toString();
         final int copies = job.getInfo().getCopies();
+        final boolean usb=preferences().getBoolean("usb",true);
+        final int width=preferences().getBoolean("narrow",false)?384:576;
         final ParcelFileDescriptor descriptor = job.getDocument().getData();
         final String host = preferences().getString("ip", "");
         final String key = preferences().getString("token", "");
@@ -109,6 +115,11 @@ public final class RacPrintService extends PrintService {
                         pdf[2] != 'D' || pdf[3] != 'F' || pdf[4] != '-')
                     throw new Exception("Documento não é PDF válido.");
                 if (cancelled.contains(id)) return;
+                if(usb) {
+                    BematechUsb.print(this,pdf,copies,width,()->cancelled.contains(id));
+                    main.post(()->{if(job.isStarted()&&!cancelled.contains(id))job.complete(); cancelled.remove(id);});
+                    return;
+                }
                 String base = RacPrintBridgeClient.address(host, key);
                 JSONObject accepted = RacPrintBridgeClient.request(base + "/print", key, pdf, copies);
                 String jobId = accepted.getString("id");
