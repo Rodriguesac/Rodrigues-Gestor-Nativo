@@ -1,5 +1,6 @@
 import React,{useEffect,useMemo,useRef,useState} from 'react';
 import {hybrid} from './hybrid.js';
+import {automaticPrintOnce,printState} from './print-state.js';
 import {request} from './api.js';
 import {NEW,DONE,money,normalize,ageMin,statusLabel,bucket,acceptanceRemaining,isLate,duplicateIds,timeLabel,receiptHtml} from './domain.js';
 const GROUPS={products:'Produtos',bases:'Bases',cardapio_acai:'Tamanhos',acompanhamentos_gratis:'Acompanhamentos',adicionais:'Adicionais',coberturas:'Coberturas',utensilios:'Utensílios'};
@@ -25,19 +26,8 @@ function subscribeRealtime(onSignal,onState){
  return()=>{closed=true;clearTimeout(reconnect);clearInterval(heartbeat);try{ws?.close()}catch{}};
 }
 
-// Registro local impede impressão automática duplicada durante os ciclos de atualização.
-function printOnce(o,mode){
- const prefs=hybrid.printerSettings?.();
- if(!prefs?.configured||prefs.mode!==mode||!o?.id)return false;
- const key='gestor-print-'+mode+'-'+o.id;
- try {
-   if(localStorage.getItem(key))return false;
-   localStorage.setItem(key,String(Date.now()));
- } catch { return false }
- if(hybrid.printDirect(receiptHtml(o),o.id))return true;
- try{localStorage.removeItem(key)}catch{}
- return false
-}
+// Somente o callback nativo confirma que a comanda entrou na fila do RAC Print.
+function printOnce(o,mode){return automaticPrintOnce(o,mode,hybrid,receiptHtml);}
 const newDraft=()=>({submission_id:crypto.randomUUID(),customer_name:'',phone:'',fulfillment:'RETIRADA',payment_method:'PIX',delivery_fee:0,address:{rua:'',numero:'',bairro:''},customer_note:'',items:[{name:'',quantity:1,unit_price:0,details:'',notes:''}]});
 function Icon({name}){const p={orders:'M5 4h14v16H5z M8 8h8 M8 12h8 M8 16h5',products:'M3 3h7v7H3z M14 3h7v7h-7z M3 14h7v7H3z M14 14h7v7h-7z',history:'M12 8v5l3 2 M4.9 4.9A10 10 0 1 1 2 12 M2 4v6h6',more:'M5 12h.01 M12 12h.01 M19 12h.01',bell:'M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9 M10 21h4',search:'M21 21l-4.3-4.3 M11 18a7 7 0 1 1 0-14 7 7 0 0 1 0 14',store:'M3 10l2-6h14l2 6 M5 10v10h14V10 M9 20v-6h6v6',settings:'M12 8a4 4 0 1 0 0 8 4 4 0 1 0 0-8 M12 2v3 M12 19v3 M2 12h3 M19 12h3',print:'M6 9V3h12v6 M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2 M6 14h12v7H6z',arrow:'M9 6l6 6-6 6',plus:'M12 4v16 M4 12h16',board:'M3 4h18v16H3z M9 4v16 M15 4v16',truck:'M3 5h11v12H3z M14 9h4l3 4v4h-7 M5 19h3 M16 19h3',chat:'M3 3h18v14H8l-5 4z M7 7h10 M7 11h7',report:'M4 20V10h4v10 M10 20V4h4v16 M16 20v-7h4v7',team:'M9 3a4 4 0 1 0 0 8 4 4 0 1 0 0-8 M2 21v-3a7 7 0 0 1 14 0v3 M17 5a4 4 0 0 1 0 8 M18 16a5 5 0 0 1 4 5'};return <svg viewBox="0 0 24 24" aria-hidden="true"><path d={p[name]||p.more}/></svg>}
 function Field({label,children,...props}){return <label className="field"><span>{label}</span>{children||<input {...props}/>}</label>}
@@ -70,7 +60,7 @@ function OrderDetail({o,call,run,onClose,onChanged,owner,canAttend}){const [view
     <section className="detail-section"><h2>{o.type==='RETIRADA'?'Retirada':'Entrega'}</h2>{o.address?<><h3>Endereço do cliente</h3><p className="address-text">{o.address}</p><div className="address-actions"><button onClick={copyAddress}>Copiar</button><button onClick={shareAddress}>Compartilhar</button><a href={'https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(o.address)} target="_blank" rel="noreferrer">Abrir mapa</a></div></>:<p className="muted">{o.type==='RETIRADA'?'Retirada na loja':'Endereço não informado'}</p>}</section>
     <section className="detail-section"><h2>Pagamento</h2><div className="payment-main"><b>{o.payment||'Não informado'}</b>{o.paymentStatus&&<span>{o.paymentStatus}</span>}</div></section>
     {o.cancellationReason&&<section className="detail-section cancellation"><h2>Motivo do cancelamento</h2><p>{o.cancellationReason}</p></section>}
-    <section className="detail-links"><button onClick={()=>{const p=hybrid.printerSettings?.();if(p?.configured&&hybrid.printDirect(receiptHtml(o),o.id))return;hybrid.printHtml(receiptHtml(o))}}><Icon name="print"/><span><b>Impressora</b><small>Imprimir comanda</small></span><Icon name="arrow"/></button><button onClick={()=>setView('events')}><Icon name="history"/><span><b>Registro do pedido</b><small>Ver linha do tempo</small></span><Icon name="arrow"/></button>{canAttend&&o.type==='ENTREGA'&&<button onClick={()=>setView('up')}><Icon name="truck"/><span><b>UP Entregas</b><small>Solicitar entregador pelo UP</small></span><Icon name="arrow"/></button>}</section>
+    <section className="detail-links"><button onClick={()=>{const p=hybrid.printerSettings?.();if(p?.configured&&hybrid.printDirect(receiptHtml(o),o.id))return;hybrid.printHtml(receiptHtml(o))}}><Icon name="print"/><span><b>Impressora</b><small>{printState(o.id,'arrival')==='failed'||printState(o.id,'accept')==='failed'?'Falha anterior • reenviar manualmente':'Imprimir ou reimprimir comanda'}</small></span><Icon name="arrow"/></button><button onClick={()=>setView('events')}><Icon name="history"/><span><b>Registro do pedido</b><small>Ver linha do tempo</small></span><Icon name="arrow"/></button>{canAttend&&o.type==='ENTREGA'&&<button onClick={()=>setView('up')}><Icon name="truck"/><span><b>UP Entregas</b><small>Solicitar entregador pelo UP</small></span><Icon name="arrow"/></button>}</section>
    </>}
    {view==='events'&&<section className="detail-section subview"><button className="back-inline" onClick={()=>setView('details')}>← Detalhes</button><h2>Linha do tempo</h2>{events.length?<ol className="timeline">{events.map(e=><li key={e.id}><b>{statusLabel(e.status)}</b><span>{timeLabel(e.occurred_at)}</span>{e.note&&<p>{e.note}</p>}</li>)}</ol>:<Empty title="Sem registros" text="As alterações aparecerão aqui."/>}</section>}
    {view==='up'&&<section className="detail-section subview"><button className="back-inline" onClick={()=>setView('details')}>← Detalhes</button><h2>Solicitar UP Entregas</h2><p className="muted">A solicitação será encaminhada ao UP independente. O UP Gestor escolhe um entregador disponível, e o motoboy precisa aceitar antes de sair para entrega.</p>
@@ -79,11 +69,11 @@ function OrderDetail({o,call,run,onClose,onChanged,owner,canAttend}){const [view
        {upState.queued&&<p className="muted">Situação da solicitação: {upState.bridge_state||'Aguardando confirmação'}. Não solicite novamente enquanto estiver em processamento.</p>}
        <div className="manual-dispatch-choices">
         <button className="primary" disabled={working||!manualAllowed||hasUpMission||!upState.bridge_enabled||!upState.eligible||upState.queued}
-         onClick={()=>perform(async()=>{
+         onClick={()=>{if(!window.confirm('Solicitar entregador pelo UP Entregas? A central logística receberá a oferta.'))return;perform(async()=>{
            const result=await call('up_handoff_independent',{order_id:o.id});
            setUpState(prev=>({...prev,...result,eligible:false,queued:true}));
            await onChanged();
-         })}>Solicitar entregador pelo UP</button>
+         })}}>Solicitar entregador pelo UP</button>
         <button className="secondary" disabled={working} onClick={()=>perform(async()=>setUpState(await call('up_handoff_check',{order_id:o.id})))}>Atualizar situação</button>
        </div>
      </>}
@@ -107,7 +97,7 @@ function OrderDetail({o,call,run,onClose,onChanged,owner,canAttend}){const [view
   {dispatchOpen&&<Modal title="Como deseja despachar?" onClose={()=>setDispatchOpen(false)}>
    <div className="manual-dispatch-choices">
     <p><b>Despachar:</b> motoboy próprio ou terceiro, fora do UP. <b>Despachar com UP:</b> solicita corrida à central UP, sem escolher o entregador pela base antiga da loja.</p>
-    <button className="primary" disabled={working||!manualAllowed||hasUpMission} onClick={()=>perform(async()=>{await call('up_dispatch_without_courier',{order_id:o.id});setDispatchOpen(false);hybrid.vibrate(80);await onChanged()})}>Despachar (entrega própria)</button>
+    <button className="primary" disabled={working||!manualAllowed||hasUpMission} onClick={()=>{if(!window.confirm('Despachar por entrega própria, sem UP Entregas?'))return;perform(async()=>{await call('up_dispatch_without_courier',{order_id:o.id});setDispatchOpen(false);hybrid.vibrate(80);await onChanged()})}}>Despachar (entrega própria)</button>
     <button className="secondary" disabled={working||!manualAllowed||hasUpMission} onClick={()=>{setDispatchOpen(false);setView('up')}}>Despachar com UP Entregas</button>
     {hasUpMission&&<p role="alert" className="error">Existe uma entrega ou oferta UP vinculada. Resolva essa missão primeiro para evitar um despacho duplicado.</p>}
     <button type="button" className="secondary" onClick={()=>setDispatchOpen(false)}>Voltar</button>

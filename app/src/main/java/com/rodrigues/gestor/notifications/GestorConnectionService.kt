@@ -22,6 +22,7 @@ class GestorConnectionService : Service() {
     private val knownPending = mutableSetOf<String>()
     private val knownStatuses = mutableMapOf<String, String>()
     private var activeRingOrderId = ""
+    private val acceptingIds = mutableSetOf<String>()
 
     override fun onCreate() {
         super.onCreate()
@@ -38,7 +39,31 @@ class GestorConnectionService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (GestorCredentials.pin.length != 6) GestorCredentials.load(this)
         if (orderListener == null) listenOrders()
+        if (intent?.action == ACTION_ACCEPT_FROM_NOTIFICATION) {
+            val id = intent.getStringExtra(OrderActionReceiver.EXTRA_ORDER_ID).orEmpty()
+            acceptFromNotification(id)
+        }
         return START_STICKY
+    }
+
+    private fun acceptFromNotification(orderId: String) {
+        if (orderId.isBlank() || !acceptingIds.add(orderId)) return
+        // The canonical backend validates order state, deadline and concurrency.
+        SupabaseOrdersApi.updateStatus(
+            orderId, "CONFIRMADO",
+            onDone = {
+                acceptingIds.remove(orderId)
+                OrderRingService.stop(this)
+                NotificationHelper.cancelOrder(this, orderId)
+            },
+            onError = { error ->
+                acceptingIds.remove(orderId)
+                NotificationHelper.showMessage(
+                    this, "Pedido não confirmado",
+                    error.message ?: "Abra o Gestor e confira o pedido.", orderId
+                )
+            },
+        )
     }
 
     private fun listenOrders() {
@@ -152,6 +177,7 @@ class GestorConnectionService : Service() {
 
     companion object {
         const val CONNECTION_NOTIFICATION_ID = 9901
+        const val ACTION_ACCEPT_FROM_NOTIFICATION = "com.rodrigues.gestor.ACCEPT_VIA_SUPABASE"
         private val CANCELED_STATUSES = setOf("CANCELADO", "CANCELADA", "CANCELED", "CANCELLED")
 
         fun start(context: Context) {

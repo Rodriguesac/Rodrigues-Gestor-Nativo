@@ -12,8 +12,8 @@ android {
         applicationId = "com.rodrigues.gestor"
         minSdk = 23
         targetSdk = 36
-        versionCode = 23
-        versionName = "3.3.4-mobile"
+        versionCode = 24
+        versionName = "3.3.5-mobile"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
